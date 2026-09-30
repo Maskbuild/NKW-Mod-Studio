@@ -1,0 +1,35 @@
+# dependencies
+node_modules/
+
+# build output
+out/
+dist/
+release/
+*.blockmap
+
+# test / verification output (scripts/verify-matrix, smoke tests)
+.verify/
+coverage/
+
+# NKW projects accidentally saved inside the repo
+*.nkw/
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# logs
+*.log
+npm-debug.log*
+
+# local environment / secrets
+.env
+.env.*
+
+# editors & OS junk
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+desktop.ini

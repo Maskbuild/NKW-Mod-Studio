@@ -1,0 +1,38 @@
+appId: com.nkw.modstudio
+productName: NKW Mod Studio
+copyright: Copyright © Nam Kueap Wan (NKW)
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+asarUnpack:
+  - node_modules/ffmpeg-static/**
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: NKW Mod Studio
+  artifactName: NKW-Mod-Studio-Setup-${version}.${ext}
+mac:
+  target: dmg
+  icon: build/icon.png
+linux:
+  target: AppImage
+  icon: build/icon.png
+  category: Development

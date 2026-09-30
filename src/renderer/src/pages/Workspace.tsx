@@ -1,0 +1,315 @@
+import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
+import { LOADER_LABEL, type Target } from '@core/project'
+import type { Diagnostic } from '@core/ir'
+import { api } from '../api'
+import { useStore } from '../store'
+import { Canvas } from '../graph/Canvas'
+import { Library } from '../graph/Library'
+import { AssetTree } from '../graph/AssetTree'
+import { Inspector } from '../graph/Inspector'
+import { Dock, type DockTab } from '../graph/Dock'
+import { VanillaPanel } from '../graph/VanillaPanel'
+import { DEFAULT_LAYOUT, Resizer, useLayout } from '../components/Resizer'
+import { IDownload, IFolder, IHome, IPlay, IRedo, ISettings, IStop, IUndo, Logo } from '../components/Icons'
+import { SettingsDialog } from './SettingsDialog'
+
+/** Validation in a worker, debounced, always against the active target. */
+function useValidation() {
+  useEffect(() => {
+    const worker = new Worker(new URL('../validate.worker.ts', import.meta.url), { type: 'module' })
+    let seq = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+    worker.onmessage = (e: MessageEvent<{ seq: number; diagnostics: Diagnostic[] }>) => {
+      if (e.data.seq === seq) useStore.getState().setDiagnostics(e.data.diagnostics)
+    }
+    const run = () => {
+      const s = useStore.getState()
+      const project = s.project()
+      if (!project) return
+      worker.postMessage({ seq: ++seq, project, target: s.targets[s.activeTarget] })
+    }
+    run()
+    const unsub = useStore.subscribe((s, prev) => {
+      if (s.nodes !== prev.nodes || s.edges !== prev.edges || s.meta !== prev.meta || s.targets !== prev.targets || s.activeTarget !== prev.activeTarget) {
+        clearTimeout(timer)
+        timer = setTimeout(run, 180)
+      }
+    })
+    return () => {
+      unsub()
+      clearTimeout(timer)
+      worker.terminate()
+    }
+  }, [])
+}
+
+/** Autosave 1.2 s after the last real change. */
+function useAutosave() {
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const unsub = useStore.subscribe((s, prev) => {
+      if (s.dirty && (s.nodes !== prev.nodes || s.edges !== prev.edges || s.meta !== prev.meta || s.targets !== prev.targets || !prev.dirty)) {
+        clearTimeout(timer)
+        timer = setTimeout(() => void useStore.getState().save(), 1200)
+      }
+    })
+    const beforeUnload = () => {
+      if (useStore.getState().dirty) void useStore.getState().save()
+    }
+    window.addEventListener('beforeunload', beforeUnload)
+    return () => {
+      unsub()
+      clearTimeout(timer)
+      window.removeEventListener('beforeunload', beforeUnload)
+    }
+  }, [])
+}
+
+function useBuildEvents(openConsole: () => void) {
+  const { t } = useTranslation()
+  useEffect(() => {
+    const offs = [
+      api.on<string[]>('build:log', (lines) => useStore.getState().appendLogs(lines)),
+      api.on<{ msg: string; done?: number; total?: number }>('build:progress', (p) => useStore.getState().setBuild({ progress: p })),
+      api.on<{ code: number; cancelled?: boolean; jar?: string | null }>('build:done', (r) => {
+        const s = useStore.getState()
+        s.setBuild({ running: false, progress: null, lastCode: r.code, task: null })
+        if (r.cancelled) return
+        if (r.code === 0) s.toast(`✓ ${t('ws.buildOk')}`)
+        else {
+          s.toast(t('ws.buildFail', { code: r.code }), true)
+          openConsole()
+        }
+      })
+    ]
+    return () => offs.forEach((o) => o())
+  }, [t, openConsole])
+}
+
+/** Main sends progress in English; show it in the UI language. */
+function progressText(msg: string, th: boolean): string {
+  if (!th) return msg
+  return msg
+    .replace(/^Running runClient/, 'กำลังเปิดเกม…')
+    .replace(/^Running build/, 'กำลังสร้างไฟล์ม็อด…')
+    .replace(/^Running /, 'กำลังรัน ')
+    .replace(/^Resolving versions/, 'กำลังตรวจสอบเวอร์ชัน…')
+    .replace(/^Downloading /, 'กำลังดาวน์โหลด ')
+    .replace(/^Extracting /, 'กำลังแตกไฟล์ ')
+}
+
+function Toolbar({ onSettings }: { onSettings: () => void }) {
+  const { t, i18n } = useTranslation()
+  const meta = useStore((s) => s.meta)!
+  const dirty = useStore((s) => s.dirty)
+  const saving = useStore((s) => s.saving)
+  const targets = useStore((s) => s.targets)
+  const active = useStore((s) => s.activeTarget)
+  const build = useStore((s) => s.build)
+  const canUndo = useStore((s) => s.past.length > 0)
+  const canRedo = useStore((s) => s.future.length > 0)
+  const errors = useStore((s) => s.diagnostics.filter((d) => d.severity === 'error').length)
+  const target: Target | undefined = targets[active]
+
+  const run = async (task: 'runClient' | 'build') => {
+    const s = useStore.getState()
+    if (errors) {
+      s.toast(t('ws.errorsFirst'), true)
+      window.dispatchEvent(new CustomEvent('nkw:dock', { detail: 'problems' }))
+      return
+    }
+    const project = s.project()
+    if (!project || !target) return
+    s.setBuild({ running: true, task, logs: [], progress: { msg: task === 'runClient' ? t('ws.running') : t('ws.building') } })
+    window.dispatchEvent(new CustomEvent('nkw:dock', { detail: 'console' }))
+    try {
+      const started = await api.startBuild(project, target, task)
+      useStore.setState({ dirty: false })
+      if (!started) s.setBuild({ running: false, progress: null })
+    } catch (e) {
+      s.setBuild({ running: false, progress: null })
+      s.toast((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), true)
+    }
+  }
+
+  const pct = build.progress?.total ? Math.round(((build.progress.done ?? 0) / build.progress.total) * 100) : null
+
+  return (
+    <div className="titlebar">
+      <button className="btn ghost icon" title={t('ws.home')} onClick={() => void useStore.getState().closeProject()}>
+        <IHome />
+      </button>
+      <Logo size={20} />
+      <span className="proj-name ellipsis" title={meta.name}>
+        {meta.name}
+      </span>
+      <span title={saving ? t('ws.saving') : dirty ? t('ws.unsaved') : t('ws.saved')} className="row">
+        {dirty ? <span className="dirty-dot" /> : <span className="faint">{t('ws.saved')}</span>}
+      </span>
+      <span className="tb-sep" />
+      <button className="btn ghost icon" disabled={!canUndo} title={`${t('ws.undo')} (Ctrl+Z)`} onClick={() => useStore.getState().undo()}>
+        <IUndo />
+      </button>
+      <button className="btn ghost icon" disabled={!canRedo} title={`${t('ws.redo')} (Ctrl+Y)`} onClick={() => useStore.getState().redo()}>
+        <IRedo />
+      </button>
+      <div className="drag" />
+      {build.progress && (
+        <div className="progress" title={build.progress.msg}>
+          <span className="ellipsis">{progressText(build.progress.msg, i18n.language === 'th')}</span>
+          <span className={`bar${pct === null ? ' indet' : ''}`}>
+            <i style={{ width: `${pct ?? 0}%` }} />
+          </span>
+        </div>
+      )}
+      <select
+        className="input"
+        style={{ width: 170 }}
+        value={active}
+        disabled={build.running}
+        onChange={(e) => useStore.setState({ activeTarget: Number(e.target.value), dirty: true })}
+        title={t('ws.target')}
+      >
+        {targets.map((tg, i) => (
+          <option key={`${tg.loader}-${tg.mc}`} value={i}>
+            {LOADER_LABEL[tg.loader]} {tg.mc}
+          </option>
+        ))}
+      </select>
+      {build.running ? (
+        <button className="btn danger" onClick={() => void api.stopBuild()}>
+          <IStop size={14} /> {t('ws.stop')}
+        </button>
+      ) : (
+        <>
+          <button className="btn primary" onClick={() => void run('runClient')} title="Ctrl+Enter">
+            <IPlay size={14} /> {t('ws.test')}
+          </button>
+          <button className="btn" onClick={() => void run('build')}>
+            <IDownload size={14} /> {t('ws.export')}
+          </button>
+        </>
+      )}
+      <button className="btn ghost icon" title={t('ws.openBuild')} onClick={() => target && void api.openBuildFolder(target)}>
+        <IFolder />
+      </button>
+      <button className="btn ghost icon" title={t('home.settings')} onClick={onSettings}>
+        <ISettings />
+      </button>
+    </div>
+  )
+}
+
+function Shortcuts({ quickAdd }: { quickAdd: React.MutableRefObject<((x: number, y: number) => void) | null> }) {
+  const rf = useReactFlow()
+  const mouse = useRef({ x: 400, y: 300 })
+  useEffect(() => {
+    const move = (e: MouseEvent) => (mouse.current = { x: e.clientX, y: e.clientY })
+    const key = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement
+      const typing = typeof el?.closest === 'function' && el.closest('input, textarea, select, [contenteditable="true"]')
+      const s = useStore.getState()
+      const ctrl = e.ctrlKey || e.metaKey
+      if (ctrl && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        void s.save()
+        return
+      }
+      if (ctrl && e.key === 'Enter') {
+        e.preventDefault()
+        ;(document.querySelector('.titlebar .btn.primary') as HTMLButtonElement | null)?.click()
+        return
+      }
+      if (typing) return
+      if (ctrl && e.key.toLowerCase() === 'z' && !e.shiftKey) (e.preventDefault(), s.undo())
+      else if (ctrl && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) (e.preventDefault(), s.redo())
+      else if (ctrl && e.key.toLowerCase() === 'c') s.copy()
+      else if (ctrl && e.key.toLowerCase() === 'v') s.paste(rf.screenToFlowPosition(mouse.current))
+      else if (ctrl && e.key.toLowerCase() === 'd') (e.preventDefault(), s.duplicate())
+      else if (ctrl && e.key.toLowerCase() === 'a') (e.preventDefault(), useStore.setState({ nodes: s.nodes.map((n) => ({ ...n, selected: true })) }))
+      else if (e.key === ' ' && !ctrl) (e.preventDefault(), quickAdd.current?.(mouse.current.x, mouse.current.y))
+      else if (e.key.toLowerCase() === 'f' && !ctrl) void rf.fitView({ padding: 0.2, duration: 300, nodes: s.nodes.some((n) => n.selected) ? s.nodes.filter((n) => n.selected) : undefined })
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('keydown', key)
+    return () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('keydown', key)
+    }
+  }, [rf, quickAdd])
+  return null
+}
+
+function WorkspaceInner() {
+  const { t } = useTranslation()
+  const [leftTab, setLeftTab] = useState<'library' | 'vanilla' | 'assets'>('library')
+  const [layout, setLayout] = useLayout()
+  const [dockTab, setDockTab] = useState<DockTab>('problems')
+  const [dockOpen, setDockOpen] = useState(true)
+  const [settings, setSettings] = useState(false)
+  const quickAdd = useRef<((x: number, y: number) => void) | null>(null)
+
+  useValidation()
+  useAutosave()
+  useBuildEvents(() => {
+    setDockTab('console')
+    setDockOpen(true)
+  })
+  useEffect(() => {
+    const h = (e: Event) => {
+      setDockTab((e as CustomEvent<DockTab>).detail)
+      setDockOpen(true)
+    }
+    window.addEventListener('nkw:dock', h)
+    return () => window.removeEventListener('nkw:dock', h)
+  }, [])
+
+  return (
+    <div className="ws">
+      <Toolbar onSettings={() => setSettings(true)} />
+      <div className="ws-main">
+        <aside className="side" style={{ width: layout.left }}>
+          <div className="side-tabs">
+            <button className={leftTab === 'library' ? 'on' : ''} onClick={() => setLeftTab('library')}>
+              {t('ws.library')}
+            </button>
+            <button className={leftTab === 'vanilla' ? 'on' : ''} onClick={() => setLeftTab('vanilla')}>
+              {t('ws.vanilla')}
+            </button>
+            <button className={leftTab === 'assets' ? 'on' : ''} onClick={() => setLeftTab('assets')}>
+              {t('ws.assets')}
+            </button>
+          </div>
+          <div className="side-body">{leftTab === 'library' ? <Library /> : leftTab === 'vanilla' ? <VanillaPanel /> : <AssetTree />}</div>
+        </aside>
+        <Resizer dir="x" value={layout.left} onChange={(v) => setLayout('left', v)} onReset={() => setLayout('left', DEFAULT_LAYOUT.left)} />
+        <main className="center">
+          <Canvas quickAddRef={quickAdd} />
+          {dockOpen && <Resizer dir="y" sign={-1} value={layout.dock} onChange={(v) => setLayout('dock', v)} onReset={() => setLayout('dock', DEFAULT_LAYOUT.dock)} />}
+          <Dock tab={dockTab} setTab={setDockTab} open={dockOpen} setOpen={setDockOpen} height={layout.dock} />
+        </main>
+        <Resizer dir="x" sign={-1} value={layout.right} onChange={(v) => setLayout('right', v)} onReset={() => setLayout('right', DEFAULT_LAYOUT.right)} />
+        <aside className="side right" style={{ width: layout.right }}>
+          <div className="side-tabs">
+            <button className="on">{t('ws.inspector')}</button>
+          </div>
+          <div className="side-body">
+            <Inspector />
+          </div>
+        </aside>
+      </div>
+      <Shortcuts quickAdd={quickAdd} />
+      {settings && <SettingsDialog onClose={() => setSettings(false)} />}
+    </div>
+  )
+}
+
+export default function Workspace() {
+  return (
+    <ReactFlowProvider>
+      <WorkspaceInner />
+    </ReactFlowProvider>
+  )
+}
