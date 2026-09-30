@@ -38,7 +38,7 @@ describe('compiler', () => {
     const { ir, diagnostics } = compile(project, { loader: 'fabric', mc: '1.21.1' })
     expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
     expect(ir.items.map((i) => i.id)).toContain('ruby_sword')
-    expect(ir.items.filter((i) => i.armor).length).toBe(13)
+    expect(ir.items.filter((i) => i.armor).length).toBe(14)
     const soup = ir.items.find((i) => i.id === 'ruby_soup')!
     expect(soup.food!.effects.map((e) => e.effect)).toEqual(['REGENERATION', 'POISON', 'DAMAGE_BOOST'])
     expect(soup.food!.effects[0]).toMatchObject({ amplifier: 1, ticks: 100, chance: 0.8 })
@@ -148,6 +148,49 @@ describe('compiler', () => {
     expect(base.origin).toEqual([-4, 32, -4])
     expect(gem.uv.north.uv).toEqual([0, 16])
     expect(gem.rotation).toEqual([0, -45, 0])
+  })
+  it('shows armor as its 3D model in the inventory when chosen', () => {
+    const { ir } = compile(project)
+    const crown = ir.items.find((i) => i.id === 'block_crown')!
+    expect(crown.model).toEqual({ asset: 'models/crown.json', textures: ['textures/ruby.png', 'textures/lamp.png'] })
+    expect(ir.items.find((i) => i.id === 'top_hat')!.geoIcon).toBe(true)
+    const files = generate(ir, { loader: 'fabric', mc: '1.21.4' }, { ...FALLBACK_DEPS['1.21.4'], ...deps } as never, read)
+    const hat = JSON.parse(files.find((f) => f.path.endsWith('/models/item/top_hat.json'))!.text!)
+    expect(hat.textures['0']).toBe('nkwtest:item/armor/top_hat')
+    expect(hat.display.gui.rotation).toEqual([30, 225, 0])
+    // fitted into the block: widest side spans 0…16
+    const xs = hat.elements.flatMap((e: { from: number[]; to: number[] }) => [e.from[0], e.to[0]])
+    expect(Math.min(...xs)).toBe(0)
+    expect(Math.max(...xs)).toBe(16)
+    // Java models turn in 22.5° steps: the crown's 5° tilt rounds to none
+    expect(hat.elements.every((e: { rotation?: unknown }) => !e.rotation)).toBe(true)
+    expect(files.some((f) => f.path.endsWith('/textures/item/armor/top_hat.png'))).toBe(true)
+    // the .json crown uses its own model with its textures
+    const crownModel = JSON.parse(files.find((f) => f.path.endsWith('/models/item/block_crown.json'))!.text!)
+    expect(crownModel.textures).toMatchObject({ '0': 'nkwtest:item/block_crown_0', '1': 'nkwtest:item/block_crown_1' })
+    const boots = JSON.parse(files.find((f) => f.path.endsWith('/models/item/winged_boots.json'))!.text!)
+    expect(boots.elements.length).toBeGreaterThan(0)
+  })
+  it('wears items on the head and keeps the .json model in hand', () => {
+    const { ir } = compile(project)
+    expect(ir.items.find((i) => i.id === 'lamp_statue')!.headwear).toBe(true)
+    const knife = ir.items.find((i) => i.id === 'plain_knife')!
+    expect(knife.headwear).toBe(true)
+    expect(knife.separateIcon).toBe(true)
+    const flat = ir.items.find((i) => i.id === 'block_crown_flat')!
+    expect(flat.model?.asset).toBe('models/crown.json')
+    expect(flat.separateIcon).toBe(true)
+    const old = generate(ir, { loader: 'forge', mc: '1.20.1' }, { ...FALLBACK_DEPS['1.20.1'], ...deps } as never, read)
+    const head = old.find((f) => f.path.endsWith('/NkwHeadwear.java'))!.text!
+    expect(head).toContain('ModItems.LAMP_STATUE.get()')
+    expect(head).toContain('ModItems.PLAIN_KNIFE.get()')
+    expect(old.find((f) => f.path.endsWith('/NkwMod.java'))!.text).toContain('NkwHeadwear.init();')
+    const modern = generate(ir, { loader: 'neoforge', mc: '1.21.4' }, { ...FALLBACK_DEPS['1.21.4'], ...deps } as never, read)
+    expect(modern.some((f) => f.path.endsWith('/NkwHeadwear.java'))).toBe(false)
+    expect(modern.find((f) => f.path.endsWith('/ModItems.java'))!.text).toContain('.equippable(EquipmentSlot.HEAD)')
+    // the .json model (with its Blockbench display settings) is the hand model; the icon stays 2D
+    const def = JSON.parse(modern.find((f) => f.path.endsWith('/items/block_crown_flat.json'))!.text!)
+    expect(def.model.type).toBe('minecraft:select')
   })
   it('follows reroute nodes', () => {
     const { ir } = compile(project)

@@ -67,6 +67,10 @@ export interface ItemIR extends Named {
   places?: string | null
   /** 3D model shown in hand while `texture` is used as the inventory icon */
   separateIcon?: boolean
+  /** can be worn on the head (drawn with the model's "head" display) */
+  headwear?: boolean
+  /** armor piece shown in the inventory / hand as its 3D (GeckoLib) model */
+  geoIcon?: boolean
 }
 
 export interface BlockIR extends Named {

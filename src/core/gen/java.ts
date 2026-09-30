@@ -590,6 +590,8 @@ ${accept(tb, '            ')}
   // ───────── main class ─────────
   const endDiscs = ir.items.filter((i) => i.disc && i.disc.onEnd !== 'stay')
   if (endDiscs.length) genJukebox(ctx, endDiscs, get, out)
+  const headItems = p.propertiesId ? [] : ir.items.filter((i) => i.headwear)
+  if (headItems.length) genHeadwear(ctx, headItems, get, out)
 
   const count = `${ir.items.length + ir.blocks.length} items, ${ir.blocks.length} blocks, ${ir.sounds.length} sounds, ${ir.recipes.length} recipes`
   const idFn = p.rlFactory
@@ -614,7 +616,7 @@ public class NkwMod implements ModInitializer {
         ModBlocks.init();
         ModItems.init();
         ModTabs.init();
-${endDiscs.length ? '        NkwJukebox.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 }`
     } else {
@@ -639,7 +641,7 @@ public class NkwMod {
     ${ctor}
         NkwTags.init();
 ${regs.map((r) => `        ${r}.register(bus);`).join('\n')}
-${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 
     ${idFn}
@@ -1060,8 +1062,13 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
     j.use('net.minecraft.world.item.ItemNameBlockItem')
     return `new ItemNameBlockItem(${block}, ${P})`
   }
-  const common = (it: { rarity: string; fireResistant: boolean }) => {
+  const common = (it: { rarity: string; fireResistant: boolean; headwear?: boolean }) => {
     let s = ''
+    // 1.21.2+: vanilla equippable property (right-click / armor slot); older versions use NkwHeadwear
+    if (it.headwear && p.propertiesId) {
+      j.use(MC.EquipmentSlot)
+      s += '.equippable(EquipmentSlot.HEAD)'
+    }
     if (it.rarity !== 'common') {
       j.use(MC.Rarity)
       s += `.rarity(Rarity.${it.rarity.toUpperCase()})`
@@ -1356,6 +1363,71 @@ ${discs.filter((d) => d.disc!.onEnd === 'loop').map((d) => `        if (item == 
             }
         }
     }${ejectFn}
+}`)
+  )
+}
+
+/**
+ * Items that can be worn on the head. 1.21.2+ uses the vanilla `equippable` item property; older
+ * versions equip on right-click through the loader's use-item event. Worn items are drawn by the game
+ * with the model's "head" display settings (Blockbench's Display tab → Head).
+ */
+function genHeadwear(ctx: GenCtx, items: ItemIR[], get: (cls: string, id: string) => string, out: (cls: string, text: string) => void): void {
+  const { pkg, loader, p } = ctx
+  const fab = fabricLike(loader)
+  const neo = loader === 'neoforge'
+  const oldForge = !neo && (p.mc === '1.16.5' || p.mc === '1.18.2')
+  const j = new JavaFile(pkg, 'NkwHeadwear').use(MC.Item, MC.ItemStack, MC.Level, MC.EquipmentSlot, 'net.minecraft.world.entity.player.Player', 'net.minecraft.world.InteractionHand')
+  let hooks: string
+  if (fab) {
+    j.use('net.fabricmc.fabric.api.event.player.UseItemCallback', 'net.minecraft.world.InteractionResultHolder')
+    hooks = `    public static void init() {
+        UseItemCallback.EVENT.register((player, level, hand) -> {
+            ItemStack held = player.getItemInHand(hand);
+            return wear(player, level, hand) ? InteractionResultHolder.success(held) : InteractionResultHolder.pass(held);
+        });
+    }`
+  } else {
+    const base = neo ? 'net.neoforged.neoforge' : 'net.minecraftforge'
+    j.use(`${base}.event.entity.player.PlayerInteractEvent`, MC.InteractionResult, neo ? 'net.neoforged.neoforge.common.NeoForge' : 'net.minecraftforge.common.MinecraftForge')
+    const bus = neo ? 'NeoForge.EVENT_BUS' : 'MinecraftForge.EVENT_BUS'
+    hooks = `    public static void init() {
+        ${bus}.addListener(NkwHeadwear::onRightClick);
+    }
+
+    private static void onRightClick(PlayerInteractEvent.RightClickItem event) {
+        if (wear(event.${oldForge ? 'getPlayer()' : 'getEntity()'}, event.${oldForge ? 'getWorld()' : 'getLevel()'}, event.getHand())) {
+            event.setCancellationResult(InteractionResult.SUCCESS);
+            event.setCanceled(true);
+        }
+    }`
+  }
+  out(
+    'NkwHeadwear',
+    j.render(`
+/** Right-click puts these items on the head (one from the stack; the old head item goes back to the inventory). */
+public final class NkwHeadwear {
+    private NkwHeadwear() {}
+
+${hooks}
+
+    private static boolean wearable(Item item) {
+${items.map((it) => `        if (item == ${get('ModItems', it.id)}) return true;`).join('\n')}
+        return false;
+    }
+
+    private static boolean wear(Player player, Level level, InteractionHand hand) {
+        ItemStack held = player.getItemInHand(hand);
+        if (held.isEmpty() || !wearable(held.getItem())) return false;
+        ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);
+        if (!head.isEmpty() && head.getItem() == held.getItem()) return false;
+        if (!level.isClientSide) {
+            ItemStack worn = held.split(1);
+            if (!head.isEmpty() && !player.addItem(head)) player.drop(head, false);
+            player.setItemSlot(EquipmentSlot.HEAD, worn);
+        }
+        return true;
+    }
 }`)
   )
 }

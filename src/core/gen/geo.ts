@@ -430,3 +430,177 @@ export function fitAnimation(anim: AnimFile | null, loopName: string | null, slo
   for (const bone of SLOT_BONES[slot]) a.bones[FIT_PREFIX + bone] = { scale: [...s] }
   return { file, name }
 }
+
+// ───────────── faces and UVs (shared by the preview and the icon converter) ─────────────
+
+export type Face = 'north' | 'south' | 'east' | 'west' | 'up' | 'down'
+/** UV rectangle in texture pixels; top-left corner (u, v) and signed size (flipped when negative). */
+export type Rect = { u: number; v: number; us: number; vs: number }
+
+/** Face corners as seen from outside: top-left, top-right, bottom-right, bottom-left (render space). */
+export const CORNERS: Record<Face, (a: V3, b: V3) => V3[]> = {
+  north: (a, b) => [[b[0], b[1], a[2]], [a[0], b[1], a[2]], [a[0], a[1], a[2]], [b[0], a[1], a[2]]],
+  south: (a, b) => [[a[0], b[1], b[2]], [b[0], b[1], b[2]], [b[0], a[1], b[2]], [a[0], a[1], b[2]]],
+  west: (a, b) => [[a[0], b[1], a[2]], [a[0], b[1], b[2]], [a[0], a[1], b[2]], [a[0], a[1], a[2]]],
+  east: (a, b) => [[b[0], b[1], b[2]], [b[0], b[1], a[2]], [b[0], a[1], a[2]], [b[0], a[1], b[2]]],
+  up: (a, b) => [[a[0], b[1], a[2]], [b[0], b[1], a[2]], [b[0], b[1], b[2]], [a[0], b[1], b[2]]],
+  down: (a, b) => [[a[0], a[1], b[2]], [b[0], a[1], b[2]], [b[0], a[1], a[2]], [a[0], a[1], a[2]]]
+}
+
+/** Box UV → per-face rectangles, the way GeckoLib lays them out. */
+export function boxRects(uv: [number, number], size: V3): Record<Face, Rect> {
+  const [u, v] = uv
+  const w = Math.floor(size[0])
+  const h = Math.floor(size[1])
+  const d = Math.floor(size[2])
+  return {
+    east: { u, v: v + d, us: d, vs: h },
+    north: { u: u + d, v: v + d, us: w, vs: h },
+    west: { u: u + d + w, v: v + d, us: d, vs: h },
+    south: { u: u + d + w + d, v: v + d, us: w, vs: h },
+    up: { u: u + d, v, us: w, vs: d },
+    down: { u: u + d + w, v: v + d, us: w, vs: -d }
+  }
+}
+
+export function faceRects(c: GeoCube): Partial<Record<Face, Rect>> {
+  if (Array.isArray(c.uv)) return boxRects(c.uv, c.size)
+  const out: Partial<Record<Face, Rect>> = {}
+  for (const [f, fu] of Object.entries(c.uv ?? {}) as [Face, GeoFaceUv][]) {
+    if (!fu?.uv || !fu.uv_size) continue
+    // Blockbench stores up/down faces flipped
+    out[f] =
+      f === 'up' || f === 'down'
+        ? { u: fu.uv[0] + fu.uv_size[0], v: fu.uv[1] + fu.uv_size[1], us: -fu.uv_size[0], vs: -fu.uv_size[1] }
+        : { u: fu.uv[0], v: fu.uv[1], us: fu.uv_size[0], vs: fu.uv_size[1] }
+  }
+  return out
+}
+
+// ───────────── armor model → Java item model (inventory icon) ─────────────
+
+type M3 = number[][]
+const mul = (a: M3, b: M3): M3 => a.map((r) => [0, 1, 2].map((j) => r[0] * b[0][j] + r[1] * b[1][j] + r[2] * b[2][j]))
+const apply = (m: M3, v: V3): V3 => [0, 1, 2].map((i) => m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2]) as V3
+const I3: M3 = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, 1]
+]
+function axisRot(axis: 0 | 1 | 2, deg: number): M3 {
+  const c = Math.cos((deg * Math.PI) / 180)
+  const s = Math.sin((deg * Math.PI) / 180)
+  if (axis === 0) return [[1, 0, 0], [0, c, -s], [0, s, c]]
+  if (axis === 1) return [[c, 0, s], [0, 1, 0], [-s, 0, c]]
+  return [[c, -s, 0], [s, c, 0], [0, 0, 1]]
+}
+/** Geo rotation in render space: GeckoLib negates x and y and applies Z·Y·X. */
+const geoRot = (r?: V3): M3 => (r ? mul(mul(axisRot(2, r[2]), axisRot(1, -r[1])), axisRot(0, -r[0])) : I3)
+const toRenderPos = (p?: V3): V3 => [-(p?.[0] ?? 0), p?.[1] ?? 0, p?.[2] ?? 0]
+
+/** Java elements only turn around one axis by −45…45° in 22.5° steps: the closest such rotation. */
+function javaRotation(m: M3): { axis: 'x' | 'y' | 'z'; angle: number } | null {
+  const eps = 1e-3
+  let axis: 'x' | 'y' | 'z' | null = null
+  let deg = 0
+  if (Math.abs(m[0][0] - 1) < eps) (axis = 'x'), (deg = (Math.atan2(m[2][1], m[1][1]) * 180) / Math.PI)
+  else if (Math.abs(m[1][1] - 1) < eps) (axis = 'y'), (deg = (Math.atan2(m[0][2], m[0][0]) * 180) / Math.PI)
+  else if (Math.abs(m[2][2] - 1) < eps) (axis = 'z'), (deg = (Math.atan2(m[1][0], m[0][0]) * 180) / Math.PI)
+  if (!axis) return null
+  const snapped = Math.max(-45, Math.min(45, Math.round(deg / 22.5) * 22.5))
+  return snapped === 0 ? null : { axis, angle: snapped }
+}
+
+/**
+ * Turns the worn part of an armor model into a Java item model so the piece can show its 3D model as
+ * the inventory icon (and in hand). Cubes are placed where GeckoLib would put them, scaled to fit a
+ * 16×16×16 block and shown at the block angle in the inventory. Rotations Java models cannot express
+ * (several axes, or more than 45°) are approximated.
+ */
+export function armorIconModel(input: GeoFile, slot: ArmorSlot, texture: string): Record<string, unknown> | null {
+  const geo = attachToSlot(input, slot)
+  const g = geo['minecraft:geometry'][0]
+  const tw = Number(g.description.texture_width ?? 64)
+  const th = Number(g.description.texture_height ?? 64)
+  const bones = g.bones ?? []
+  const byName = new Map(bones.map((b) => [b.name, b]))
+  const visible = new Set(SLOT_BONES[slot].flatMap((n) => subtree(bones, n).map((b) => b.name)))
+  // world transform of a bone: rotation about its pivot, then its parents'
+  const chain = (b: GeoBone): GeoBone[] => {
+    const out: GeoBone[] = []
+    for (let cur: GeoBone | undefined = b, i = 0; cur && i < 64; i++, cur = cur.parent ? byName.get(cur.parent) : undefined) out.push(cur)
+    return out
+  }
+  const raw: { center: V3; size: V3; rot: M3; faces: Partial<Record<Face, Rect>>; mirror: boolean }[] = []
+  for (const b of bones) {
+    if (!visible.has(b.name)) continue
+    const links = chain(b)
+    for (const c of b.cubes ?? []) {
+      const inf = c.inflate ?? 0
+      const size: V3 = [c.size[0] + 2 * inf, c.size[1] + 2 * inf, c.size[2] + 2 * inf]
+      let center: V3 = toRenderPos([c.origin[0] + c.size[0] / 2, c.origin[1] + c.size[1] / 2, c.origin[2] + c.size[2] / 2])
+      let rot = I3
+      if (c.rotation) {
+        const p = toRenderPos(c.pivot)
+        const r = geoRot(c.rotation)
+        center = add(p, apply(r, [center[0] - p[0], center[1] - p[1], center[2] - p[2]]))
+        rot = r
+      }
+      for (const l of links) {
+        if (!l.rotation) continue
+        const p = toRenderPos(l.pivot)
+        const r = geoRot(l.rotation)
+        center = add(p, apply(r, [center[0] - p[0], center[1] - p[1], center[2] - p[2]]))
+        rot = mul(r, rot)
+      }
+      raw.push({ center, size, rot, faces: faceRects(c), mirror: !!c.mirror })
+    }
+  }
+  if (!raw.length) return null
+  // fit into the 0…16 block
+  const min: V3 = [Infinity, Infinity, Infinity]
+  const max: V3 = [-Infinity, -Infinity, -Infinity]
+  for (const r of raw)
+    for (let k = 0; k < 3; k++) {
+      min[k] = Math.min(min[k], r.center[k] - r.size[k] / 2)
+      max[k] = Math.max(max[k], r.center[k] + r.size[k] / 2)
+    }
+  const extent = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2], 0.001)
+  const s = 16 / extent
+  const mid: V3 = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2]
+  const round = (v: number) => Math.round(v * 1000) / 1000
+  const elements = raw.map((r) => {
+    const c: V3 = [8 + (r.center[0] - mid[0]) * s, 8 + (r.center[1] - mid[1]) * s, 8 + (r.center[2] - mid[2]) * s]
+    const h: V3 = [(r.size[0] * s) / 2, (r.size[1] * s) / 2, (r.size[2] * s) / 2]
+    const faces: Record<string, unknown> = {}
+    for (const [f, rect] of Object.entries(r.faces) as [Face, Rect][]) {
+      let u1 = (rect.u / tw) * 16
+      let u2 = ((rect.u + rect.us) / tw) * 16
+      const v1 = (rect.v / th) * 16
+      const v2 = ((rect.v + rect.vs) / th) * 16
+      if (r.mirror) [u1, u2] = [u2, u1]
+      faces[f] = { uv: [round(u1), round(v1), round(u2), round(v2)], texture: '#0' }
+    }
+    const el: Record<string, unknown> = {
+      from: [round(c[0] - h[0]), round(c[1] - h[1]), round(c[2] - h[2])],
+      to: [round(c[0] + h[0]), round(c[1] + h[1]), round(c[2] + h[2])],
+      faces
+    }
+    const jr = javaRotation(r.rot)
+    if (jr) el.rotation = { angle: jr.angle, axis: jr.axis, origin: [round(c[0]), round(c[1]), round(c[2])] }
+    return el
+  })
+  return {
+    textures: { '0': texture, particle: texture },
+    elements,
+    display: {
+      gui: { rotation: [30, 225, 0], scale: [0.625, 0.625, 0.625] },
+      ground: { translation: [0, 3, 0], scale: [0.25, 0.25, 0.25] },
+      fixed: { scale: [0.5, 0.5, 0.5] },
+      head: { translation: [0, 0, 0], scale: [1, 1, 1] },
+      thirdperson_righthand: { rotation: [75, 45, 0], translation: [0, 2.5, 0], scale: [0.375, 0.375, 0.375] },
+      firstperson_righthand: { rotation: [0, 45, 0], scale: [0.4, 0.4, 0.4] },
+      firstperson_lefthand: { rotation: [0, 225, 0], scale: [0.4, 0.4, 0.4] }
+    }
+  }
+}

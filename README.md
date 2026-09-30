@@ -22,9 +22,9 @@ by **Nam Kueap Wan (NKW)**
 
 | Area | What you can make |
 |---|---|
-| 💎 Items | Items, food, tools & weapons (sword, pickaxe, axe, shovel, hoe), tool materials (optional: tools default to iron), 3D items (3D in hand with an optional 2D inventory icon), items that place blocks (e.g. seeds → crop) |
+| 💎 Items | Items, food, tools & weapons (sword, pickaxe, axe, shovel, hoe), tool materials (optional: tools default to iron), 3D items (3D in hand with an optional 2D inventory icon), items that can be **worn on the head** (shown with the model's Blockbench "Head" display), items that place blocks (e.g. seeds → crop) |
 | 🧱 Blocks | Cube blocks (all sides / top-side-bottom / pillar), **3D blocks** from Blockbench (hitbox computed from the model, faces the player), custom drops |
-| 🛡 Armor | Armor materials (optional: pieces default to iron) + **individual armor pieces** (helmet / chestplate / leggings / boots), 2D or **3D from Blockbench** (`.bbmodel`, GeckoLib `.geo.json` or a Java block/item `.json` — any model can be worn) with animations; adjust **position, rotation and size** on a Steve / Alex preview |
+| 🛡 Armor | Armor materials (optional: pieces default to iron) + **individual armor pieces** (helmet / chestplate / leggings / boots), 2D or **3D from Blockbench** (`.bbmodel`, GeckoLib `.geo.json` or a Java block/item `.json` — any model can be worn) with animations; adjust **position, rotation and size** on a Steve / Alex preview; the inventory icon can be the 3D model itself |
 | ✨ Effects | 30 status effects, level 1–1000, infinite duration, toggle particles and status icon — on food (when eaten), weapons (on hit) and armor (while worn) |
 | 🎞 Animation | Animated textures, looping GeckoLib animations on 3D armor |
 | 🎵 Sound | Sound files, sound events, **music discs** (length taken from the audio file, copyright label, hearing range, pop out / loop / stay when the song ends), built-in **MP3 / WAV / MP4 / … → OGG converter** |
@@ -93,7 +93,7 @@ tests         unit tests (vitest)
 
 What the AI-generated code was checked with:
 
-- 42 unit tests (compiler, generators for every loader × version, Blockbench conversion, path-traversal protection, audio import)
+- 44 unit tests (compiler, generators for every loader × version, Blockbench conversion, path-traversal protection, audio import)
 - **Real Gradle builds of a sample mod using every node: 23/23 loader × version targets pass** (compile + `.jar`)
 - **Minecraft actually launched** with the sample mod on Fabric, Quilt, Forge and NeoForge across 1.16.5–1.21.4 — mod registered, no model/texture errors
 - Recipe, loot table, tag, jukebox song and equipment JSON checked against the real vanilla and Farmer's Delight files

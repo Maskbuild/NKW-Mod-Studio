@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { textureKeys, type JavaModel } from '@core/gen/model'
-import { FIT_PREFIX, SLOT_BONES, geoBones, javaModelToGeo, prepareArmorGeo, type ArmorFit, type GeoBone, type GeoCube, type GeoFile, type V3 } from '@core/gen/geo'
+import { CORNERS, FIT_PREFIX, SLOT_BONES, faceRects, geoBones, javaModelToGeo, prepareArmorGeo, type ArmorFit, type Face, type GeoBone, type GeoCube, type GeoFile, type V3 } from '@core/gen/geo'
 import type { ArmorSlot } from '@core/ir'
 import { api, assetUrl } from '../api'
 
@@ -10,46 +10,6 @@ import { api, assetUrl } from '../api'
  * 3D preview of one armor piece on a player mannequin (Steve or Alex arms), built exactly like
  * GeckoLib builds it: geo space mirrored on x, bone rotations applied Z·Y·X with x/y negated.
  */
-
-type Face = 'north' | 'south' | 'east' | 'west' | 'up' | 'down'
-type Rect = { u: number; v: number; us: number; vs: number }
-
-// Face corners as seen from outside: top-left, top-right, bottom-right, bottom-left (render space).
-const CORNERS: Record<Face, (a: V3, b: V3) => V3[]> = {
-  north: (a, b) => [[b[0], b[1], a[2]], [a[0], b[1], a[2]], [a[0], a[1], a[2]], [b[0], a[1], a[2]]],
-  south: (a, b) => [[a[0], b[1], b[2]], [b[0], b[1], b[2]], [b[0], a[1], b[2]], [a[0], a[1], b[2]]],
-  west: (a, b) => [[a[0], b[1], a[2]], [a[0], b[1], b[2]], [a[0], a[1], b[2]], [a[0], a[1], a[2]]],
-  east: (a, b) => [[b[0], b[1], b[2]], [b[0], b[1], a[2]], [b[0], a[1], a[2]], [b[0], a[1], b[2]]],
-  up: (a, b) => [[a[0], b[1], a[2]], [b[0], b[1], a[2]], [b[0], b[1], b[2]], [a[0], b[1], b[2]]],
-  down: (a, b) => [[a[0], a[1], b[2]], [b[0], a[1], b[2]], [b[0], a[1], a[2]], [a[0], a[1], a[2]]]
-}
-
-/** Box UV → per-face rectangles, the way GeckoLib lays them out. */
-function boxRects(uv: [number, number], size: V3): Record<Face, Rect> {
-  const [u, v] = uv
-  const w = Math.floor(size[0])
-  const h = Math.floor(size[1])
-  const d = Math.floor(size[2])
-  return {
-    east: { u, v: v + d, us: d, vs: h },
-    north: { u: u + d, v: v + d, us: w, vs: h },
-    west: { u: u + d + w, v: v + d, us: d, vs: h },
-    south: { u: u + d + w + d, v: v + d, us: w, vs: h },
-    up: { u: u + d, v, us: w, vs: d },
-    down: { u: u + d + w, v: v + d, us: w, vs: -d }
-  }
-}
-
-function faceRects(c: GeoCube): Partial<Record<Face, Rect>> {
-  if (Array.isArray(c.uv)) return boxRects(c.uv, c.size)
-  const out: Partial<Record<Face, Rect>> = {}
-  for (const [f, fu] of Object.entries(c.uv ?? {}) as [Face, { uv: [number, number]; uv_size: [number, number] }][]) {
-    if (!fu?.uv || !fu.uv_size) continue
-    // Blockbench stores up/down faces flipped
-    out[f] = f === 'up' || f === 'down' ? { u: fu.uv[0] + fu.uv_size[0], v: fu.uv[1] + fu.uv_size[1], us: -fu.uv_size[0], vs: -fu.uv_size[1] } : { u: fu.uv[0], v: fu.uv[1], us: fu.uv_size[0], vs: fu.uv_size[1] }
-  }
-  return out
-}
 
 const rad = THREE.MathUtils.degToRad
 /** Geo rotation → render-space Euler (GeckoLib negates x and y, applies Z·Y·X). */

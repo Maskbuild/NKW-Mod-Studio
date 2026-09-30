@@ -306,7 +306,8 @@ export function compile(project: Project, target?: Target): CompileResult {
     rarity: (str(n.data, 'rarity', 'common') as ItemIR['rarity']) || 'common',
     fireResistant: bool(n.data, 'fireResistant'),
     glint: bool(n.data, 'glint'),
-    handheld: bool(n.data, 'handheld')
+    handheld: bool(n.data, 'handheld'),
+    ...(bool(n.data, 'wearOnHead') ? { headwear: true } : {})
   })
 
   const recipeNames = new Map<string, number>()
@@ -375,6 +376,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           }
         }
         it.texture = texture(n.id, 'texture', !it.model)
+        it.separateIcon = !!(it.model && it.texture)
         ir.items.push(it)
         break
       }
@@ -488,13 +490,19 @@ export function compile(project: Project, target?: Target): CompileResult {
           g.fit = parseFit(d.fit)
         }
         const slot = (ARMOR_SLOTS.includes(str(d, 'slot') as ArmorSlot) ? str(d, 'slot') : 'helmet') as ArmorSlot
+        // inventory icon: the icon texture, or the 3D model itself
+        const modelIcon = str(d, 'iconFrom') === 'model'
+        if (modelIcon && !g) warn(n.id, 'Connect a 3D model to use it as the icon (the icon texture is used)', 'ต่อโมเดล 3D ก่อนจึงจะใช้เป็นไอคอนได้ (ตอนนี้ใช้รูปไอคอนแทน)')
+        const iconModel = modelIcon && !!g
         ir.items.push({
           id: regId(n),
           ...names(n),
           nodeId: n.id,
           kind: 'armor',
-          texture: texture(n.id, 'icon', true),
-          model: null,
+          texture: texture(n.id, 'icon', !iconModel),
+          model: g?.java ? { asset: g.asset, textures: g.java.textures } : null,
+          ...(iconModel && !g!.java ? { geoIcon: true } : {}),
+          ...(g?.java && !iconModel ? { separateIcon: true } : {}),
           handheld: false,
           maxStack: 1,
           rarity: (str(d, 'rarity', 'common') as ItemIR['rarity']) || 'common',

@@ -1,5 +1,5 @@
 import type { BlockIR, ItemIR, ModelRef } from '../ir'
-import { fitAnimation, geoLoopName, javaModelToGeo, prepareArmorGeo, type GeoFile } from './geo'
+import { armorIconModel, fitAnimation, geoLoopName, javaModelToGeo, prepareArmorGeo, type GeoFile } from './geo'
 import { textureKeys, type JavaModel } from './model'
 import { parseJavaModel, remapTextures } from './model'
 import { RES, fabricLike, json, type GenCtx } from './types'
@@ -66,6 +66,19 @@ export function genAssets(ctx: GenCtx): void {
           text: json({ loader: iconOnly, base: { parent: `${ns}:item/${it.id}_3d` }, perspectives: { gui: icon, ground: icon, fixed: icon } })
         })
       }
+      continue
+    }
+    // armor piece shown as its 3D model (converted from the GeckoLib model)
+    const geo = it.geoIcon ? it.armor?.geo : null
+    if (geo) {
+      let icon: unknown = null
+      try {
+        icon = armorIconModel(JSON.parse(ctx.read.readText(geo.asset)) as GeoFile, it.armor!.slot, tex(geo.texture, 'item/armor', ctx.geoNames.get(it.id) ?? it.id))
+      } catch {
+        icon = null
+      }
+      files.push({ path: `${A}/models/item/${it.id}.json`, text: json(icon ?? flat(it.texture, it.id, handheld)) })
+      itemDefinition(it.id, `${ns}:item/${it.id}`)
       continue
     }
     const modelJson = it.model ? modelFile(it.model, 'item', it.id, false) : flat(it.texture, it.id, handheld)

@@ -55,6 +55,10 @@ const CLASSES: Record<string, string> = {
   'net.minecraft.world.item.ItemNameBlockItem': 'net.minecraft.item.BlockNamedItem',
   'net.minecraft.world.level.block.entity.BlockEntity': 'net.minecraft.tileentity.TileEntity',
   'net.minecraft.world.level.block.JukeboxBlock': 'net.minecraft.block.JukeboxBlock',
+  'net.minecraft.world.entity.player.Player': 'net.minecraft.entity.player.PlayerEntity',
+  'net.minecraft.world.InteractionHand': 'net.minecraft.util.Hand',
+  'net.minecraft.world.InteractionResult': 'net.minecraft.util.ActionResultType',
+  'net.minecraft.world.InteractionResultHolder': 'net.minecraft.util.ActionResult',
   'net.minecraft.world.entity.item.ItemEntity': 'net.minecraft.entity.item.ItemEntity',
   'net.minecraft.world.level.block.entity.JukeboxBlockEntity': 'net.minecraft.tileentity.JukeboxTileEntity',
   // Forge API that moved later
@@ -83,6 +87,10 @@ const NAMES: [RegExp, string][] = [
   [/\bLevel\b/g, 'World'],
   [/\bItemNameBlockItem\b/g, 'BlockNamedItem'],
   [/\bJukeboxBlockEntity\b/g, 'JukeboxTileEntity'],
+  [/\bPlayer\b/g, 'PlayerEntity'],
+  [/\bInteractionHand\b/g, 'Hand'],
+  [/\bInteractionResultHolder\b/g, 'ActionResult'],
+  [/\bInteractionResult\b/g, 'ActionResultType'],
   [/\bBlockEntity\b/g, 'TileEntity']
 ]
 

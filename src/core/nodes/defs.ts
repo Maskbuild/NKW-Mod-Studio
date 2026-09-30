@@ -138,6 +138,7 @@ const itemCommon: PropDef[] = [
     ]
   },
   { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false },
+  { key: 'wearOnHead', label: t('Can be worn on the head', 'ใส่บนหัวได้'), kind: 'bool', default: false, hint: t('Right-click to put it on. It is shown with the model\'s "Head" display settings (Blockbench → Display → Head).', 'คลิกขวาเพื่อสวม — จะแสดงตามค่าการแสดงผลแบบ "Head" ของโมเดล (Blockbench → Display → Head)') },
   { key: 'glint', label: t('Enchant glint', 'มีประกายเอนชานต์'), kind: 'bool', default: false }
 ]
 
@@ -445,6 +446,7 @@ export const NODE_DEFS: NodeDef[] = [
       { key: 'attackDamage', label: t('Extra attack damage', 'ดาเมจเพิ่มเติม'), kind: 'float', default: 3, min: -10, max: 1000, step: 0.5 },
       { key: 'attackSpeed', label: t('Attack speed modifier', 'ค่าความเร็วโจมตี'), kind: 'float', default: -2.4, min: -4, max: 10, step: 0.1 },
       { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false },
+      { key: 'wearOnHead', label: t('Can be worn on the head', 'ใส่บนหัวได้'), kind: 'bool', default: false, hint: t('Right-click to put it on. It is shown with the model\'s "Head" display settings (Blockbench → Display → Head).', 'คลิกขวาเพื่อสวม — จะแสดงตามค่าการแสดงผลแบบ "Head" ของโมเดล (Blockbench → Display → Head)') },
       { key: 'rarity', label: t('Rarity', 'ความหายาก'), kind: 'select', default: 'common', options: itemCommon[1].options }
     ]
   },
@@ -618,6 +620,14 @@ export const NODE_DEFS: NodeDef[] = [
       },
       { key: 'rarity', label: t('Rarity', 'ความหายาก'), kind: 'select', default: 'common', options: itemCommon[1].options },
       { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false },
+      {
+        key: 'iconFrom',
+        label: t('Inventory icon', 'ไอคอนไอเทม (ในช่องเก็บของ)'),
+        kind: 'select',
+        default: 'texture',
+        options: [opt('texture', 'Icon texture (2D)', 'รูปไอคอน (2D)'), opt('model', 'The 3D model (.bbmodel / .json)', 'โมเดล 3D (.bbmodel / .json)')],
+        hint: t('"The 3D model" shows the connected 3D model as the item, like a block in the inventory.', '"โมเดล 3D" จะแสดงโมเดลที่ต่อไว้เป็นตัวไอเทม แบบเดียวกับบล็อกในช่องเก็บของ')
+      },
       { key: 'fit', label: t('Fit on the player', 'การสวมบนตัวผู้เล่น'), kind: 'armorFit', default: null }
     ]
   },
