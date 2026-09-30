@@ -10,6 +10,8 @@ export interface GenFile {
   copy?: string
   /** binary content */
   base64?: string
+  /** PNG made by stacking these project textures vertically (first frame each, same width) */
+  atlas?: string[]
 }
 
 /** Concrete dependency versions for one target (resolved online, with pinned fallbacks). */

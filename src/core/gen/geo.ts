@@ -216,6 +216,66 @@ export function bbmodelToGeo(text: string, identifier = 'geometry.nkw'): { geo: 
   return { geo, textures }
 }
 
+// ───────────── Java block/item model (.json) → .geo.json ─────────────
+
+interface JavaModelLike {
+  textures?: Record<string, string>
+  elements?: {
+    from: number[]
+    to: number[]
+    rotation?: { angle: number; axis: 'x' | 'y' | 'z'; origin: number[] }
+    faces?: Record<string, { uv?: number[]; texture?: string }>
+  }[]
+}
+
+const JAVA_DEFAULT_UV: Record<string, (a: number[], b: number[]) => number[]> = {
+  north: (a, b) => [16 - b[0], 16 - b[1], 16 - a[0], 16 - a[1]],
+  south: (a, b) => [a[0], 16 - b[1], b[0], 16 - a[1]],
+  west: (a, b) => [a[2], 16 - b[1], b[2], 16 - a[1]],
+  east: (a, b) => [16 - b[2], 16 - b[1], 16 - a[2], 16 - a[1]],
+  up: (a, b) => [a[0], a[2], b[0], b[2]],
+  down: (a, b) => [a[0], 16 - b[2], b[0], 16 - a[2]]
+}
+
+/**
+ * Converts a Java block/item model (e.g. a Blockbench "Java Block/Item" export) for use as armor.
+ * GeckoLib armor takes one texture, so the model's textures (in `textureKeys` order) are expected
+ * stacked vertically in one sheet, 16×16 UV units each: texture i covers v = 16i … 16i+16.
+ */
+export function javaModelToGeo(model: JavaModelLike, textureKeys: string[], textureCount: number, identifier = 'geometry.nkw'): GeoFile {
+  const count = Math.max(1, textureCount)
+  const index = (ref: string | undefined): number => {
+    const i = textureKeys.indexOf((ref ?? '').replace(/^#/, ''))
+    return Math.min(count - 1, Math.max(0, i))
+  }
+  const elements: BBElement[] = (model.elements ?? []).map((e, n) => {
+    const r = e.rotation
+    const faces: BBElement['faces'] = {}
+    for (const [f, face] of Object.entries(e.faces ?? {})) {
+      if (!JAVA_DEFAULT_UV[f]) continue
+      const uv = face.uv ?? JAVA_DEFAULT_UV[f](e.from, e.to)
+      const dv = 16 * index(face.texture)
+      faces[f] = { uv: [uv[0], uv[1] + dv, uv[2], uv[3] + dv], texture: 0 }
+    }
+    return {
+      uuid: `e${n}`,
+      from: e.from as V3,
+      to: e.to as V3,
+      origin: (r?.origin ?? [8, 8, 8]) as V3,
+      rotation: r ? ([r.axis === 'x' ? r.angle : 0, r.axis === 'y' ? r.angle : 0, r.axis === 'z' ? r.angle : 0] as V3) : undefined,
+      box_uv: false,
+      faces
+    }
+  })
+  const bb: BBModel = {
+    meta: { model_format: 'java_block', box_uv: false },
+    resolution: { width: 16, height: 16 * count },
+    elements,
+    outliner: [{ name: 'model', origin: [8, 0, 8], children: elements.map((e) => e.uuid) }]
+  }
+  return bbmodelToGeo(JSON.stringify(bb), identifier).geo
+}
+
 // ───────────── armor fitting ─────────────
 
 export function geoBones(geo: GeoFile): GeoBone[] {

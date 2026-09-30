@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { FIT_PREFIX, SLOT_BONES, geoBones, prepareArmorGeo, type ArmorFit, type GeoBone, type GeoCube, type GeoFile, type V3 } from '@core/gen/geo'
+import { textureKeys, type JavaModel } from '@core/gen/model'
+import { FIT_PREFIX, SLOT_BONES, geoBones, javaModelToGeo, prepareArmorGeo, type ArmorFit, type GeoBone, type GeoCube, type GeoFile, type V3 } from '@core/gen/geo'
 import type { ArmorSlot } from '@core/ir'
 import { api, assetUrl } from '../api'
 
@@ -218,9 +219,39 @@ const pixelTexture = (t: THREE.Texture) => {
   return t
 }
 
+/**
+ * Textures stacked vertically, first frame each, same width: the sheet the generator writes.
+ * The texture is created only once the sheet is drawn (a WebGL texture cannot change size later).
+ */
+function sheetTexture(textures: string[]): Promise<THREE.Texture> {
+  const canvas = document.createElement('canvas')
+  return Promise.all(
+    textures.map(
+      (t) =>
+        new Promise<HTMLImageElement | null>((ok) => {
+          const img = new Image()
+          img.crossOrigin = 'anonymous'
+          img.onload = () => ok(img)
+          img.onerror = () => ok(null)
+          img.src = assetUrl(t)
+        })
+    )
+  ).then((imgs) => {
+    const w = Math.max(16, ...imgs.map((i) => i?.naturalWidth ?? 16))
+    canvas.width = w
+    canvas.height = w * imgs.length
+    const g = canvas.getContext('2d')!
+    g.imageSmoothingEnabled = false
+    imgs.forEach((img, i) => img && g.drawImage(img, 0, 0, img.naturalWidth, img.naturalWidth, 0, i * w, w, w))
+    return new THREE.CanvasTexture(canvas)
+  })
+}
+
 export interface ArmorPreviewProps {
   geoAsset: string | null
   texture: string | null
+  /** Java block/item model: its textures (merged into one sheet like the generator does) */
+  javaTextures?: string[] | null
   slot: ArmorSlot
   fit: ArmorFit | null
   slim: boolean
@@ -230,7 +261,7 @@ export interface ArmorPreviewProps {
   gameSkin: string | null
 }
 
-export default function ArmorPreview({ geoAsset, texture, slot, fit, slim, skin, gameSkin }: ArmorPreviewProps) {
+export default function ArmorPreview({ geoAsset, texture, javaTextures, slot, fit, slim, skin, gameSkin }: ArmorPreviewProps) {
   const host = useRef<HTMLDivElement>(null)
   const ctx = useRef<{ scene: THREE.Scene; render: () => void } | null>(null)
   const [geo, setGeo] = useState<GeoFile | null>(null)
@@ -280,12 +311,16 @@ export default function ArmorPreview({ geoAsset, texture, slot, fit, slim, skin,
     if (geoAsset)
       void api
         .readModel(geoAsset)
-        .then((g) => live && setGeo(g as GeoFile))
+        .then((g) => {
+          if (!live) return
+          const raw = g as GeoFile & JavaModel
+          setGeo(javaTextures ? javaModelToGeo(raw, textureKeys(raw), javaTextures.length) : raw)
+        })
         .catch(() => undefined)
     return () => {
       live = false
     }
-  }, [geoAsset])
+  }, [geoAsset, javaTextures?.length])
 
   // mannequin
   useEffect(() => {
@@ -331,7 +366,10 @@ export default function ArmorPreview({ geoAsset, texture, slot, fit, slim, skin,
     const desc = prepared['minecraft:geometry'][0].description
     const tw = Number(desc.texture_width ?? 64)
     const th = Number(desc.texture_height ?? 64)
-    const tex = texture
+    const sheet = !!javaTextures && javaTextures.length > 1
+    const tex = sheet
+      ? null
+      : texture
       ? new THREE.TextureLoader().load(assetUrl(texture), (t) => {
           // animated textures (frames stacked vertically): show the first frame
           const img = t.image as { width: number; height: number }
@@ -344,7 +382,17 @@ export default function ArmorPreview({ geoAsset, texture, slot, fit, slim, skin,
         })
       : null
     if (tex) pixelTexture(tex)
-    const mat = new THREE.MeshLambertMaterial({ map: tex, color: tex ? 0xffffff : 0x9aa4b2, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide })
+    const mat = new THREE.MeshLambertMaterial({ map: tex, color: tex || sheet ? 0xffffff : 0x9aa4b2, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide })
+    let sheetTex: THREE.Texture | null = null
+    let live = true
+    if (sheet)
+      void sheetTexture(javaTextures!).then((t) => {
+        if (!live) return t.dispose()
+        sheetTex = pixelTexture(t)
+        mat.map = sheetTex
+        mat.needsUpdate = true
+        c.render()
+      })
     const scale = fit?.scale ?? null
     const armor = buildGeo(geoBones(prepared), tw, th, mat, new Set(SLOT_BONES[slot]), (n) =>
       n.startsWith(FIT_PREFIX) ? scale : null
@@ -354,11 +402,13 @@ export default function ArmorPreview({ geoAsset, texture, slot, fit, slim, skin,
     return () => {
       c.scene.remove(armor)
       armor.traverse((o) => (o as THREE.Mesh).geometry?.dispose())
+      live = false
       mat.dispose()
       tex?.dispose()
+      sheetTex?.dispose()
       c.render()
     }
-  }, [geo, texture, slot, JSON.stringify(fit)])
+  }, [geo, texture, javaTextures?.join('|'), slot, JSON.stringify(fit)])
 
   return <div ref={host} className="preview3d armor-preview" />
 }

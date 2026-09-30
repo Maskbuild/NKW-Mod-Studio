@@ -1,4 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { decodePng } from './iso'
+import { encodePng } from './png'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
@@ -54,7 +56,7 @@ async function writeGenerated(projectDir: string, outDir: string, files: GenFile
       }
       continue
     }
-    const data = f.base64 !== undefined ? Buffer.from(f.base64, 'base64') : Buffer.from(f.text ?? '', 'utf8')
+    const data = f.atlas ? await buildAtlas(projectDir, f.atlas) : f.base64 !== undefined ? Buffer.from(f.base64, 'base64') : Buffer.from(f.text ?? '', 'utf8')
     const prev = existsSync(dest) ? await readFile(dest) : null
     if (!prev || createHash('sha1').update(prev).digest('hex') !== createHash('sha1').update(data).digest('hex')) {
       await writeFile(dest, data)
@@ -64,6 +66,20 @@ async function writeGenerated(projectDir: string, outDir: string, files: GenFile
   for (const p of old) if (!now.has(p)) await rm(safeJoin(outDir, p), { force: true })
   await writeFile(manifestPath, JSON.stringify([...now].sort()))
   return changed
+}
+
+/** Stacks textures vertically into one PNG (first animation frame each, scaled to the widest). */
+async function buildAtlas(projectDir: string, textures: string[]): Promise<Buffer> {
+  const imgs = await Promise.all(textures.map(async (t) => decodePng(await readFile(assetPath(projectDir, t)))))
+  const w = Math.max(16, ...imgs.map((i) => i?.w ?? 16))
+  return encodePng(w, w * imgs.length, (x, y) => {
+    const img = imgs[Math.floor(y / w)]
+    if (!img) return [0, 0, 0, 0]
+    const sx = Math.floor((x * img.w) / w)
+    const sy = Math.floor(((y % w) * img.w) / w)
+    const d = (sy * img.w + sx) * 4
+    return [img.px[d], img.px[d + 1], img.px[d + 2], img.px[d + 3]]
+  })
 }
 
 export interface BuildOptions {

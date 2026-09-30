@@ -1,5 +1,6 @@
 import type { BlockIR, ItemIR, ModelRef } from '../ir'
-import { fitAnimation, geoLoopName, prepareArmorGeo, type GeoFile } from './geo'
+import { fitAnimation, geoLoopName, javaModelToGeo, prepareArmorGeo, type GeoFile } from './geo'
+import { textureKeys, type JavaModel } from './model'
 import { parseJavaModel, remapTextures } from './model'
 import { RES, fabricLike, json, type GenCtx } from './types'
 
@@ -121,13 +122,15 @@ export function genAssets(ctx: GenCtx): void {
       const slot = it.armor!.slot
       let model: GeoFile | null = null
       try {
-        model = JSON.parse(ctx.read.readText(g.asset)) as GeoFile
+        const raw = JSON.parse(ctx.read.readText(g.asset))
+        model = g.java ? javaModelToGeo(raw as JavaModel, textureKeys(raw as JavaModel), g.java.textures.length, `geometry.${set}`) : (raw as GeoFile)
       } catch {
         model = null
       }
       if (model) files.push({ path: `${A}/geo/item/armor/${set}.geo.json`, text: json(prepareArmorGeo(model, slot, g.fit)) })
       else files.push({ path: `${A}/geo/item/armor/${set}.geo.json`, copy: g.asset })
-      tex(g.texture, 'item/armor', set)
+      if (g.java && g.java.textures.length > 1) files.push({ path: `${A}/textures/item/armor/${set}.png`, atlas: g.java.textures })
+      else tex(g.texture, 'item/armor', set)
       const animPath = `${A}/animations/item/armor/${set}.animation.json`
       const scaled = !!g.fit && g.fit.scale.some((v) => v !== 1)
       if (scaled) {

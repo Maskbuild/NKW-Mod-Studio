@@ -38,7 +38,7 @@ describe('compiler', () => {
     const { ir, diagnostics } = compile(project, { loader: 'fabric', mc: '1.21.1' })
     expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
     expect(ir.items.map((i) => i.id)).toContain('ruby_sword')
-    expect(ir.items.filter((i) => i.armor).length).toBe(11)
+    expect(ir.items.filter((i) => i.armor).length).toBe(13)
     const soup = ir.items.find((i) => i.id === 'ruby_soup')!
     expect(soup.food!.effects.map((e) => e.effect)).toEqual(['REGENERATION', 'POISON', 'DAMAGE_BOOST'])
     expect(soup.food!.effects[0]).toMatchObject({ amplifier: 1, ticks: 100, chance: 0.8 })
@@ -119,6 +119,35 @@ describe('compiler', () => {
     expect(crown.origin).toEqual([-4, 1, -4])
     expect(crown.rotation).toEqual([0, 0, 5])
     expect((crown.uv as Record<string, unknown>).up).toEqual({ uv: [8, 12], uv_size: [-8, -8] })
+  })
+  it('uses iron when a tool or armor piece has no material', () => {
+    const { ir, diagnostics } = compile(project)
+    expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
+    expect(ir.items.find((i) => i.id === 'plain_knife')!.tool!.material).toBe('nkw_iron')
+    expect(ir.items.find((i) => i.id === 'iron_look_cap')!.armor!.material).toBe('nkw_iron')
+    expect(ir.armorMats.find((m) => m.id === 'nkw_iron')!.vanillaLook).toBe('iron')
+    const java = (loader: 'fabric' | 'forge', mc: string) =>
+      generate(ir, { loader, mc }, { ...FALLBACK_DEPS[mc], ...deps } as never, read).find((f) => f.path.endsWith('/ModArmorMaterials.java'))!.text!
+    expect(java('fabric', '1.20.1')).toContain('NKW_IRON("iron",')
+    expect(java('fabric', '1.21.1')).toContain('ResourceLocation.withDefaultNamespace("iron")')
+    expect(java('fabric', '1.21.4')).toContain('NKW_IRON_ASSET = EquipmentAssets.IRON')
+  })
+  it('wears a Java .json model as armor, with its textures merged into one sheet', () => {
+    const { ir } = compile(project)
+    const g = ir.items.find((i) => i.id === 'block_crown')!.armor!.geo!
+    expect(g.java).toEqual({ textures: ['textures/ruby.png', 'textures/lamp.png'] })
+    const files = generate(ir, { loader: 'neoforge', mc: '1.21.1' }, { ...FALLBACK_DEPS['1.21.1'], ...deps } as never, read)
+    expect(files.find((f) => f.path.endsWith('/textures/item/armor/block_crown.png'))!.atlas).toEqual(['textures/ruby.png', 'textures/lamp.png'])
+    const geo = JSON.parse(files.find((f) => f.path.endsWith('/geo/item/armor/block_crown.geo.json'))!.text!)
+    const desc = geo['minecraft:geometry'][0].description
+    expect([desc.texture_width, desc.texture_height]).toEqual([16, 32])
+    const bones = geo['minecraft:geometry'][0].bones
+    expect(bones[0].name).toBe('armorHead')
+    const [base, gem] = bones[1].cubes
+    // sits on the head, centred; second texture lives in the lower half of the sheet
+    expect(base.origin).toEqual([-4, 32, -4])
+    expect(gem.uv.north.uv).toEqual([0, 16])
+    expect(gem.rotation).toEqual([0, -45, 0])
   })
   it('follows reroute nodes', () => {
     const { ir } = compile(project)

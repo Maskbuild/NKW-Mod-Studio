@@ -42,7 +42,8 @@ export const PIN_COLORS: Record<PinType, string> = {
 export function canConnect(out: PinType, input: PinType): boolean {
   if (out === 'any' || input === 'any') return true
   if (out === input) return true
-  return out === 'item' && input === 'ingredient'
+  // a Java block/item model can be worn as armor (converted for GeckoLib)
+  return (out === 'item' && input === 'ingredient') || (out === 'model' && input === 'geo')
 }
 
 export interface PinDef {
@@ -421,7 +422,7 @@ export const NODE_DEFS: NodeDef[] = [
     registers: true,
     inputs: [
       texIn(),
-      { id: 'material', label: t('Material', 'วัสดุ'), type: 'toolMat' },
+      { id: 'material', label: t('Material (optional: iron)', 'วัสดุ (ไม่ใส่ = เหล็ก)'), type: 'toolMat', optional: true },
       { id: 'model', label: t('3D model', 'โมเดล 3D'), type: 'model', optional: true },
       ...effectIns('Effect on hit target', 'เอฟเฟกต์ใส่ศัตรูที่ตี')
     ],
@@ -558,7 +559,7 @@ export const NODE_DEFS: NodeDef[] = [
     icon: '🥋',
     registers: true,
     inputs: [
-      { id: 'material', label: t('Armor material', 'วัสดุเกราะ'), type: 'armorMat' },
+      { id: 'material', label: t('Armor material (optional: iron)', 'วัสดุเกราะ (ไม่ใส่ = เหล็ก)'), type: 'armorMat', optional: true },
       texIn('helmetIcon', 'Helmet icon', 'ไอคอนหมวก', true),
       texIn('chestplateIcon', 'Chestplate icon', 'ไอคอนเสื้อ', true),
       texIn('leggingsIcon', 'Leggings icon', 'ไอคอนกางเกง', true),
@@ -589,15 +590,15 @@ export const NODE_DEFS: NodeDef[] = [
     category: 'armor',
     title: t('Armor Piece', 'ชิ้นเกราะ'),
     description: t(
-      'One wearable piece (helmet, chestplate, leggings or boots). Give each piece its own 3D model, animation and effects.',
-      'ของสวมใส่ 1 ชิ้น (หมวก เสื้อ กางเกง หรือรองเท้า) — แต่ละชิ้นใส่โมเดล 3D อนิเมชัน และเอฟเฟกต์ของตัวเองได้'
+      'One wearable piece (helmet, chestplate, leggings or boots). Works on its own (iron stats and look); add an Armor Material, a 3D model (.bbmodel, .geo.json or a .json block/item model), animation and effects as you like.',
+      'ของสวมใส่ 1 ชิ้น (หมวก เสื้อ กางเกง หรือรองเท้า) — ใช้ได้เลยไม่ต้องต่ออะไร (ค่าและหน้าตาแบบเหล็ก) จะเพิ่มวัสดุเกราะ โมเดล 3D (.bbmodel, .geo.json หรือโมเดล .json ของบล็อก/ไอเทม) อนิเมชัน และเอฟเฟกต์ก็ได้'
     ),
     icon: '🪖',
     registers: true,
     inputs: [
-      { id: 'material', label: t('Armor material', 'วัสดุเกราะ'), type: 'armorMat' },
+      { id: 'material', label: t('Armor material (optional: iron)', 'วัสดุเกราะ (ไม่ใส่ = เหล็ก)'), type: 'armorMat', optional: true },
       texIn('icon', 'Icon texture', 'ไอคอน'),
-      { id: 'geo', label: t('3D model (Blockbench)', 'โมเดล 3D (Blockbench)'), type: 'geo', optional: true },
+      { id: 'geo', label: t('3D model (Blockbench / .json)', 'โมเดล 3D (Blockbench / .json)'), type: 'geo', optional: true },
       ...effectIns('Effect while worn', 'เอฟเฟกต์ตอนสวม')
     ],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],

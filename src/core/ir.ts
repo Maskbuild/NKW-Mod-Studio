@@ -17,6 +17,8 @@ export interface GeoRef {
   animation: { asset: string; name: string } | null
   /** armor pieces: position / rotation / size adjustment */
   fit?: ArmorFit | null
+  /** set when the model is a Java block/item model (.json): its textures in slot order, merged into one sheet */
+  java?: { textures: string[] }
 }
 
 /** A status effect: MobEffects field name, amplifier (level-1), duration in ticks, 0-1 chance. */
@@ -111,6 +113,8 @@ export interface ArmorMatIR {
   layer1: string | null
   layer2: string | null
   repair: Ingredient | null
+  /** worn with a vanilla armor look (textures of minecraft:<name>) instead of own layer textures */
+  vanillaLook?: string
 }
 
 export interface SoundIR {

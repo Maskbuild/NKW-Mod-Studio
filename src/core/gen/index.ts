@@ -21,7 +21,7 @@ function geoNames(ir: ModIR): Map<string, string> {
   for (const it of ir.items) {
     const g = it.armor?.geo
     if (!g) continue
-    const key = [g.asset, g.texture, g.animation?.asset ?? '', g.animation?.name ?? '', it.armor!.slot, JSON.stringify(g.fit ?? null)].join('|')
+    const key = [g.asset, g.texture, (g.java?.textures ?? []).join(','), g.animation?.asset ?? '', g.animation?.name ?? '', it.armor!.slot, JSON.stringify(g.fit ?? null)].join('|')
     if (!byKey.has(key)) byKey.set(key, it.id)
     out.set(it.id, byKey.get(key)!)
   }

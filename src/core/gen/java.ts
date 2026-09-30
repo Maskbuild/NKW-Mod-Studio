@@ -795,7 +795,7 @@ function armorMaterials(ctx: GenCtx, mats: ArmorMatIR[]): string {
     const consts = mats
       .map(
         (m) =>
-          `    ${C(m.id)}("${ns}_${m.id}", ${m.durability}, new int[] {${P(m).boots}, ${P(m).leggings}, ${P(m).chestplate}, ${P(m).helmet}}, ${m.enchantability}, ${snd(m)}, ${f(m.toughness)}, ${f(m.knockback)}, () -> Ingredient.of(NkwTags.ARMOR_${C(m.id)}))`
+          `    ${C(m.id)}("${m.vanillaLook ?? `${ns}_${m.id}`}", ${m.durability}, new int[] {${P(m).boots}, ${P(m).leggings}, ${P(m).chestplate}, ${P(m).helmet}}, ${m.enchantability}, ${snd(m)}, ${f(m.toughness)}, ${f(m.knockback)}, () -> Ingredient.of(NkwTags.ARMOR_${C(m.id)}))`
       )
       .join(',\n')
     return j.render(`
@@ -860,28 +860,29 @@ ${slotMethods}
 
   if (p.armorApi === 'holder') {
     j.use(MC.ArmorMaterialOld, MC.ArmorItem, MC.Ingredient, MC.SoundEvent, MC.Holder, MC.EnumMap, MC.List)
-    const create = `    private static ArmorMaterial create(String name, int helmet, int chestplate, int leggings, int boots, int enchantability, Holder<SoundEvent> sound, float toughness, float knockback, TagKey<Item> repair) {
+    j.use(MC.RL)
+    const create = `    private static ArmorMaterial create(ResourceLocation layer, int helmet, int chestplate, int leggings, int boots, int enchantability, Holder<SoundEvent> sound, float toughness, float knockback, TagKey<Item> repair) {
         EnumMap<ArmorItem.Type, Integer> defense = new EnumMap<>(ArmorItem.Type.class);
         defense.put(ArmorItem.Type.HELMET, helmet);
         defense.put(ArmorItem.Type.CHESTPLATE, chestplate);
         defense.put(ArmorItem.Type.LEGGINGS, leggings);
         defense.put(ArmorItem.Type.BOOTS, boots);
         defense.put(ArmorItem.Type.BODY, chestplate);
-        return new ArmorMaterial(defense, enchantability, sound, () -> Ingredient.of(repair), List.of(new ArmorMaterial.Layer(NkwMod.id(name))), toughness, knockback);
+        return new ArmorMaterial(defense, enchantability, sound, () -> Ingredient.of(repair), List.of(new ArmorMaterial.Layer(layer)), toughness, knockback);
     }`
     j.use(MC.TagKey, MC.Item)
     const args = (m: ArmorMatIR) =>
-      `"${m.id}", ${P(m).helmet}, ${P(m).chestplate}, ${P(m).leggings}, ${P(m).boots}, ${m.enchantability}, ${snd(m)}, ${f(m.toughness)}, ${f(m.knockback)}, NkwTags.ARMOR_${C(m.id)}`
+      `${m.vanillaLook ? `ResourceLocation.withDefaultNamespace("${m.vanillaLook}")` : `NkwMod.id("${m.id}")`}, ${P(m).helmet}, ${P(m).chestplate}, ${P(m).leggings}, ${P(m).boots}, ${m.enchantability}, ${snd(m)}, ${f(m.toughness)}, ${f(m.knockback)}, NkwTags.ARMOR_${C(m.id)}`
     if (fabricLike(loader)) {
       j.use(MC.Registry, MC.BuiltIn)
       return j.render(`
 public final class ModArmorMaterials {
-${mats.map((m) => `    public static final Holder<ArmorMaterial> ${C(m.id)} = register(${args(m)});`).join('\n')}
+${mats.map((m) => `    public static final Holder<ArmorMaterial> ${C(m.id)} = register("${m.id}", ${args(m)});`).join('\n')}
 
     private ModArmorMaterials() {}
 
-    private static Holder<ArmorMaterial> register(String name, int helmet, int chestplate, int leggings, int boots, int enchantability, Holder<SoundEvent> sound, float toughness, float knockback, TagKey<Item> repair) {
-        return Registry.registerForHolder(BuiltInRegistries.ARMOR_MATERIAL, NkwMod.id(name), create(name, helmet, chestplate, leggings, boots, enchantability, sound, toughness, knockback, repair));
+    private static Holder<ArmorMaterial> register(String name, ResourceLocation layer, int helmet, int chestplate, int leggings, int boots, int enchantability, Holder<SoundEvent> sound, float toughness, float knockback, TagKey<Item> repair) {
+        return Registry.registerForHolder(BuiltInRegistries.ARMOR_MATERIAL, NkwMod.id(name), create(layer, helmet, chestplate, leggings, boots, enchantability, sound, toughness, knockback, repair));
     }
 
 ${create}
@@ -917,7 +918,7 @@ ${create}
 public final class ModArmorMaterials {
 ${mats
   .map(
-    (m) => `    public static final ResourceKey<EquipmentAsset> ${C(m.id)}_ASSET = ResourceKey.create(EquipmentAssets.ROOT_ID, NkwMod.id("${m.id}"));
+    (m) => `    public static final ResourceKey<EquipmentAsset> ${C(m.id)}_ASSET = ${m.vanillaLook ? `EquipmentAssets.${m.vanillaLook.toUpperCase()}` : `ResourceKey.create(EquipmentAssets.ROOT_ID, NkwMod.id("${m.id}"))`};
     public static final ArmorMaterial ${C(m.id)} = new ArmorMaterial(${m.durability}, defense(${P(m).helmet}, ${P(m).chestplate}, ${P(m).leggings}, ${P(m).boots}), ${m.enchantability}, ${snd(m)}, ${f(m.toughness)}, ${f(m.knockback)}, NkwTags.ARMOR_${C(m.id)}, ${C(m.id)}_ASSET);`
   )
   .join('\n')}

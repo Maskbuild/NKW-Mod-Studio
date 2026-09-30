@@ -26,7 +26,7 @@ const save = (k: string, v: string) => {
 }
 
 /** Geo model + texture wired into an armor piece (through reroutes). */
-function useWiredGeo(nodeId: string): { asset: string | null; texture: string | null } {
+function useWiredGeo(nodeId: string): { asset: string | null; texture: string | null; javaTextures: string[] | null } {
   return useStoreWithEqualityFn(
     useStore,
     (s) => {
@@ -40,12 +40,16 @@ function useWiredGeo(nodeId: string): { asset: string | null; texture: string | 
         return undefined
       }
       const geo = follow(nodeId, 'geo')
-      if (geo?.type !== 'geoModel') return { asset: null, texture: null }
-      const tex = follow(geo.id, 'texture')
-      return {
-        asset: typeof geo.data.asset === 'string' && geo.data.asset ? geo.data.asset : null,
-        texture: tex?.type === 'texture' && typeof tex.data.asset === 'string' ? tex.data.asset : null
+      const assetOf = (n: FlowNode | undefined) => (n?.type === 'texture' && typeof n.data.asset === 'string' && n.data.asset ? n.data.asset : null)
+      const asset = geo && typeof geo.data.asset === 'string' && geo.data.asset ? geo.data.asset : null
+      if (geo?.type === 'model') {
+        // Java block/item model worn as armor: its textures in slot order
+        const slots = Math.min(4, Math.max(1, Number(geo.data.textureSlots ?? 1)))
+        const list = Array.from({ length: slots }, (_, i) => assetOf(follow(geo.id, `tex${i}`))).filter((t): t is string => !!t)
+        return { asset, texture: list[0] ?? null, javaTextures: list.length ? list : null }
       }
+      if (geo?.type !== 'geoModel') return { asset: null, texture: null, javaTextures: null }
+      return { asset, texture: assetOf(follow(geo.id, 'texture')), javaTextures: null }
     },
     shallow
   )
@@ -76,7 +80,7 @@ function Axis({ label, value, min, max, step, onChange, onStart }: { label: stri
 /** Armor piece: 3D preview on a Steve/Alex mannequin and the fit (position / rotation / size). */
 export function ArmorFitField({ node }: { node: FlowNode }) {
   const { t } = useTranslation()
-  const { asset, texture } = useWiredGeo(node.id)
+  const { asset, texture, javaTextures } = useWiredGeo(node.id)
   const textures = useStore((s) => s.assets).filter((a) => a.kind === 'texture')
   const [slim, setSlim] = useState(load('nkw.preview.slim', '0') === '1')
   const [skin, setSkin] = useState(load('nkw.preview.skin', ''))
@@ -126,7 +130,7 @@ export function ArmorFitField({ node }: { node: FlowNode }) {
         </select>
       </div>
       <Suspense fallback={<div className="preview3d armor-preview" />}>
-        <ArmorPreview geoAsset={asset} texture={texture} slot={slot} fit={fit} slim={slim} skin={skinValid ? skin : null} gameSkin={mc ? vanillaSkinUrl(mc, slim) : null} />
+        <ArmorPreview geoAsset={asset} texture={texture} javaTextures={javaTextures} slot={slot} fit={fit} slim={slim} skin={skinValid ? skin : null} gameSkin={mc ? vanillaSkinUrl(mc, slim) : null} />
       </Suspense>
       {!asset ? (
         <span className="hint">{t('fit.noModel')}</span>

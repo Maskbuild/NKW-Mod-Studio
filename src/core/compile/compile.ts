@@ -42,6 +42,9 @@ export interface CompileResult {
  * Graph → IR. Pure function: no filesystem access, safe to run in a Web Worker.
  * Pass `target` to also check loader/version specific compatibility.
  */
+/** Material id used by tools / armor with no material wired in (iron stats). */
+export const DEFAULT_MAT = 'nkw_iron'
+
 export function compile(project: Project, target?: Target): CompileResult {
   const diags: Diagnostic[] = []
   const err = (nodeId: string | undefined, en: string, th: string) => diags.push({ severity: 'error', nodeId, message: { en, th } })
@@ -154,6 +157,17 @@ export function compile(project: Project, target?: Target): CompileResult {
 
   const geo = (nodeId: string, handle: string): GeoRef | null => {
     const s = source(nodeId, handle)
+    if (s && s.node.type === 'model') {
+      // Java block/item model worn as armor: textures are merged into one sheet for GeckoLib
+      const m = model(nodeId, handle, false)
+      if (!m) return null
+      const textures = m.textures.filter((t): t is string => !!t)
+      if (!textures.length) {
+        err(s.node.id, 'Connect the model texture', 'ต่อเท็กซ์เจอร์ของโมเดล')
+        return null
+      }
+      return { asset: m.asset, texture: textures[0], animation: null, java: { textures } }
+    }
     if (!s || s.node.type !== 'geoModel') return null
     const asset = assetOf(s.node)
     const tex = texture(s.node.id, 'texture', true)
@@ -305,6 +319,8 @@ export function compile(project: Project, target?: Target): CompileResult {
 
   let usesFD = false
   let usesGeo = false
+  let usesDefaultTool = false
+  let usesDefaultArmor = false
   let tabNodes = 0
 
   for (const n of nodes.values()) {
@@ -338,7 +354,7 @@ export function compile(project: Project, target?: Target): CompileResult {
       }
       case 'tool': {
         const mat = source(n.id, 'material')
-        if (!mat) err(n.id, 'Connect a Tool Material', 'ต่อวัสดุเครื่องมือ')
+        if (!mat) usesDefaultTool = true
         const it: ItemIR = {
           id: regId(n),
           ...names(n),
@@ -352,7 +368,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           handheld: true,
           tool: {
             type: str(d, 'toolType', 'sword') as NonNullable<ItemIR['tool']>['type'],
-            material: mat ? str(mat.node.data, 'id') : '',
+            material: mat ? str(mat.node.data, 'id') : DEFAULT_MAT,
             damage: num(d, 'attackDamage', 3),
             speed: num(d, 'attackSpeed', -2.4),
             effects: effects(n.id)
@@ -436,7 +452,7 @@ export function compile(project: Project, target?: Target): CompileResult {
       case 'armorSet': {
         const base = regId(n, 'baseId')
         const mat = source(n.id, 'material')
-        if (!mat) err(n.id, 'Connect an Armor Material', 'ต่อวัสดุเกราะ')
+        if (!mat) usesDefaultArmor = true
         const g = geo(n.id, 'geo')
         if (g) usesGeo = true
         const nm = names(n)
@@ -457,7 +473,7 @@ export function compile(project: Project, target?: Target): CompileResult {
             rarity: (str(d, 'rarity', 'common') as ItemIR['rarity']) || 'common',
             fireResistant: bool(d, 'fireResistant'),
             glint: false,
-            armor: { material: mat ? str(mat.node.data, 'id') : '', slot, geo: g, effects: [] }
+            armor: { material: mat ? str(mat.node.data, 'id') : DEFAULT_MAT, slot, geo: g, effects: [] }
           })
         }
         if (!any) warn(n.id, 'No armor piece is enabled', 'ไม่ได้เปิดชิ้นเกราะใดเลย')
@@ -465,7 +481,7 @@ export function compile(project: Project, target?: Target): CompileResult {
       }
       case 'armorPiece': {
         const mat = source(n.id, 'material')
-        if (!mat) err(n.id, 'Connect an Armor Material', 'ต่อวัสดุเกราะ')
+        if (!mat) usesDefaultArmor = true
         const g = geo(n.id, 'geo')
         if (g) {
           usesGeo = true
@@ -484,7 +500,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           rarity: (str(d, 'rarity', 'common') as ItemIR['rarity']) || 'common',
           fireResistant: bool(d, 'fireResistant'),
           glint: false,
-          armor: { material: mat ? str(mat.node.data, 'id') : '', slot, geo: g, effects: effects(n.id) }
+          armor: { material: mat ? str(mat.node.data, 'id') : DEFAULT_MAT, slot, geo: g, effects: effects(n.id) }
         })
         break
       }
@@ -673,6 +689,25 @@ export function compile(project: Project, target?: Target): CompileResult {
       }
     }
   }
+
+  // tools / armor without a material use iron (armor also looks like iron armor when worn)
+  if (usesDefaultTool)
+    ir.toolMats.push({ id: DEFAULT_MAT, nodeId: '', durability: 250, speed: 6, damage: 2, level: 'iron', enchantability: 14, repair: { item: 'minecraft:iron_ingot' } })
+  if (usesDefaultArmor)
+    ir.armorMats.push({
+      id: DEFAULT_MAT,
+      nodeId: '',
+      durability: 15,
+      protection: { helmet: 2, chestplate: 6, leggings: 5, boots: 2 },
+      enchantability: 9,
+      toughness: 0,
+      knockback: 0,
+      equipSound: 'iron',
+      layer1: null,
+      layer2: null,
+      repair: { item: 'minecraft:iron_ingot' },
+      vanillaLook: 'iron'
+    })
 
   // ── cross-checks ──
   const seen = new Map<string, string>()

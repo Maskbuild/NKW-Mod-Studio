@@ -83,6 +83,16 @@ export function writeFixture(dir: string): Project {
   tex('soup', [160, 110, 60, 255])
   tex('glow', [90, 220, 255, 255], 16, 64) // 4-frame animated texture
   writeFileSync(join(dir, 'assets', 'models', 'lamp.json'), JSON.stringify(LAMP_MODEL))
+  writeFileSync(
+    join(dir, 'assets', 'models', 'crown.json'),
+    JSON.stringify({
+      textures: { '0': 'nkw:block/ruby', '1': 'nkw:block/lamp' },
+      elements: [
+        { from: [4, 0, 4], to: [12, 3, 12], faces: { north: { uv: [0, 0, 8, 3], texture: '#0' }, up: { uv: [0, 0, 8, 8], texture: '#0' }, east: { texture: '#0' } } },
+        { from: [7, 3, 7], to: [9, 5, 9], rotation: { angle: 45, axis: 'y', origin: [8, 3, 8] }, faces: { north: { uv: [0, 0, 2, 2], texture: '#1' } } }
+      ]
+    })
+  )
   writeFileSync(join(dir, 'assets', 'models', 'ruby_armor.json'), JSON.stringify(GEO))
   mkdirSync(join(dir, 'assets', 'geo'), { recursive: true })
   writeFileSync(join(dir, 'assets', 'geo', 'top_hat.json'), JSON.stringify(bbmodelToGeo(HAT_BBMODEL, 'geometry.top_hat').geo))
@@ -235,6 +245,18 @@ export function writeFixture(dir: string): Project {
   wire('am', 'out', 'piece_hat', 'material')
   wire('tex_ruby', 'out', 'piece_hat', 'icon')
   wire('geo_hat', 'out', 'piece_hat', 'geo')
+  // no material wired: iron stats, worn with the iron armor look
+  node('piece_bare', 'armorPiece', { id: 'iron_look_cap', name: 'Iron Look Cap', slot: 'helmet' })
+  wire('tex_ruby', 'out', 'piece_bare', 'icon')
+  node('tool_bare', 'tool', { id: 'plain_knife', name: 'Plain Knife', toolType: 'sword' })
+  wire('tex_sword', 'out', 'tool_bare', 'texture')
+  // a Java block model (.json, two textures) worn as a hat
+  node('m_crown', 'model', { asset: 'models/crown.json', textureSlots: 2 })
+  wire('tex_ruby', 'out', 'm_crown', 'tex0')
+  wire('tex_lamp', 'out', 'm_crown', 'tex1')
+  node('piece_json', 'armorPiece', { id: 'block_crown', name: 'Block Crown', slot: 'helmet' })
+  wire('tex_ruby', 'out', 'piece_json', 'icon')
+  wire('m_crown', 'out', 'piece_json', 'geo')
   node('piece_legs', 'armorPiece', { id: 'plain_leggings', name: 'Plain Leggings', slot: 'leggings' })
   wire('am', 'out', 'piece_legs', 'material')
   wire('tex_ruby', 'out', 'piece_legs', 'icon')
