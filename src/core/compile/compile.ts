@@ -1,4 +1,5 @@
 import { ASSET_RE, ID_RE, NSID_RE, type GraphNode, type Project, type Target } from '../project'
+import { parseFit } from '../gen/geo'
 import { EFFECTS, NODE_DEF_MAP, canConnect, pinOf, type L10n, type PinType } from '../nodes/defs'
 import type {
   ArmorMatIR,
@@ -466,7 +467,10 @@ export function compile(project: Project, target?: Target): CompileResult {
         const mat = source(n.id, 'material')
         if (!mat) err(n.id, 'Connect an Armor Material', 'ต่อวัสดุเกราะ')
         const g = geo(n.id, 'geo')
-        if (g) usesGeo = true
+        if (g) {
+          usesGeo = true
+          g.fit = parseFit(d.fit)
+        }
         const slot = (ARMOR_SLOTS.includes(str(d, 'slot') as ArmorSlot) ? str(d, 'slot') : 'helmet') as ArmorSlot
         ir.items.push({
           id: regId(n),
@@ -535,7 +539,9 @@ export function compile(project: Project, target?: Target): CompileResult {
             length: clamp(Math.round(bool(d, 'autoLength', true) ? (songSeconds(s?.node) ?? num(d, 'length', 180)) : num(d, 'length', 180)), 1, 36000),
             comparator: clamp(Math.round(num(d, 'comparator', 1)), 1, 15),
             copyright: ['free', 'licensed', 'copyrighted', 'none'].includes(str(d, 'copyright')) ? str(d, 'copyright') : 'none',
-            loop: bool(d, 'loop', false)
+            // older projects stored a plain "loop" switch
+            onEnd: ['eject', 'loop', 'stay'].includes(str(d, 'onEnd')) ? (str(d, 'onEnd') as 'eject' | 'loop' | 'stay') : bool(d, 'loop', false) ? 'loop' : 'eject',
+            range: clamp(Math.round(num(d, 'range', 64)), 4, 256)
           }
         })
         break

@@ -54,6 +54,8 @@ const CLASSES: Record<string, string> = {
   'net.minecraft.world.level.Level': 'net.minecraft.world.World',
   'net.minecraft.world.item.ItemNameBlockItem': 'net.minecraft.item.BlockNamedItem',
   'net.minecraft.world.level.block.entity.BlockEntity': 'net.minecraft.tileentity.TileEntity',
+  'net.minecraft.world.level.block.JukeboxBlock': 'net.minecraft.block.JukeboxBlock',
+  'net.minecraft.world.entity.item.ItemEntity': 'net.minecraft.entity.item.ItemEntity',
   'net.minecraft.world.level.block.entity.JukeboxBlockEntity': 'net.minecraft.tileentity.JukeboxTileEntity',
   // Forge API that moved later
   'net.minecraftforge.registries.RegistryObject': 'net.minecraftforge.fml.RegistryObject'

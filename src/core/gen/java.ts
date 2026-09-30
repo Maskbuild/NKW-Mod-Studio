@@ -1,4 +1,5 @@
 import type { ArmorMatIR, ArmorSlot, BlockIR, EffectIR, ItemIR, ToolMatIR, ToolType } from '../ir'
+import { geoLoopName } from './geo'
 import { geckoArmorSource } from './gecko'
 import { toMcp1165 } from './mcp'
 import { parseJavaModel, rotateBoxes, shapeBoxes, type Box } from './model'
@@ -98,7 +99,9 @@ const MC = {
   ApplyEffects: 'net.minecraft.world.item.consume_effects.ApplyStatusEffectsConsumeEffect',
   BlockEntity: 'net.minecraft.world.level.block.entity.BlockEntity',
   JukeboxBlockEntity: 'net.minecraft.world.level.block.entity.JukeboxBlockEntity',
-  InteractionResult: 'net.minecraft.world.InteractionResult'
+  InteractionResult: 'net.minecraft.world.InteractionResult',
+  JukeboxBlock: 'net.minecraft.world.level.block.JukeboxBlock',
+  ItemEntity: 'net.minecraft.world.entity.item.ItemEntity'
 }
 
 /** `new NkwEffect(...)` expression for one effect. */
@@ -585,8 +588,8 @@ ${accept(tb, '            ')}
   }
 
   // ───────── main class ─────────
-  const loopDiscs = ir.items.filter((i) => i.disc?.loop)
-  if (loopDiscs.length) genJukeboxLoop(ctx, loopDiscs, get, out)
+  const endDiscs = ir.items.filter((i) => i.disc && i.disc.onEnd !== 'stay')
+  if (endDiscs.length) genJukebox(ctx, endDiscs, get, out)
 
   const count = `${ir.items.length + ir.blocks.length} items, ${ir.blocks.length} blocks, ${ir.sounds.length} sounds, ${ir.recipes.length} recipes`
   const idFn = p.rlFactory
@@ -611,7 +614,7 @@ public class NkwMod implements ModInitializer {
         ModBlocks.init();
         ModItems.init();
         ModTabs.init();
-${loopDiscs.length ? '        NkwJukeboxLoop.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${endDiscs.length ? '        NkwJukebox.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 }`
     } else {
@@ -636,7 +639,7 @@ public class NkwMod {
     ${ctor}
         NkwTags.init();
 ${regs.map((r) => `        ${r}.register(bus);`).join('\n')}
-${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${loopDiscs.length ? '        NkwJukeboxLoop.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 
     ${idFn}
@@ -1125,7 +1128,7 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
         if (custom) {
           j.use(MC.EquipmentSlot)
           extra = `, EquipmentSlot.${SLOT_OLD[a.slot]}`
-          if (geo) extra += `, "${ctx.geoNames.get(it.id)}", ${a.geo!.animation ? JSON.stringify(a.geo!.animation.name) : 'null'}`
+          if (geo) extra += `, "${ctx.geoNames.get(it.id)}", ${geoLoopName(a.geo!.animation, a.geo!.fit) ? JSON.stringify(geoLoopName(a.geo!.animation, a.geo!.fit)) : 'null'}`
           extra += effectArgs(a.effects, p)
         }
         const mat = `ModArmorMaterials.${C(a.material)}`
@@ -1211,31 +1214,31 @@ ${propsHelper}}`)
 }
 
 
-/** Hidden items that exist only to show a tab's logo texture as its icon. */
 /**
- * Music discs set to loop. Vanilla jukeboxes play a disc once, so this class remembers the jukeboxes a
- * player filled with a looping disc and restarts the song when it ends. Discs inserted by hoppers are
- * not seen (there is no event for that) and play once.
+ * What a jukebox does when one of our discs ends: pop it out, or play it again. Vanilla leaves the disc
+ * in, so this class remembers the jukeboxes a player filled with such a disc and acts when the song
+ * ends. Discs inserted by hoppers are not seen (there is no event for that) and behave like vanilla.
  */
-function genJukeboxLoop(ctx: GenCtx, discs: ItemIR[], get: (cls: string, id: string) => string, out: (cls: string, text: string) => void): void {
+function genJukebox(ctx: GenCtx, discs: ItemIR[], get: (cls: string, id: string) => string, out: (cls: string, text: string) => void): void {
   const { pkg, loader, p } = ctx
   const fab = fabricLike(loader)
   const neo = loader === 'neoforge'
   const oldForge = !neo && (p.mc === '1.16.5' || p.mc === '1.18.2')
-  // how each era tells that the song ended and starts it again
+  // how each era tells that the song ended, starts it again and pops the disc out
   const era = p.jukeboxSongs ? 'song' : p.mc.startsWith('1.20') ? 'record' : p.mc === '1.19.2' ? 'timer19' : 'timer'
-  const j = new JavaFile(pkg, 'NkwJukeboxLoop').use(MC.Item, MC.ItemStack, MC.Level, MC.BlockPos, MC.BlockEntity, MC.JukeboxBlockEntity, 'java.util.Iterator', 'java.util.HashMap', 'java.util.Map', 'java.util.WeakHashMap')
+  const timer = era === 'timer' || era === 'timer19'
+  const j = new JavaFile(pkg, 'NkwJukebox').use(MC.Item, MC.ItemStack, MC.Level, MC.BlockPos, MC.BlockEntity, MC.JukeboxBlockEntity, 'java.util.Iterator', 'java.util.HashMap', 'java.util.Map', 'java.util.WeakHashMap')
+  if (timer) j.use(MC.BlockState, MC.JukeboxBlock, MC.ItemEntity)
   const current = era === 'song' ? 'jukebox.getTheItem()' : era === 'record' ? 'jukebox.getItem(0)' : 'jukebox.getRecord()'
+  const ended = era === 'song' ? '!jukebox.getSongPlayer().isPlaying()' : era === 'record' ? '!jukebox.isRecordPlaying()' : 'level.getGameTime() - entry.getValue() >= ticks'
   const restart =
     era === 'song'
-      ? 'if (!jukebox.getSongPlayer().isPlaying()) jukebox.tryForcePlaySong();'
+      ? 'jukebox.tryForcePlaySong();'
       : era === 'record'
-        ? 'if (!jukebox.isRecordPlaying()) jukebox.startPlaying();'
-        : `long now = level.getGameTime();
-            if (now - entry.getValue() >= ticks) {
-                level.levelEvent(1010, pos, Item.getId(item));${era === 'timer19' ? '\n                jukebox.playRecord();' : ''}
-                entry.setValue(now);
-            }`
+        ? 'jukebox.startPlaying();'
+        : `level.levelEvent(1010, pos, Item.getId(item));${era === 'timer19' ? '\n                    jukebox.playRecord();' : ''}
+                    entry.setValue(level.getGameTime());`
+  const eject = era === 'song' ? 'jukebox.popOutTheItem();' : era === 'record' ? 'jukebox.popOutRecord();' : 'eject(level, pos, jukebox);'
 
   let hooks: string
   if (fab) {
@@ -1263,8 +1266,8 @@ function genJukeboxLoop(ctx: GenCtx, discs: ItemIR[], get: (cls: string, id: str
       tickBody = `if (event.phase == TickEvent.Phase.END) tick(event.${oldForge ? 'world' : 'level'});`
     }
     hooks = `    public static void init() {
-        ${bus}.addListener(NkwJukeboxLoop::onRightClick);
-        ${bus}.addListener(NkwJukeboxLoop::onTick);
+        ${bus}.addListener(NkwJukebox::onRightClick);
+        ${bus}.addListener(NkwJukebox::onTick);
     }
 
     private static void onRightClick(PlayerInteractEvent.RightClickBlock event) {
@@ -1276,26 +1279,47 @@ function genJukeboxLoop(ctx: GenCtx, discs: ItemIR[], get: (cls: string, id: str
     }`
   }
 
+  const ejectFn = timer
+    ? `
+
+    /** Same as taking the disc out by hand: stop the music, empty the jukebox, drop the disc on top. */
+    private static void eject(Level level, BlockPos pos, JukeboxBlockEntity jukebox) {
+        ItemStack stack = jukebox.getRecord().copy();
+        level.levelEvent(1010, pos, 0);
+        jukebox.clearContent();
+        BlockState state = level.getBlockState(pos);
+        level.setBlock(pos, state.setValue(JukeboxBlock.HAS_RECORD, false), 2);
+        ItemEntity drop = new ItemEntity(level, pos.getX() + 0.5, pos.getY() + 1.01, pos.getZ() + 0.5, stack);
+        drop.setDefaultPickUpDelay();
+        level.addFreshEntity(drop);
+    }`
+    : ''
+
   out(
-    'NkwJukeboxLoop',
+    'NkwJukebox',
     j.render(`
-/** Restarts looping music discs in jukeboxes when their song ends. */
-public final class NkwJukeboxLoop {
+/** Pops our music discs out of jukeboxes, or plays them again, when the song ends. */
+public final class NkwJukebox {
     /** level -> jukebox position -> game time the song (re)started */
     private static final Map<Level, Map<BlockPos, Long>> TRACKED = new WeakHashMap<>();
 
-    private NkwJukeboxLoop() {}
+    private NkwJukebox() {}
 
 ${hooks}
 
-    /** Song length in ticks (plus a short pause) for looping discs, 0 for everything else. */
-    private static int loopTicks(Item item) {
-${discs.map((d) => `        if (item == ${get('ModItems', d.id)}) return ${d.disc!.length * 20 + 20};`).join('\n')}
+    /** Song length in ticks for our discs, 0 for every other item. */
+    private static int songTicks(Item item) {
+${discs.map((d) => `        if (item == ${get('ModItems', d.id)}) return ${d.disc!.length * 20 + (d.disc!.onEnd === 'loop' ? 20 : 10)};`).join('\n')}
         return 0;
     }
 
+    private static boolean loops(Item item) {
+${discs.filter((d) => d.disc!.onEnd === 'loop').map((d) => `        if (item == ${get('ModItems', d.id)}) return true;`).join('\n')}
+        return false;
+    }
+
     private static void onUse(Level level, BlockPos pos, ItemStack held) {
-        if (level.isClientSide || loopTicks(held.getItem()) == 0) return;
+        if (level.isClientSide || songTicks(held.getItem()) == 0) return;
         if (!(level.getBlockEntity(pos) instanceof JukeboxBlockEntity)) return;
         TRACKED.computeIfAbsent(level, l -> new HashMap<>()).put(pos.immutable(), level.getGameTime());
     }
@@ -1316,18 +1340,26 @@ ${discs.map((d) => `        if (item == ${get('ModItems', d.id)}) return ${d.dis
             }
             JukeboxBlockEntity jukebox = (JukeboxBlockEntity) be;
             Item item = ${current}.getItem();
-            int ticks = loopTicks(item);
+            int ticks = songTicks(item);
             if (ticks == 0) {
                 it.remove();
                 continue;
             }
-            ${restart}
+            if (${ended}) {
+                if (loops(item)) {
+                    ${restart}
+                } else {
+                    ${eject}
+                    it.remove();
+                }
+            }
         }
-    }
+    }${ejectFn}
 }`)
   )
 }
 
+/** Hidden items that exist only to show a tab's logo texture as its icon. */
 export function tabIconItems(ctx: GenCtx): { id: string; texture: string }[] {
   return ctx.ir.tabs.filter((t) => t.logo && !t.icon).map((t) => ({ id: `${t.id}_tab_icon`, texture: t.logo! }))
 }

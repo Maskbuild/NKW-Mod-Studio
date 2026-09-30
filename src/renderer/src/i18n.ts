@@ -34,6 +34,18 @@ const en = {
     create: 'Create project',
     cancel: 'Cancel'
   },
+  fit: {
+    title: 'Fit on the player (3D preview)',
+    defaultSkin: '— Steve / Alex —',
+    skinHint: 'Preview skin. Steve / Alex come from the Minecraft files downloaded for the Game items tab (a plain mannequin until then); or pick any 64×64 skin PNG in your project.',
+    noModel: 'Connect a 3D model (Blockbench .bbmodel or GeckoLib .geo.json) to the "3D model" pin to adjust how it sits. 2D armor uses the vanilla layout.',
+    position: 'Position (pixels)',
+    rotation: 'Rotation (degrees)',
+    size: 'Size',
+    lock: 'Same on all axes',
+    hint: 'Drag in the preview to look around. 16 pixels = 1 block.',
+    reset: 'Reset'
+  },
   craft: {
     title: 'Crafting grid',
     noIngredients: 'Wire items into the node’s Ingredient pins — they show up here.',
@@ -174,6 +186,18 @@ const th: Dict = {
     template: 'เทมเพลต',
     create: 'สร้างโปรเจกต์',
     cancel: 'ยกเลิก'
+  },
+  fit: {
+    title: 'การสวมบนตัวผู้เล่น (ดูตัวอย่าง 3D)',
+    defaultSkin: '— Steve / Alex —',
+    skinHint: 'สกินที่ใช้ดูตัวอย่าง: Steve / Alex ดึงจากไฟล์ Minecraft ที่ดาวน์โหลดไว้สำหรับแท็บไอเทมในเกม (ก่อนดาวน์โหลดจะเป็นหุ่นเรียบ ๆ) หรือเลือกไฟล์สกิน PNG 64×64 ในโปรเจกต์ก็ได้',
+    noModel: 'ต่อโมเดล 3D (Blockbench .bbmodel หรือ GeckoLib .geo.json) เข้าช่อง "โมเดล 3D" เพื่อปรับตำแหน่ง ขนาด และมุม — เกราะ 2D ใช้รูปแบบปกติของเกม',
+    position: 'ตำแหน่ง (พิกเซล)',
+    rotation: 'มุมหมุน (องศา)',
+    size: 'ขนาด',
+    lock: 'เท่ากันทุกแกน',
+    hint: 'ลากในช่องตัวอย่างเพื่อหมุนดูรอบตัว — 16 พิกเซล = 1 บล็อก',
+    reset: 'รีเซ็ต'
   },
   craft: {
     title: 'ตารางคราฟ',

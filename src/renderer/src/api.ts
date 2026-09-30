@@ -74,4 +74,6 @@ export const api = {
 
 export const assetUrl = (asset: string) => `nkw-asset://project/${asset}`
 export type ItemSource = 'minecraft' | 'farmersdelight'
+/** The game's Steve / Alex skin, extracted from the downloaded Minecraft files. */
+export const vanillaSkinUrl = (mc: string, slim: boolean) => `nkw-asset://vanilla/${mc}/skins/${slim ? 'alex' : 'steve'}.png`
 export const vanillaIconUrl = (mc: string, id: string, ns: string = 'minecraft') => `nkw-asset://vanilla/${mc}/${ns === 'farmersdelight' ? 'farmersdelight/' : ''}${id}.png`

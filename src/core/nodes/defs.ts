@@ -61,7 +61,7 @@ export interface PinDef {
   legacy?: boolean
 }
 
-export type PropKind = 'id' | 'text' | 'int' | 'float' | 'bool' | 'select' | 'asset' | 'nsid' | 'textarea' | 'color' | 'animName' | 'craftGrid'
+export type PropKind = 'id' | 'text' | 'int' | 'float' | 'bool' | 'select' | 'asset' | 'nsid' | 'textarea' | 'color' | 'animName' | 'craftGrid' | 'armorFit'
 
 export interface PropDef {
   key: string
@@ -306,10 +306,10 @@ export const NODE_DEFS: NodeDef[] = [
   {
     type: 'geoModel',
     category: 'asset',
-    title: t('GeckoLib Armor Model', 'โมเดลเกราะ GeckoLib'),
+    title: t('3D Armor Model (Blockbench)', 'โมเดลเกราะ 3D (Blockbench)'),
     description: t(
-      'Blockbench "GeckoLib Animated Model" (.geo.json). Bones: armorHead, armorBody, armorRightArm, armorLeftArm, armorRightLeg, armorLeftLeg, armorRightBoot, armorLeftBoot.',
-      'ไฟล์ .geo.json จาก Blockbench (GeckoLib) — ต้องตั้งชื่อ bone: armorHead, armorBody, armorRightArm, armorLeftArm, armorRightLeg, armorLeftLeg, armorRightBoot, armorLeftBoot'
+      'A Blockbench model: the .bbmodel project itself or a GeckoLib .geo.json. Armor templates use bones armorHead, armorBody, armorRightArm/LeftArm, armorRightLeg/LeftLeg, armorRightBoot/LeftBoot; any other model is placed on the body part of the armor piece automatically.',
+      'โมเดลจาก Blockbench: ไฟล์โปรเจกต์ .bbmodel ได้เลย หรือ .geo.json (GeckoLib) — ถ้าเป็นเทมเพลตเกราะใช้ bone armorHead, armorBody, armorRightArm/LeftArm, armorRightLeg/LeftLeg, armorRightBoot/LeftBoot ส่วนโมเดลแบบอื่นจะถูกวางบนส่วนของร่างกายตามชิ้นเกราะให้อัตโนมัติ'
     ),
     icon: '🦾',
     inputs: [texIn('texture', 'Model texture', 'เท็กซ์เจอร์โมเดล'), { id: 'animation', label: t('Animation', 'อนิเมชัน'), type: 'animation', optional: true }],
@@ -597,7 +597,7 @@ export const NODE_DEFS: NodeDef[] = [
     inputs: [
       { id: 'material', label: t('Armor material', 'วัสดุเกราะ'), type: 'armorMat' },
       texIn('icon', 'Icon texture', 'ไอคอน'),
-      { id: 'geo', label: t('3D model (GeckoLib)', 'โมเดล 3D (GeckoLib)'), type: 'geo', optional: true },
+      { id: 'geo', label: t('3D model (Blockbench)', 'โมเดล 3D (Blockbench)'), type: 'geo', optional: true },
       ...effectIns('Effect while worn', 'เอฟเฟกต์ตอนสวม')
     ],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],
@@ -616,7 +616,8 @@ export const NODE_DEFS: NodeDef[] = [
         ]
       },
       { key: 'rarity', label: t('Rarity', 'ความหายาก'), kind: 'select', default: 'common', options: itemCommon[1].options },
-      { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false }
+      { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false },
+      { key: 'fit', label: t('Fit on the player', 'การสวมบนตัวผู้เล่น'), kind: 'armorFit', default: null }
     ]
   },
 
@@ -723,11 +724,28 @@ export const NODE_DEFS: NodeDef[] = [
       },
       { key: 'comparator', label: t('Comparator output', 'สัญญาณ Comparator'), kind: 'int', default: 1, min: 1, max: 15 },
       {
-        key: 'loop',
-        label: t('Loop (repeat when the song ends)', 'เล่นวนซ้ำ (ลูป) เมื่อเพลงจบ'),
-        kind: 'bool',
-        default: false,
-        hint: t('Works when a player puts the disc in by hand (not via hoppers)', 'ใช้ได้เมื่อผู้เล่นใส่แผ่นด้วยมือ (ไม่รวมใส่ผ่าน Hopper)')
+        key: 'range',
+        label: t('Hearing range (blocks)', 'ระยะการได้ยิน (บล็อก)'),
+        kind: 'int',
+        default: 64,
+        min: 4,
+        max: 256,
+        hint: t(
+          'How far away the song can be heard (vanilla discs: 64). Players farther than 64 blocks when the song starts do not receive it.',
+          'ได้ยินเพลงไกลแค่ไหน (แผ่นปกติ: 64) ผู้เล่นที่อยู่ไกลเกิน 64 บล็อกตอนเพลงเริ่มจะไม่ได้ยิน'
+        )
+      },
+      {
+        key: 'onEnd',
+        label: t('When the song ends', 'เมื่อเพลงจบ'),
+        kind: 'select',
+        default: 'eject',
+        options: [
+          { value: 'eject', label: t('Pop the disc out', 'ดีดแผ่นออกมาทันที') },
+          { value: 'loop', label: t('Loop (play again)', 'เล่นวนซ้ำ (ลูป)') },
+          { value: 'stay', label: t('Stay in the jukebox (vanilla)', 'ค้างอยู่ในเครื่องเล่น (แบบปกติ)') }
+        ],
+        hint: t('Pop out / loop work when a player puts the disc in by hand (not via hoppers).', 'ดีดออก/ลูป ใช้ได้เมื่อผู้เล่นใส่แผ่นด้วยมือ (ไม่รวมใส่ผ่าน Hopper)')
       }
     ]
   },

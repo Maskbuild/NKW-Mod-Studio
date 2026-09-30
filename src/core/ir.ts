@@ -1,3 +1,4 @@
+import type { ArmorFit } from './gen/geo'
 import type { ProjectMeta } from './project'
 import type { L10n } from './nodes/defs'
 
@@ -14,6 +15,8 @@ export interface GeoRef {
   texture: string
   /** GeckoLib animation file + the animation name to loop */
   animation: { asset: string; name: string } | null
+  /** armor pieces: position / rotation / size adjustment */
+  fit?: ArmorFit | null
 }
 
 /** A status effect: MobEffects field name, amplifier (level-1), duration in ticks, 0-1 chance. */
@@ -52,7 +55,12 @@ export interface ItemIR extends Named {
   food?: { nutrition: number; saturation: number; alwaysEdible: boolean; fast: boolean; effects: EffectIR[] }
   tool?: { type: ToolType; material: string; damage: number; speed: number; effects: EffectIR[] }
   armor?: { material: string; slot: ArmorSlot; geo: GeoRef | null; effects: EffectIR[] }
-  disc?: { sound: string; song: string; songTh: string; length: number; comparator: number; copyright: string; loop?: boolean }
+  disc?: { sound: string; song: string; songTh: string; length: number; comparator: number; copyright: string
+    /** what the jukebox does when the song ends */
+    onEnd: 'eject' | 'loop' | 'stay'
+    /** hearing range in blocks (vanilla 64) */
+    range: number
+  }
   /** registry id (without namespace) of a mod block this item places */
   places?: string | null
   /** 3D model shown in hand while `texture` is used as the inventory icon */

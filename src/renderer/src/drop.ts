@@ -57,11 +57,12 @@ export function addImportedNodes(imported: ImportedAsset[], pos: XYPosition): vo
     if (owned.has(a.asset)) continue
     const id = newId()
     nodes.push({ id, type: NODE_FOR_KIND[a.kind], position: { x: pos.x, y }, data: dataFor(a), selected: true })
-    ;(a.textures ?? []).slice(0, 4).forEach((tex, i) => {
+    ;(a.textures ?? []).slice(0, a.kind === 'geo' ? 1 : 4).forEach((tex, i) => {
       if (!tex) return
+      const handle = a.kind === 'geo' ? 'texture' : `tex${i}`
       const tid = newId()
       nodes.push({ id: tid, type: 'texture', position: { x: pos.x - 280, y: y + i * 110 }, data: { asset: tex } })
-      edges.push({ id: newId('e'), source: tid, sourceHandle: 'out', target: id, targetHandle: `tex${i}`, style: edgeStyle('texture', 'out') })
+      edges.push({ id: newId('e'), source: tid, sourceHandle: 'out', target: id, targetHandle: handle, style: edgeStyle('texture', 'out') })
     })
     y += Math.max(130, (a.textures?.length ?? 0) * 110)
   }

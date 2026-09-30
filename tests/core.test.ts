@@ -7,9 +7,10 @@ import { FALLBACK_DEPS, TOOL_VERSIONS, generate } from '../src/core/gen/index'
 import { convertBBModel, rotateBoxes, shapeBoxes } from '../src/core/gen/model'
 import { PROFILES } from '../src/core/gen/profiles'
 import { NODE_DEF_MAP, visibleInputs } from '../src/core/nodes/defs'
+import { bbmodelToGeo } from '../src/core/gen/geo'
 import { ASSET_RE, ProjectSchema, toId, type Project } from '../src/core/project'
 import { safeJoin } from '../src/main/services/builder'
-import { writeFixture } from '../scripts/fixture'
+import { HAT_BBMODEL, writeFixture } from '../scripts/fixture'
 
 const dir = mkdtempSync(join(tmpdir(), 'nkw-test-'))
 const project = writeFixture(dir)
@@ -37,7 +38,7 @@ describe('compiler', () => {
     const { ir, diagnostics } = compile(project, { loader: 'fabric', mc: '1.21.1' })
     expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
     expect(ir.items.map((i) => i.id)).toContain('ruby_sword')
-    expect(ir.items.filter((i) => i.armor).length).toBe(10)
+    expect(ir.items.filter((i) => i.armor).length).toBe(11)
     const soup = ir.items.find((i) => i.id === 'ruby_soup')!
     expect(soup.food!.effects.map((e) => e.effect)).toEqual(['REGENERATION', 'POISON', 'DAMAGE_BOOST'])
     expect(soup.food!.effects[0]).toMatchObject({ amplifier: 1, ticks: 100, chance: 0.8 })
@@ -57,7 +58,7 @@ describe('compiler', () => {
     expect(withMain.tabs[0].items).not.toContain('nkwtest:ruby_crop')
     const disc = ir.items.find((i) => i.id === 'music_disc_nkw')!
     expect(disc.disc!.length).toBe(124)
-    expect(disc.disc!.loop).toBe(true)
+    expect(disc.disc!.onEnd).toBe('loop')
     expect(ir.tabs[0].items.slice(0, 3)).toEqual(['nkwtest:ruby', 'nkwtest:shiny_ruby', 'nkwtest:ruby_block'])
     expect(soup.food!.effects[2]).toMatchObject({ amplifier: 299, infinite: true })
   })
@@ -85,6 +86,39 @@ describe('compiler', () => {
     const all = visibleInputs(def, (id) => /^i[1-9]$/.test(id))
     expect(all.left.length).toBe(9)
     expect(visibleInputs(NODE_DEF_MAP.creativeTab, () => false).left.map((p) => p.id)).toEqual(['logo', 'icon', 'item1'])
+  })
+  it('fits armor models: plain Blockbench models get armor bones, fit bones carry move/turn, animation carries size', () => {
+    const { ir } = compile(project)
+    const hat = ir.items.find((i) => i.id === 'top_hat')!
+    expect(hat.armor!.geo!.fit).toEqual({ offset: [0, 1, 0], rotation: [0, 0, -8], scale: [1.25, 1.25, 1.25] })
+    const files = generate(ir, { loader: 'fabric', mc: '1.21.1' }, { ...FALLBACK_DEPS['1.21.1'], ...deps } as never, read)
+    const geo = JSON.parse(files.find((f) => f.path.endsWith('/geo/item/armor/top_hat.geo.json'))!.text!)
+    const bones = geo['minecraft:geometry'][0].bones as { name: string; parent?: string; pivot: number[]; rotation?: number[]; cubes?: { origin: number[] }[] }[]
+    expect(bones.map((b) => b.name)).toEqual(['armorHead', 'nkw_fit_armorHead', 'hat'])
+    const fitBone = bones[1]
+    expect(fitBone.parent).toBe('armorHead')
+    expect(fitBone.rotation).toEqual([0, 0, -8])
+    // brim rests on top of the head (y = 32), then moved up 1 pixel
+    const brim = bones[2].cubes![0]
+    expect(brim.origin[1]).toBe(33)
+    expect(brim.origin[0]).toBe(-6)
+    const anim = JSON.parse(files.find((f) => f.path.endsWith('/animations/item/armor/top_hat.animation.json'))!.text!)
+    expect(anim.animations['animation.nkw.fit'].bones.nkw_fit_armorHead.scale).toEqual([1.25, 1.25, 1.25])
+    // the looping animation of the boots keeps its own bones and gains the fit scale
+    const boots = JSON.parse(files.find((f) => f.path.includes('/animations/item/armor/') && f.text?.includes('animation.ruby_armor.idle') && f.text.includes('nkw_fit_'))!.text!)
+    expect(boots.animations['animation.ruby_armor.idle'].bones.armorHead).toBeTruthy()
+    expect(boots.animations['animation.ruby_armor.idle'].bones.nkw_fit_armorRightBoot.scale).toEqual([1.1, 1.1, 1.1])
+    const java = files.find((f) => f.path.endsWith('/ModItems.java'))!.text!
+    expect(java).toContain('"animation.nkw.fit"')
+  })
+  it('converts .bbmodel like Blockbench does (x mirrored, x/y rotation negated, up/down uv flipped)', () => {
+    const { geo } = bbmodelToGeo(HAT_BBMODEL)
+    const [bone] = geo['minecraft:geometry'][0].bones!
+    expect(bone.pivot).toEqual([0, 0, 0])
+    const crown = bone.cubes![1]
+    expect(crown.origin).toEqual([-4, 1, -4])
+    expect(crown.rotation).toEqual([0, 0, 5])
+    expect((crown.uv as Record<string, unknown>).up).toEqual({ uv: [8, 12], uv_size: [-8, -8] })
   })
   it('follows reroute nodes', () => {
     const { ir } = compile(project)
@@ -147,7 +181,7 @@ describe('generators', () => {
         expect(java).toContain(p.smithingTransform ? 'DAMAGE_BOOST, -1, 299' : 'DAMAGE_BOOST, Integer.MAX_VALUE, 299')
         if (p.geckoArmor) {
           expect(java).toContain('"animation.ruby_armor.idle"')
-          expect(files.find((x) => x.path.endsWith('animations/item/armor/winged_boots.animation.json'))?.copy).toBe('animations/ruby_armor.json')
+          expect(files.find((x) => x.path.endsWith('animations/item/armor/winged_boots.animation.json'))?.text).toContain('animation.ruby_armor.idle')
         }
         if (loader === 'fabric' || loader === 'quilt') expect(files.find((x) => x.path === 'build.gradle')!.text).toContain('maven.modrinth:modmenu:x')
         // Java string escaping of the description in metadata

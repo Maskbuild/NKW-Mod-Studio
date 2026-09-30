@@ -1,4 +1,5 @@
 import type { BlockIR, ItemIR, ModelRef } from '../ir'
+import { fitAnimation, geoLoopName, prepareArmorGeo, type GeoFile } from './geo'
 import { parseJavaModel, remapTextures } from './model'
 import { RES, fabricLike, json, type GenCtx } from './types'
 
@@ -116,10 +117,28 @@ export function genAssets(ctx: GenCtx): void {
       const set = ctx.geoNames.get(it.id)!
       if (done.has(set)) continue
       done.add(set)
-      files.push({ path: `${A}/geo/item/armor/${set}.geo.json`, copy: g.asset })
+      // the model as worn: attached to the slot's bones (plain Blockbench models) and fitted
+      const slot = it.armor!.slot
+      let model: GeoFile | null = null
+      try {
+        model = JSON.parse(ctx.read.readText(g.asset)) as GeoFile
+      } catch {
+        model = null
+      }
+      if (model) files.push({ path: `${A}/geo/item/armor/${set}.geo.json`, text: json(prepareArmorGeo(model, slot, g.fit)) })
+      else files.push({ path: `${A}/geo/item/armor/${set}.geo.json`, copy: g.asset })
       tex(g.texture, 'item/armor', set)
       const animPath = `${A}/animations/item/armor/${set}.animation.json`
-      if (g.animation) files.push({ path: animPath, copy: g.animation.asset })
+      const scaled = !!g.fit && g.fit.scale.some((v) => v !== 1)
+      if (scaled) {
+        let anim = null
+        try {
+          anim = g.animation ? JSON.parse(ctx.read.readText(g.animation.asset)) : null
+        } catch {
+          anim = null
+        }
+        files.push({ path: animPath, text: json(fitAnimation(anim, geoLoopName(g.animation, g.fit), slot, g.fit!).file) })
+      } else if (g.animation) files.push({ path: animPath, copy: g.animation.asset })
       else files.push({ path: animPath, text: json({ format_version: '1.8.0', animations: {}, geckolib_format_version: 2 }) })
     }
   }
@@ -136,6 +155,9 @@ export function genAssets(ctx: GenCtx): void {
           if (s.stream) entry.stream = true
           if (s.volume !== 1) entry.volume = s.volume
           if (s.pitch !== 1) entry.pitch = s.pitch
+          // jukeboxes play at volume 4, so hearing range = max(4 × volume, 1) × attenuation_distance (default 16 → 64 blocks)
+          const range = Math.max(0, ...ir.items.filter((it) => it.disc?.sound === s.id).map((it) => it.disc!.range))
+          if (range && range !== 64) entry.attenuation_distance = Math.max(1, Math.round(range / Math.max(4 * s.volume, 1)))
           return Object.keys(entry).length === 1 ? entry.name : entry
         }),
         ...(s.subtitle || s.subtitleTh ? { subtitle: `subtitles.${ns}.${s.id}` } : {})

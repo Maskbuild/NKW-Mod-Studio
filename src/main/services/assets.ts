@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { bbmodelToGeo, geoBones, isEntityBBModel } from '@core/gen/geo'
 import { mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, join, posix } from 'node:path'
 import { convertBBModel, parseJavaModel, textureKeys } from '@core/gen/model'
@@ -45,7 +46,7 @@ export const EXTENSIONS: Record<AssetKind, string[]> = {
   texture: ['png'],
   animation: ['json'],
   model: ['json', 'bbmodel'],
-  geo: ['json'],
+  geo: ['json', 'bbmodel'],
   sound: CONVERTIBLE
 }
 
@@ -132,6 +133,22 @@ export async function importAsset(
       return [{ asset: `${into}/${name}.json`, kind, name, animations: Object.keys(json.animations).slice(0, 200) }]
     }
     case 'geo': {
+      if (ext === 'bbmodel') {
+        // Blockbench project → GeckoLib model, same as Blockbench's export; embedded textures become PNGs
+        const conv = bbmodelToGeo(buf.toString('utf8'), `geometry.${base}`)
+        if (!geoBones(conv.geo).some((b) => b.cubes?.length)) throw new Error('The Blockbench model has no cubes')
+        const name = uniqueName(dir, base, 'json')
+        const extra: ImportedAsset[] = []
+        const textures: string[] = []
+        for (const [i, t] of conv.textures.entries()) {
+          if (!t.base64) continue
+          const png = await writePng(projectDir, ROOT.texture, toId(t.name.replace(/.png$/i, '')) || `${base}_${i}`, Buffer.from(t.base64, 'base64'))
+          textures.push(png.asset)
+          extra.push(png)
+        }
+        await writeFile(join(dir, `${name}.json`), JSON.stringify(conv.geo))
+        return [{ asset: `${into}/${name}.json`, kind, name, textures }, ...extra]
+      }
       const json = JSON.parse(buf.toString('utf8')) as Record<string, unknown>
       if (!Array.isArray(json['minecraft:geometry'])) throw new Error('Not a GeckoLib/Bedrock .geo.json model')
       const name = uniqueName(dir, base, 'json')
@@ -175,7 +192,12 @@ export async function detectKind(source: string): Promise<AssetKind | null> {
   const ext = extname(source).slice(1).toLowerCase()
   if (ext === 'png') return 'texture'
   if (CONVERTIBLE.includes(ext)) return 'sound'
-  if (ext === 'bbmodel') return 'model'
+  if (ext === 'bbmodel') {
+    // entity/armor projects (bones) become GeckoLib models, block/item projects Java models
+    const info = await stat(source)
+    if (!info.isFile() || info.size > 10 * MB) return null
+    return isEntityBBModel(await readFile(source, 'utf8')) ? 'geo' : 'model'
+  }
   if (ext !== 'json') return null
   const info = await stat(source)
   if (!info.isFile() || info.size > 10 * MB) return null
@@ -231,7 +253,8 @@ export async function listAssets(projectDir: string): Promise<AssetEntry[]> {
 
 /** Reads a model file for the 3D preview. */
 export async function readModel(projectDir: string, asset: string): Promise<unknown> {
-  checkAsset(asset, 'models')
+  checkAsset(asset)
+  if (!['models', 'geo'].includes(asset.split('/')[0]) || !asset.endsWith('.json')) throw new Error('Invalid asset path')
   return JSON.parse(await readFile(join(projectDir, 'assets', asset), 'utf8'))
 }
 

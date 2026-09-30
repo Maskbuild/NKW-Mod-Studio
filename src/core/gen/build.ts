@@ -17,6 +17,63 @@ const MODRINTH_REPO = `    maven {
         content { includeGroup 'maven.modrinth' }
     }`
 
+/**
+ * Loom strips the mods/libraries a dependency bundles inside its jar (jar-in-jar). Farmer's Delight
+ * ports (Fabric ASM, Porting Lib) and GeckoLib (MCLib) ship theirs that way, so for test runs they are
+ * unpacked (recursively) and added next to it. Fabric API modules are already on the classpath.
+ * The jars are fetched from Modrinth's Maven directly: Loom forbids resolving a configuration before
+ * its own setup.
+ */
+function fabricBundledMods(deps: string[]): string {
+  const sources = deps
+    .map((d) => /^maven\.modrinth:([a-z0-9_-]+):([A-Za-z0-9._+-]+)$/.exec(d))
+    .filter((m): m is RegExpExecArray => !!m)
+    .map(([, slug, ver]) => `    '${slug}-${ver}.jar': 'https://api.modrinth.com/maven/maven/modrinth/${slug}/${ver}/${slug}-${ver}.jar'`)
+  if (!sources.length) return ''
+  return `
+// ── mods bundled inside dependencies (Loom does not load jar-in-jar mods of dependencies) ──
+def nkwNestedDir = layout.buildDirectory.dir('nkw-nested').get().asFile
+def nkwUnpack
+nkwUnpack = { File jar ->
+    def zip = new java.util.zip.ZipFile(jar)
+    try {
+        zip.entries().toList().findAll { !it.directory && it.name.startsWith('META-INF/jars/') && it.name.endsWith('.jar') }.each { e ->
+            def out = new File(nkwNestedDir, e.name.substring(e.name.lastIndexOf('/') + 1))
+            if (!out.exists()) {
+                out.parentFile.mkdirs()
+                out.withOutputStream { os -> os << zip.getInputStream(e) }
+            }
+            nkwUnpack(out)
+        }
+    } finally {
+        zip.close()
+    }
+}
+[
+${sources.join(',\n')}
+].each { name, url ->
+    def jar = layout.buildDirectory.file('nkw-bundled-source/' + name).get().asFile
+    if (!jar.exists()) {
+        jar.parentFile.mkdirs()
+        def tmp = new File(jar.path + '.part')
+        new URL(url).withInputStream { i -> tmp.withOutputStream { it << i } }
+        tmp.renameTo(jar)
+    }
+    nkwUnpack(jar)
+}
+dependencies {
+    (nkwNestedDir.listFiles() ?: []).findAll { it.name.endsWith('.jar') }.sort { it.name }.each { f ->
+        def zip = new java.util.zip.ZipFile(f)
+        def entry = zip.getEntry('fabric.mod.json')
+        def id = entry ? new groovy.json.JsonSlurper().parse(zip.getInputStream(entry)).id : null
+        zip.close()
+        if (id == null) runtimeOnly files(f)
+        else if (!id.startsWith('fabric-') && id != 'fabric' && id != 'fabricloader') modRuntimeOnly files(f)
+    }
+}
+`
+}
+
 /** Gradle build + mod metadata files. */
 export function genBuild(ctx: GenCtx): void {
   const { ir, loader, p, deps, files, ns, pkg } = ctx
@@ -120,7 +177,7 @@ dependencies {
     modImplementation 'net.fabricmc.fabric-api:fabric-api:${deps.fabricApi}'
 ${extraDeps.join('\n')}
 }
-
+${fabricBundledMods([fdDep, geckoDep].filter((d): d is string => !!d))}
 loom {
     runs {${
       loader === 'quilt'

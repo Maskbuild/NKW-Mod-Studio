@@ -244,7 +244,10 @@ export function AssetTree() {
               onBlur={(ev) => void rename(node, ev.currentTarget.value)}
             />
           ) : (
-            <span className="tree-name ellipsis">{label}</span>
+            <span className="tree-name ellipsis">
+              {label}
+              {!node.folder && <span className="tree-ext">{node.name.slice(label.length)}</span>}
+            </span>
           )}
           {e?.kind === 'sound' && <span className="faint">{fmtTime(e.seconds)}</span>}
           {root && <span className="faint">{countFiles(node)}</span>}

@@ -24,7 +24,8 @@ export interface VanillaData {
   tags: VanillaTag[]
 }
 
-export const VANILLA_DATA_VERSION = 3
+/** 4: block items get 3D (isometric) icons · 5: Steve/Alex skins for the armor preview */
+export const VANILLA_DATA_VERSION = 5
 
 export type GroupId =
   | 'minerals'

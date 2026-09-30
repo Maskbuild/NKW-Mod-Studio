@@ -5,6 +5,7 @@ import yauzl from 'yauzl'
 import { VANILLA_DATA_VERSION, groupOf, type VanillaData, type VanillaItem, type VanillaTag } from '@core/vanilla'
 import { download, getJson } from './net'
 import type { Progress } from './toolchain'
+import { decodePng, defaultTint, renderModel, resolveModel, type Img, type JsonModel } from './iso'
 
 const VERSION_RE = /^\d+\.\d+(\.\d+)?$/
 
@@ -96,19 +97,30 @@ export async function ensureVanilla(toolsDir: string, mc: string, progress: Prog
   } catch {
     /* Thai names are optional */
   }
-  const data = await extractItems(jar, 'minecraft', mc, join(dir, 'icons'), th, progress)
+  const { data, models } = await extractItems(jar, 'minecraft', mc, join(dir, 'icons'), th, progress)
+  await writeFile(join(dir, 'models.json'), JSON.stringify(models))
+  await extractSkins(jar, join(dir, 'skins'))
   await writeFile(join(dir, 'data.json'), JSON.stringify(data))
   await rm(jar, { force: true }) // icons/names are all we need; saves ~25 MB
   return data
 }
 
 /** Items, English (and optional Thai) names, icons and item tags of one namespace inside a jar. */
-async function extractItems(jar: string, ns: string, mc: string, iconDir: string, th: Record<string, string>, progress: Progress): Promise<VanillaData> {
+/** `parents` supplies vanilla block models for mods whose models inherit from them. */
+async function extractItems(
+  jar: string,
+  ns: string,
+  mc: string,
+  iconDir: string,
+  th: Record<string, string>,
+  progress: Progress,
+  parents: Record<string, JsonModel> = {}
+): Promise<{ data: VanillaData; models: Record<string, JsonModel> }> {
   const files = await readZip(
     jar,
     (n) =>
       n === `assets/${ns}/lang/en_us.json` ||
-      new RegExp(`^assets/${ns}/(models/(item|block)|items)/[a-z0-9_]+\\.json$`).test(n) ||
+      new RegExp(`^assets/${ns}/(models/(item|block)|items)/[a-z0-9_/]+\\.json$`).test(n) ||
       /^assets\/[a-z0-9_.-]+\/textures\/(item|block)\/[a-z0-9_/]+\.png$/.test(n) ||
       /^data\/[a-z0-9_.-]+\/tags\/items?\/[a-z0-9_/]+\.json$/.test(n)
   )
@@ -117,9 +129,18 @@ async function extractItems(jar: string, ns: string, mc: string, iconDir: string
     const i = ref.indexOf(':')
     return i < 0 ? ['minecraft', ref] : [ref.slice(0, i), ref.slice(i + 1)]
   }
-  const model = (ref: string) => {
+  const model = (ref: string): JsonModel | null => {
     const [n, p] = split(ref)
-    return json<{ parent?: string; textures?: Record<string, string> }>(files.get(`assets/${n}/models/${p}.json`))
+    return json<JsonModel>(files.get(`assets/${n}/models/${p}.json`)) ?? parents[`${n}:${p}`] ?? null
+  }
+  const decoded = new Map<string, Img | null>()
+  const textureImg = (ref: string): Img | null => {
+    const file = texFile(ref)
+    if (!decoded.has(file)) {
+      const buf = files.get(file)
+      decoded.set(file, buf ? decodePng(buf) : null)
+    }
+    return decoded.get(file)!
   }
   const texFile = (ref: string) => {
     const [n, p] = split(ref)
@@ -145,6 +166,12 @@ async function extractItems(jar: string, ns: string, mc: string, iconDir: string
     }
     const fromDef = firstModel(def)
     if (fromDef) ref = fromDef
+    // block-like models are drawn in 3D, the way the inventory shows them
+    const resolved = resolveModel(ref, model)
+    if (resolved?.kind === 'elements') {
+      const png = renderModel(resolved, textureImg, () => defaultTint(id))
+      if (png) return png
+    }
     for (let depth = 0; depth < 5; depth++) {
       const m = model(ref)
       if (!m) break
@@ -197,7 +224,16 @@ async function extractItems(jar: string, ns: string, mc: string, iconDir: string
     tags.push({ id: `${m[1]}:${m[2]}`, values: (t?.values ?? []).map((v) => (typeof v === 'string' ? v : v.id)) })
   }
   tags.sort((a, b) => a.id.localeCompare(b.id))
-  return { v: VANILLA_DATA_VERSION, mc, ns, items, tags }
+  // block models other mods can inherit from (cube_all, orientable, …)
+  const models: Record<string, JsonModel> = {}
+  for (const [name, buf] of files) {
+    const m = /^assets\/([a-z0-9_.-]+)\/models\/(block\/[a-z0-9_/]+)\.json$/.exec(name)
+    if (m) {
+      const j = json<JsonModel>(buf)
+      if (j) models[`${m[1]}:${m[2]}`] = j
+    }
+  }
+  return { data: { v: VANILLA_DATA_VERSION, mc, ns, items, tags }, models }
 }
 
 interface ModrinthVersion {
@@ -233,7 +269,13 @@ export async function ensureFarmersDelight(toolsDir: string, mc: string, progres
   await mkdir(dir, { recursive: true })
   const jar = join(dir, 'fd.jar')
   await download(file.url, jar, file.hashes.sha1, (d, t) => progress("Downloading Farmer's Delight", d, t), 'sha1')
-  const data = await extractItems(jar, 'farmersdelight', mc, join(dir, 'icons'), {}, progress)
+  let parents: Record<string, JsonModel> = {}
+  try {
+    parents = JSON.parse(await readFile(join(vanillaDir(toolsDir, mc), 'models.json'), 'utf8')) as Record<string, JsonModel>
+  } catch {
+    /* vanilla not extracted yet: Farmer's Delight blocks fall back to a flat face */
+  }
+  const { data } = await extractItems(jar, 'farmersdelight', mc, join(dir, 'icons'), {}, progress, parents)
   await writeFile(join(dir, 'data.json'), JSON.stringify(data))
   await rm(jar, { force: true })
   return data
@@ -246,6 +288,28 @@ export async function loadFarmersDelight(toolsDir: string, mc: string): Promise<
   } catch {
     return null
   }
+}
+
+/**
+ * The game's own Steve and Alex skins, used by the armor preview. They are read from the official
+ * client jar the user downloads (never shipped with the app).
+ */
+async function extractSkins(jar: string, out: string): Promise<void> {
+  const files = await readZip(jar, (n) => /^assets\/minecraft\/textures\/entity\/(player\/(wide|slim)\/)?(steve|alex)\.png$/.test(n))
+  await mkdir(out, { recursive: true })
+  for (const [name, variant] of [
+    ['steve', 'wide'],
+    ['alex', 'slim']
+  ]) {
+    const buf = files.get(`assets/minecraft/textures/entity/player/${variant}/${name}.png`) ?? files.get(`assets/minecraft/textures/entity/${name}.png`)
+    if (buf) await writeFile(join(out, `${name}.png`), buf)
+  }
+}
+
+export function vanillaSkinPath(toolsDir: string, mc: string, name: string): string | null {
+  if (name !== 'steve' && name !== 'alex') return null
+  const p = join(vanillaDir(toolsDir, mc), 'skins', `${name}.png`)
+  return existsSync(p) ? p : null
 }
 
 export function vanillaIconPath(toolsDir: string, mc: string, id: string, ns = 'minecraft'): string | null {

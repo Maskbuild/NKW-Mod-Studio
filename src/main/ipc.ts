@@ -8,7 +8,7 @@ import { MetaSchema, ProjectSchema, TargetSchema, newProject, type Project } fro
 import { NeedsDownloadError, findJdks } from './services/toolchain'
 import { EXTENSIONS, FOLDER_RE, animationNames, assetsUnder, detectKind, importAsset, listAssets, makeFolder, moveAsset, readModel, type AssetKind } from './services/assets'
 import { CONVERTIBLE } from './services/audio'
-import { ensureFarmersDelight, ensureVanilla, loadFarmersDelight, loadVanilla, vanillaIconPath } from './services/vanilla'
+import { ensureFarmersDelight, ensureVanilla, loadFarmersDelight, loadVanilla, vanillaIconPath, vanillaSkinPath } from './services/vanilla'
 import { assetPath, buildDir, findJar, startBuild, type RunningBuild } from './services/builder'
 import { createProjectDir, readProject, saveProject, type SettingsStore } from './services/store'
 import { TEMPLATE_IDS, applyTemplate } from './templates'
@@ -40,8 +40,9 @@ export function registerAssetProtocol() {
       const rel = decodeURIComponent(url.pathname.replace(/^\//, ''))
       let file: string | null
       if (url.hostname === 'vanilla') {
+        const skin = /^(\d+\.\d+(?:\.\d+)?)\/skins\/(steve|alex)\.png$/.exec(rel)
         const m = /^(\d+\.\d+(?:\.\d+)?)\/(?:(farmersdelight)\/)?([a-z0-9_]{1,64})\.png$/.exec(rel)
-        file = m ? vanillaIconPath(toolsDir(), m[1], m[3], m[2] ?? 'minecraft') : null
+        file = skin ? vanillaSkinPath(toolsDir(), skin[1], skin[2]) : m ? vanillaIconPath(toolsDir(), m[1], m[3], m[2] ?? 'minecraft') : null
         if (!file) return new Response('Not found', { status: 404 })
       } else file = assetPath(requireProject(), rel)
       const res = await net.fetch(pathToFileURL(file).toString())

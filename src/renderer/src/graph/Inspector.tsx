@@ -13,6 +13,7 @@ import { TargetPicker } from '../components/TargetPicker'
 import { IAlert, IUpload, Logo } from '../components/Icons'
 
 import { CraftGrid } from './CraftGrid'
+import { ArmorFitField } from './ArmorFit'
 
 const ModelPreview = lazy(() => import('./ModelPreview'))
 
@@ -80,15 +81,17 @@ function AssetField({ node, p }: { node: FlowNode; p: PropDef }) {
     })
     for (const a of res) if (a.warning) s.toast(`${a.name}: ${a.warning}`)
     // A .bbmodel brings its own textures: add Texture nodes and wire them to the model.
-    if (first.kind === 'model' && first.textures?.length) {
+    // GeckoLib models take one texture, Java models up to four.
+    if ((first.kind === 'model' || first.kind === 'geo') && first.textures?.length) {
       const nodes = [...useStore.getState().nodes]
       let edges = [...useStore.getState().edges]
-      first.textures.slice(0, 4).forEach((tex, i) => {
+      first.textures.slice(0, first.kind === 'geo' ? 1 : 4).forEach((tex, i) => {
         if (!tex) return
+        const handle = first.kind === 'geo' ? 'texture' : `tex${i}`
         const id = newId()
         nodes.push({ id, type: 'texture', position: { x: node.position.x - 280, y: node.position.y + i * 110 }, data: { asset: tex } })
-        edges = edges.filter((e) => !(e.target === node.id && e.targetHandle === `tex${i}`))
-        edges.push({ id: newId('e'), source: id, sourceHandle: 'out', target: node.id, targetHandle: `tex${i}`, style: edgeStyle('texture', 'out') })
+        edges = edges.filter((e) => !(e.target === node.id && e.targetHandle === handle))
+        edges.push({ id: newId('e'), source: id, sourceHandle: 'out', target: node.id, targetHandle: handle, style: edgeStyle('texture', 'out') })
       })
       s.setGraph(nodes, edges)
     }
@@ -401,6 +404,7 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
         <div className="field">
           <label>{L(p.label)}</label>
           <NumberField p={p} value={typeof value === 'number' ? value : Number(p.default)} onChange={set} />
+          {p.hint && <span className="hint">{L(p.hint)}</span>}
         </div>
       )
     case 'select':
@@ -414,6 +418,7 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
               </option>
             ))}
           </select>
+          {p.hint && <span className="hint">{L(p.hint)}</span>}
         </div>
       )
     case 'asset':
@@ -460,6 +465,8 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
       return <AnimNameField node={node} p={p} />
     case 'craftGrid':
       return <CraftGrid node={node} />
+    case 'armorFit':
+      return <ArmorFitField node={node} />
     default:
       return (
         <div className="field">

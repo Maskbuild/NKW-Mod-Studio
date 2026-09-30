@@ -16,7 +16,7 @@ mkdirSync(projectDir, { recursive: true })
 const project = writeFixture(projectDir)
 
 const READY = /Sound engine started|OpenAL initialized|Created: \d+x\d+x\d+ minecraft:textures\/atlas\/blocks/
-const BAD = /---- Minecraft Crash Report|Crashed! The full crash report|Exception in thread "main"|Failed to load|Missing texture|Unable to load model|Registry freeze|\[main\/ERROR\].*nkwtest|ModLoadingException|Exception loading blockstate|Couldn't parse/i
+const BAD = /---- Minecraft Crash Report|Crashed! The full crash report|Exception in thread "main"|Failed to load|Missing texture|Unable to load model|Registry freeze|\[main\/ERROR\].*nkwtest|ModLoadingException|Exception loading blockstate|Couldn't parse|Unable to parse animation|GeckoLibException|Error loading animation file/i
 
 async function smoke(name: string): Promise<boolean> {
   const [loader, mc] = name.split('-') as [Loader, string]
