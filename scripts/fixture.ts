@@ -142,7 +142,7 @@ export function writeFixture(dir: string): Project {
 
   node('se', 'soundEvent', { id: 'nkw_song', subtitle: 'NKW song plays', subtitleTh: 'เพลง NKW', stream: true })
   wire('snd_file', 'out', 'se', 'sound1')
-  node('disc', 'musicDisc', { id: 'music_disc_nkw', name: 'Music Disc', song: 'NKW - Theme', length: 95, comparator: 7, copyright: 'free' })
+  node('disc', 'musicDisc', { id: 'music_disc_nkw', name: 'Music Disc', song: 'NKW - Theme', length: 95, comparator: 7, copyright: 'free', loop: true })
   wire('se', 'out', 'disc', 'sound')
   wire('tex_disc', 'out', 'disc', 'texture')
 
@@ -154,10 +154,10 @@ export function writeFixture(dir: string): Project {
   node('r1', 'recipeShaped', { count: 1 })
   for (const s of ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9']) wire('ruby', 'out', 'r1', s)
   wire('blk', 'out', 'r1', 'result')
-  node('r2', 'recipeShaped')
-  wire('ruby', 'out', 'r2', 's2')
-  wire('ruby', 'out', 'r2', 's5')
-  wire('stick', 'out', 'r2', 's8')
+  // new style: ingredient pins + a grid that points at them
+  node('r2', 'recipeShaped', { grid: ['', 'i1', '', '', 'i1', '', '', 'i2', ''] })
+  wire('ruby', 'out', 'r2', 'i1')
+  wire('stick', 'out', 'r2', 'i2')
   wire('tool_sword', 'out', 'r2', 'result')
   node('r3', 'recipeShapeless', { count: 9 })
   wire('blk', 'out', 'r3', 'i1')
@@ -237,7 +237,7 @@ export function writeFixture(dir: string): Project {
   // ── creative tabs: one with a logo texture + items, one with an item icon ──
   node('tab', 'creativeTab', { id: 'main', title: 'NKW Test', titleTh: 'ทดสอบ NKW' })
   wire('tex_disc', 'out', 'tab', 'logo')
-  for (const it of ['ruby', 'shiny', 'blk', 'soup', 'diamond', 'seeds']) wire(it, 'out', 'tab', 'items')
+  ;['ruby', 'shiny', 'blk', 'soup', 'diamond', 'seeds'].forEach((it, i) => wire(it, 'out', 'tab', `item${i + 1}`))
   node('tab2', 'creativeTab', { id: 'gear', title: 'NKW Gear' })
   wire('tool_sword', 'out', 'tab2', 'icon')
   for (const it of ['tool_sword', 'tool_pickaxe', 'piece_helm']) wire(it, 'out', 'tab2', 'items')

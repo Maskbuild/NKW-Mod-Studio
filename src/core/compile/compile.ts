@@ -92,6 +92,18 @@ export function compile(project: Project, target?: Target): CompileResult {
     return out
   }
 
+  /** Items of a creative tab: the numbered pins in order, then the old any-number pin. */
+  const tabItems = (nodeId: string): string[] => {
+    const out: string[] = []
+    for (let i = 1; i <= 64; i++) {
+      const s = source(nodeId, `item${i}`)
+      const id = s ? itemIdOf(s.node, s.handle) : null
+      if (id && !out.includes(id)) out.push(id)
+    }
+    for (const id of itemsIn(nodeId, 'items')) if (!out.includes(id)) out.push(id)
+    return out
+  }
+
   /** Follows reroute nodes; returns the real producing node + handle. */
   const source = (nodeId: string, handle: string): { node: GraphNode; handle: string } | null => {
     let cur = inputs.get(`${nodeId}|${handle}`)
@@ -522,19 +534,27 @@ export function compile(project: Project, target?: Target): CompileResult {
             songTh: str(d, 'songTh'),
             length: clamp(Math.round(bool(d, 'autoLength', true) ? (songSeconds(s?.node) ?? num(d, 'length', 180)) : num(d, 'length', 180)), 1, 36000),
             comparator: clamp(Math.round(num(d, 'comparator', 1)), 1, 15),
-            copyright: ['free', 'licensed', 'copyrighted', 'none'].includes(str(d, 'copyright')) ? str(d, 'copyright') : 'none'
+            copyright: ['free', 'licensed', 'copyrighted', 'none'].includes(str(d, 'copyright')) ? str(d, 'copyright') : 'none',
+            loop: bool(d, 'loop', false)
           }
         })
         break
       }
       case 'recipeShaped': {
+        // grid cells name an ingredient pin (i1..i9); old projects wired s1..s9 straight into the cells
+        const cells = Array.isArray(d.grid) ? (d.grid as unknown[]) : []
         const grid: (Ingredient | null)[] = []
-        for (let i = 1; i <= 9; i++) grid.push(ingredient(n.id, `s${i}`, false))
+        for (let i = 0; i < 9; i++) {
+          const pin = typeof cells[i] === 'string' && /^i[1-9]$/.test(cells[i] as string) ? (cells[i] as string) : ''
+          grid.push(ingredient(n.id, `s${i + 1}`, false) ?? (pin ? ingredient(n.id, pin, false) : null))
+        }
         const result = item(n.id, 'result', true)
         const rows = [0, 1, 2].filter((r) => grid.slice(r * 3, r * 3 + 3).some(Boolean))
         const cols = [0, 1, 2].filter((c) => [0, 1, 2].some((r) => grid[r * 3 + c]))
         if (!rows.length) {
-          err(n.id, 'The crafting grid is empty', 'ตารางคราฟว่างเปล่า')
+          const wired = [1, 2, 3, 4, 5, 6, 7, 8, 9].some((i) => inputs.has(`${n.id}|i${i}`))
+          if (wired) err(n.id, 'Drag the ingredients onto the crafting grid (Properties panel)', 'ลากวัตถุดิบไปวางบนตารางคราฟ (แผงคุณสมบัติ)')
+          else err(n.id, 'The crafting grid is empty', 'ตารางคราฟว่างเปล่า')
           break
         }
         const key: Record<string, Ingredient> = {}
@@ -641,7 +661,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           titleTh: str(d, 'titleTh'),
           icon: item(n.id, 'icon', false),
           logo: texture(n.id, 'logo', false),
-          items: itemsIn(n.id, 'items')
+          items: tabItems(n.id)
         })
         break
       }

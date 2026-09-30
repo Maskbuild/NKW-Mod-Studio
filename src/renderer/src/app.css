@@ -400,6 +400,7 @@
   margin: 16px 0 8px;
 }
 .bool-row {
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -664,6 +665,10 @@
 .nk-pin.out {
   margin-left: auto;
   text-align: right;
+}
+/* an input drawn on the right edge (recipe results): hollow square so it reads as "goes in here" */
+.nk-pin.in-right .react-flow__handle.pin {
+  border-radius: 3px;
 }
 .nk-pin.opt {
   color: var(--faint);
@@ -1112,4 +1117,101 @@ img.frame0 {
     opacity: 0;
     visibility: hidden;
   }
+}
+
+/* ── crafting grid (Properties) ── */
+.craft .cg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.cg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 8px 3px 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 12px;
+  cursor: grab;
+}
+.cg-chip.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.cg-icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.cg-icon img {
+  width: 24px;
+  height: 24px;
+}
+.cg-letter {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.cg-table {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--panel-3);
+  width: max-content;
+  max-width: 100%;
+}
+.cg-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 38px);
+  gap: 4px;
+}
+.cg-cell {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  position: relative;
+  border-radius: 6px;
+  background: var(--node-bg);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.cg-cell.filled {
+  cursor: grab;
+}
+.cg-cell.over {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, var(--node-bg));
+}
+.cg-cell .cg-icon,
+.cg-cell .cg-icon img {
+  width: 28px;
+  height: 28px;
+}
+.cg-result {
+  width: 50px;
+  height: 50px;
+  cursor: default;
+}
+.cg-arrow {
+  color: var(--muted);
+  font-size: 20px;
+}
+.cg-count {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font-size: 11px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px var(--node-bg);
 }

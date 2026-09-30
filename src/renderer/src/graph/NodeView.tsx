@@ -1,7 +1,7 @@
-import { memo, useCallback, type CSSProperties } from 'react'
-import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react'
+import { memo, useCallback, useEffect, type CSSProperties } from 'react'
+import { Handle, NodeResizer, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
 import { useTranslation } from 'react-i18next'
-import { EFFECTS, NODE_DEF_MAP, PIN_COLORS, type Category, type PinDef } from '@core/nodes/defs'
+import { EFFECTS, NODE_DEF_MAP, PIN_COLORS, visibleInputs, type Category, type PinDef } from '@core/nodes/defs'
 import { L } from '../i18n'
 import { assetUrl, vanillaIconUrl } from '../api'
 import { useItemInfo } from './VanillaPanel'
@@ -36,11 +36,12 @@ function useConnected(id: string): Set<string> {
 }
 
 function Pin({ pin, dir, on }: { pin: PinDef; dir: 'in' | 'out'; on: boolean }) {
+  const right = dir === 'out' || !!pin.right
   return (
-    <div className={`nk-pin ${dir}${pin.optional ? ' opt' : ''}`}>
+    <div className={`nk-pin ${right ? 'out' : 'in'}${dir === 'in' && right ? ' in-right' : ''}${pin.optional ? ' opt' : ''}`}>
       <Handle
         type={dir === 'in' ? 'target' : 'source'}
-        position={dir === 'in' ? Position.Left : Position.Right}
+        position={right ? Position.Right : Position.Left}
         id={pin.id}
         className={`pin${on ? ' on' : ''}${pin.multi ? ' multi' : ''}`}
         style={{ '--pin': PIN_COLORS[pin.type] } as CSSProperties}
@@ -89,14 +90,16 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
       return <VanillaRef id={String(data.item ?? '')} />
     case 'tagRef':
       return <span className="mono">#{String(data.tag ?? '')}</span>
-    case 'recipeShaped':
+    case 'recipeShaped': {
+      const grid = Array.isArray(data.grid) ? (data.grid as unknown[]) : []
       return (
         <div className="mini-grid">
           {Array.from({ length: 9 }, (_, i) => (
-            <i key={i} className={connected.has(`i:s${i + 1}`) ? 'on' : ''} />
+            <i key={i} className={connected.has(`i:s${i + 1}`) || (typeof grid[i] === 'string' && connected.has(`i:${grid[i] as string}`)) ? 'on' : ''} />
           ))}
         </div>
       )
+    }
     case 'armorSet':
       return <span className="mono">{String(data.baseId ?? '')}_*</span>
     default:
@@ -132,8 +135,15 @@ export const NodeView = memo(function NodeView({ id, type, data, selected }: Nod
   const def = NODE_DEF_MAP[type]
   const issue = useStore(useCallback((s) => s.issues[id], [id]))
   const connected = useConnected(id)
-  if (!def) return <div className="nk error">?</div>
-  const rows = Math.max(def.inputs.length, def.outputs.length)
+  const updateInternals = useUpdateNodeInternals()
+  const shown = def ? visibleInputs(def, (p) => connected.has(`i:${p}`)) : null
+  const shownKey = shown ? [...shown.left, ...shown.right].map((p) => p.id).join(',') : ''
+  // pins appear/disappear as wires are added, so React Flow must re-measure the handles
+  useEffect(() => updateInternals(id), [id, shownKey, updateInternals])
+  if (!def || !shown) return <div className="nk error">?</div>
+  const vis = shown
+  const rightPins: { pin: PinDef; dir: 'in' | 'out' }[] = [...vis.right.map((pin) => ({ pin, dir: 'in' as const })), ...def.outputs.map((pin) => ({ pin, dir: 'out' as const }))]
+  const rows = Math.max(vis.left.length, rightPins.length)
   const sub = <Summary type={type} data={data} connected={connected} />
   const title = typeof data.name === 'string' && data.name && def.registers ? `${L(def.title)} · ${data.name}` : L(def.title)
   return (
@@ -149,8 +159,8 @@ export const NodeView = memo(function NodeView({ id, type, data, selected }: Nod
       <div className="nk-pins">
         {Array.from({ length: rows }, (_, i) => (
           <div className="nk-row" key={i}>
-            {def.inputs[i] ? <Pin pin={def.inputs[i]} dir="in" on={connected.has(`i:${def.inputs[i].id}`)} /> : <span />}
-            {def.outputs[i] && <Pin pin={def.outputs[i]} dir="out" on={connected.has(`o:${def.outputs[i].id}`)} />}
+            {vis.left[i] ? <Pin pin={vis.left[i]} dir="in" on={connected.has(`i:${vis.left[i].id}`)} /> : <span />}
+            {rightPins[i] && <Pin pin={rightPins[i].pin} dir={rightPins[i].dir} on={connected.has(`${rightPins[i].dir === 'in' ? 'i' : 'o'}:${rightPins[i].pin.id}`)} />}
           </div>
         ))}
       </div>

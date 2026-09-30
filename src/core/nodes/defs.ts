@@ -53,9 +53,15 @@ export interface PinDef {
   optional?: boolean
   /** input accepts any number of wires */
   multi?: boolean
+  /** pins sharing a group appear one at a time: every wired pin plus the next free one */
+  group?: string
+  /** input drawn on the right edge of the node (e.g. a recipe result) */
+  right?: boolean
+  /** kept for old projects: only shown while something is wired into it */
+  legacy?: boolean
 }
 
-export type PropKind = 'id' | 'text' | 'int' | 'float' | 'bool' | 'select' | 'asset' | 'nsid' | 'textarea' | 'color' | 'animName'
+export type PropKind = 'id' | 'text' | 'int' | 'float' | 'bool' | 'select' | 'asset' | 'nsid' | 'textarea' | 'color' | 'animName' | 'craftGrid'
 
 export interface PropDef {
   key: string
@@ -201,13 +207,16 @@ const countProp = (label = t('Result count', 'จำนวนที่ได้'
   max: 64
 })
 
-const slots = (n: number, prefix: string, en: string, th: string, type: 'ingredient' | 'item' = 'ingredient'): PinDef[] =>
+const slots = (n: number, prefix: string, en: string, th: string, type: 'ingredient' | 'item' = 'ingredient', extra: Partial<PinDef> = {}): PinDef[] =>
   Array.from({ length: n }, (_, i) => ({
     id: `${prefix}${i + 1}`,
     label: t(`${en} ${i + 1}`, `${th} ${i + 1}`),
     type,
-    optional: true
+    optional: true,
+    ...extra
   }))
+
+const resultPin = (): PinDef => ({ id: 'result', label: t('Result', 'ผลลัพธ์'), type: 'item', right: true })
 
 const texIn = (id = 'texture', en = 'Texture', th = 'เท็กซ์เจอร์', optional = false): PinDef => ({
   id,
@@ -712,7 +721,14 @@ export const NODE_DEFS: NodeDef[] = [
           opt('copyrighted', 'Copyrighted', 'มีลิขสิทธิ์')
         ]
       },
-      { key: 'comparator', label: t('Comparator output', 'สัญญาณ Comparator'), kind: 'int', default: 1, min: 1, max: 15 }
+      { key: 'comparator', label: t('Comparator output', 'สัญญาณ Comparator'), kind: 'int', default: 1, min: 1, max: 15 },
+      {
+        key: 'loop',
+        label: t('Loop (repeat when the song ends)', 'เล่นวนซ้ำ (ลูป) เมื่อเพลงจบ'),
+        kind: 'bool',
+        default: false,
+        hint: t('Works when a player puts the disc in by hand (not via hoppers)', 'ใช้ได้เมื่อผู้เล่นใส่แผ่นด้วยมือ (ไม่รวมใส่ผ่าน Hopper)')
+      }
     ]
   },
 
@@ -721,11 +737,18 @@ export const NODE_DEFS: NodeDef[] = [
     type: 'recipeShaped',
     category: 'recipe',
     title: t('Shaped Crafting', 'คราฟแบบมีรูปแบบ'),
-    description: t('3×3 crafting grid — slots follow the grid (1-3 top row)', 'ตารางคราฟ 3×3 — ช่อง 1-3 คือแถวบน'),
+    description: t(
+      'Wire the ingredients in (a new slot appears each time, up to 9), then drag them onto the 3×3 grid in Properties.',
+      'ลากสายวัตถุดิบเข้ามา (ช่องใหม่จะโผล่ทีละช่อง สูงสุด 9) แล้วลากวางลงตาราง 3×3 ในแผงคุณสมบัติ'
+    ),
     icon: '▦',
-    inputs: [...slots(9, 's', 'Slot', 'ช่อง'), { id: 'result', label: t('Result', 'ผลลัพธ์'), type: 'item' }],
+    inputs: [
+      ...slots(9, 'i', 'Ingredient', 'วัตถุดิบ', 'ingredient', { group: 'ing' }),
+      ...slots(9, 's', 'Grid slot', 'ช่องตาราง', 'ingredient', { legacy: true }),
+      resultPin()
+    ],
     outputs: [],
-    props: [countProp()]
+    props: [countProp(), { key: 'grid', label: t('Crafting grid', 'ตารางคราฟ'), kind: 'craftGrid', default: ['', '', '', '', '', '', '', '', ''] }]
   },
   {
     type: 'recipeShapeless',
@@ -733,7 +756,7 @@ export const NODE_DEFS: NodeDef[] = [
     title: t('Shapeless Crafting', 'คราฟแบบไม่มีรูปแบบ'),
     description: t('Ingredients in any position', 'วางวัตถุดิบตรงไหนก็ได้'),
     icon: '⁂',
-    inputs: [...slots(9, 'i', 'Ingredient', 'วัตถุดิบ'), { id: 'result', label: t('Result', 'ผลลัพธ์'), type: 'item' }],
+    inputs: [...slots(9, 'i', 'Ingredient', 'วัตถุดิบ', 'ingredient', { group: 'ing' }), resultPin()],
     outputs: [],
     props: [countProp()]
   },
@@ -745,7 +768,7 @@ export const NODE_DEFS: NodeDef[] = [
     icon: '🔥',
     inputs: [
       { id: 'input', label: t('Input', 'วัตถุดิบ'), type: 'ingredient' },
-      { id: 'result', label: t('Result', 'ผลลัพธ์'), type: 'item' }
+      resultPin()
     ],
     outputs: [],
     props: [
@@ -773,7 +796,7 @@ export const NODE_DEFS: NodeDef[] = [
     icon: '🪚',
     inputs: [
       { id: 'input', label: t('Input', 'วัตถุดิบ'), type: 'ingredient' },
-      { id: 'result', label: t('Result', 'ผลลัพธ์'), type: 'item' }
+      resultPin()
     ],
     outputs: [],
     props: [countProp()]
@@ -788,7 +811,7 @@ export const NODE_DEFS: NodeDef[] = [
       { id: 'template', label: t('Template', 'แม่แบบ'), type: 'ingredient', optional: true },
       { id: 'base', label: t('Base', 'ของตั้งต้น'), type: 'ingredient' },
       { id: 'addition', label: t('Addition', 'วัสดุเสริม'), type: 'ingredient' },
-      { id: 'result', label: t('Result', 'ผลลัพธ์'), type: 'item' }
+      resultPin()
     ],
     outputs: [],
     props: []
@@ -803,10 +826,10 @@ export const NODE_DEFS: NodeDef[] = [
     icon: '🔪',
     inputs: [
       { id: 'input', label: t('Input', 'วัตถุดิบ'), type: 'ingredient' },
-      { id: 'out1', label: t('Result 1', 'ผลลัพธ์ 1'), type: 'item' },
-      { id: 'out2', label: t('Result 2', 'ผลลัพธ์ 2'), type: 'item', optional: true },
-      { id: 'out3', label: t('Result 3', 'ผลลัพธ์ 3'), type: 'item', optional: true },
-      { id: 'out4', label: t('Result 4', 'ผลลัพธ์ 4'), type: 'item', optional: true }
+      { id: 'out1', label: t('Result 1', 'ผลลัพธ์ 1'), type: 'item', right: true, group: 'out' },
+      { id: 'out2', label: t('Result 2', 'ผลลัพธ์ 2'), type: 'item', optional: true, right: true, group: 'out' },
+      { id: 'out3', label: t('Result 3', 'ผลลัพธ์ 3'), type: 'item', optional: true, right: true, group: 'out' },
+      { id: 'out4', label: t('Result 4', 'ผลลัพธ์ 4'), type: 'item', optional: true, right: true, group: 'out' }
     ],
     outputs: [],
     props: [
@@ -833,9 +856,9 @@ export const NODE_DEFS: NodeDef[] = [
     description: t("Farmer's Delight cooking pot recipe (up to 6 ingredients)", "สูตรหม้อต้มของ Farmer's Delight (วัตถุดิบสูงสุด 6 อย่าง)"),
     icon: '🍲',
     inputs: [
-      ...slots(6, 'i', 'Ingredient', 'วัตถุดิบ'),
+      ...slots(6, 'i', 'Ingredient', 'วัตถุดิบ', 'ingredient', { group: 'ing' }),
       { id: 'container', label: t('Container (e.g. bowl)', 'ภาชนะ (เช่น ชาม)'), type: 'item', optional: true },
-      { id: 'result', label: t('Result', 'ผลลัพธ์'), type: 'item' }
+      resultPin()
     ],
     outputs: [],
     props: [
@@ -878,15 +901,16 @@ export const NODE_DEFS: NodeDef[] = [
     category: 'util',
     title: t('Creative Tab', 'แท็บครีเอทีฟ'),
     description: t(
-      'A tab in the creative inventory. Plug a logo texture (or an item) as its icon and wire every item it should show into "Items". Items not placed in any tab go to the main tab.',
-      'แท็บในหน้าครีเอทีฟ — ใส่เท็กซ์เจอร์โลโก้ (หรือไอเทม) เป็นไอคอน แล้วลากสายไอเทมทุกชิ้นที่ต้องการเข้าช่อง "ไอเทม" ไอเทมที่ไม่ได้อยู่ในแท็บไหนจะไปอยู่แท็บหลัก'
+      'A tab in the creative inventory. Plug a logo texture (or an item) as its icon, then wire items in — a new Item slot appears each time. Items shown in the tab follow the slot order.',
+      'แท็บในหน้าครีเอทีฟ — ใส่เท็กซ์เจอร์โลโก้ (หรือไอเทม) เป็นไอคอน แล้วลากสายไอเทมเข้ามา ช่องไอเทมใหม่จะโผล่ทีละช่อง ลำดับในแท็บเรียงตามช่อง'
     ),
     icon: '🗂',
     registers: true,
     inputs: [
       texIn('logo', 'Logo texture', 'เท็กซ์เจอร์โลโก้', true),
       { id: 'icon', label: t('Icon item (instead of logo)', 'ไอเทมไอคอน (แทนโลโก้)'), type: 'item', optional: true },
-      { id: 'items', label: t('Items (any number)', 'ไอเทม (กี่ชิ้นก็ได้)'), type: 'item', optional: true, multi: true }
+      ...slots(64, 'item', 'Item', 'ไอเทม', 'item', { group: 'items' }),
+      { id: 'items', label: t('Items', 'ไอเทม'), type: 'item', optional: true, multi: true, legacy: true }
     ],
     outputs: [],
     props: [
@@ -928,4 +952,24 @@ export function defaultData(def: NodeDef): Record<string, unknown> {
 
 export function pinOf(def: NodeDef, handle: string, dir: 'in' | 'out'): PinDef | undefined {
   return (dir === 'in' ? def.inputs : def.outputs).find((p) => p.id === handle)
+}
+
+/**
+ * Inputs to draw, split by side. Grouped pins grow: every wired pin plus the first free one;
+ * legacy pins only appear while wired. `wired(id)` says whether an input has a wire.
+ */
+export function visibleInputs(def: NodeDef, wired: (id: string) => boolean): { left: PinDef[]; right: PinDef[] } {
+  const left: PinDef[] = []
+  const right: PinDef[] = []
+  const freeShown = new Set<string>()
+  for (const p of def.inputs) {
+    const on = wired(p.id)
+    if (p.legacy && !on) continue
+    if (p.group && !on) {
+      if (freeShown.has(p.group)) continue
+      freeShown.add(p.group)
+    }
+    ;(p.right ? right : left).push(p)
+  }
+  return { left, right }
 }

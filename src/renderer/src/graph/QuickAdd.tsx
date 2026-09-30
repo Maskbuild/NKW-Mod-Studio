@@ -13,7 +13,7 @@ export interface Pending {
 
 /** First pin on `def` that can connect to the pending wire. */
 export function matchPin(def: NodeDef, p: Pending): string | null {
-  if (p.dir === 'out') return def.inputs.find((i) => canConnect(p.type, i.type))?.id ?? null
+  if (p.dir === 'out') return def.inputs.find((i) => !i.legacy && canConnect(p.type, i.type))?.id ?? null
   return def.outputs.find((o) => canConnect(o.type, p.type))?.id ?? null
 }
 

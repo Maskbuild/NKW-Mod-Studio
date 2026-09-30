@@ -27,8 +27,8 @@ by **Nam Kueap Wan (NKW)**
 | 🛡 Armor | Armor materials + **individual armor pieces** (helmet / chestplate / leggings / boots), 2D or **3D with GeckoLib** including animations |
 | ✨ Effects | 30 status effects, level 1–1000, infinite duration, toggle particles and status icon — on food (when eaten), weapons (on hit) and armor (while worn) |
 | 🎞 Animation | Animated textures, looping GeckoLib animations on 3D armor |
-| 🎵 Sound | Sound files, sound events, **music discs** (length taken from the audio file, copyright label), built-in **MP3 / WAV / MP4 / … → OGG converter** |
-| 🍳 Recipes | Shaped & shapeless crafting, furnace / blast furnace / smoker / campfire, stonecutter, smithing table |
+| 🎵 Sound | Sound files, sound events, **music discs** (length taken from the audio file, copyright label, optional loop), built-in **MP3 / WAV / MP4 / … → OGG converter** |
+| 🍳 Recipes | Shaped crafting with a drag & drop 3×3 grid, shapeless crafting, furnace / blast furnace / smoker / campfire, stonecutter, smithing table |
 | 🍲 Farmer's Delight | Cutting board and cooking pot recipes (the skillet uses campfire recipes); Farmer's Delight is added automatically when testing |
 | 🗂 Creative tabs | Multiple tabs with a logo icon; wire any items into a tab (items not in a tab can be obtained with `/give`) |
 | 📦 Game items | Every Minecraft and Farmer's Delight item of each version with icons and tags, grouped by what they are used for — drag them in as ingredients |
@@ -93,7 +93,7 @@ tests         unit tests (vitest)
 
 What the AI-generated code was checked with:
 
-- 36 unit tests (compiler, generators for every loader × version, Blockbench conversion, path-traversal protection, audio import)
+- 38 unit tests (compiler, generators for every loader × version, Blockbench conversion, path-traversal protection, audio import)
 - **Real Gradle builds of a sample mod using every node: 23/23 loader × version targets pass** (compile + `.jar`)
 - **Minecraft actually launched** with the sample mod on Fabric, Quilt, Forge and NeoForge across 1.16.5–1.21.4 — mod registered, no model/texture errors
 - Recipe, loot table, tag, jukebox song and equipment JSON checked against the real vanilla and Farmer's Delight files

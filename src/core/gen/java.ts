@@ -95,7 +95,10 @@ const MC = {
   LivingEntity: 'net.minecraft.world.entity.LivingEntity',
   Entity: 'net.minecraft.world.entity.Entity',
   Level: 'net.minecraft.world.level.Level',
-  ApplyEffects: 'net.minecraft.world.item.consume_effects.ApplyStatusEffectsConsumeEffect'
+  ApplyEffects: 'net.minecraft.world.item.consume_effects.ApplyStatusEffectsConsumeEffect',
+  BlockEntity: 'net.minecraft.world.level.block.entity.BlockEntity',
+  JukeboxBlockEntity: 'net.minecraft.world.level.block.entity.JukeboxBlockEntity',
+  InteractionResult: 'net.minecraft.world.InteractionResult'
 }
 
 /** `new NkwEffect(...)` expression for one effect. */
@@ -582,6 +585,9 @@ ${accept(tb, '            ')}
   }
 
   // ───────── main class ─────────
+  const loopDiscs = ir.items.filter((i) => i.disc?.loop)
+  if (loopDiscs.length) genJukeboxLoop(ctx, loopDiscs, get, out)
+
   const count = `${ir.items.length + ir.blocks.length} items, ${ir.blocks.length} blocks, ${ir.sounds.length} sounds, ${ir.recipes.length} recipes`
   const idFn = p.rlFactory
     ? `public static ResourceLocation id(String path) {\n        return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);\n    }`
@@ -605,7 +611,7 @@ public class NkwMod implements ModInitializer {
         ModBlocks.init();
         ModItems.init();
         ModTabs.init();
-        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${loopDiscs.length ? '        NkwJukeboxLoop.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 }`
     } else {
@@ -630,7 +636,7 @@ public class NkwMod {
     ${ctor}
         NkwTags.init();
 ${regs.map((r) => `        ${r}.register(bus);`).join('\n')}
-${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${loopDiscs.length ? '        NkwJukeboxLoop.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 
     ${idFn}
@@ -1206,6 +1212,122 @@ ${propsHelper}}`)
 
 
 /** Hidden items that exist only to show a tab's logo texture as its icon. */
+/**
+ * Music discs set to loop. Vanilla jukeboxes play a disc once, so this class remembers the jukeboxes a
+ * player filled with a looping disc and restarts the song when it ends. Discs inserted by hoppers are
+ * not seen (there is no event for that) and play once.
+ */
+function genJukeboxLoop(ctx: GenCtx, discs: ItemIR[], get: (cls: string, id: string) => string, out: (cls: string, text: string) => void): void {
+  const { pkg, loader, p } = ctx
+  const fab = fabricLike(loader)
+  const neo = loader === 'neoforge'
+  const oldForge = !neo && (p.mc === '1.16.5' || p.mc === '1.18.2')
+  // how each era tells that the song ended and starts it again
+  const era = p.jukeboxSongs ? 'song' : p.mc.startsWith('1.20') ? 'record' : p.mc === '1.19.2' ? 'timer19' : 'timer'
+  const j = new JavaFile(pkg, 'NkwJukeboxLoop').use(MC.Item, MC.ItemStack, MC.Level, MC.BlockPos, MC.BlockEntity, MC.JukeboxBlockEntity, 'java.util.Iterator', 'java.util.HashMap', 'java.util.Map', 'java.util.WeakHashMap')
+  const current = era === 'song' ? 'jukebox.getTheItem()' : era === 'record' ? 'jukebox.getItem(0)' : 'jukebox.getRecord()'
+  const restart =
+    era === 'song'
+      ? 'if (!jukebox.getSongPlayer().isPlaying()) jukebox.tryForcePlaySong();'
+      : era === 'record'
+        ? 'if (!jukebox.isRecordPlaying()) jukebox.startPlaying();'
+        : `long now = level.getGameTime();
+            if (now - entry.getValue() >= ticks) {
+                level.levelEvent(1010, pos, Item.getId(item));${era === 'timer19' ? '\n                jukebox.playRecord();' : ''}
+                entry.setValue(now);
+            }`
+
+  let hooks: string
+  if (fab) {
+    j.use('net.fabricmc.fabric.api.event.player.UseBlockCallback', 'net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents', MC.InteractionResult)
+    hooks = `    public static void init() {
+        UseBlockCallback.EVENT.register((player, level, hand, hit) -> {
+            onUse(level, hit.getBlockPos(), player.getItemInHand(hand));
+            return InteractionResult.PASS;
+        });
+        ServerTickEvents.END_WORLD_TICK.register(level -> tick(level));
+    }`
+  } else {
+    const base = neo ? 'net.neoforged.neoforge' : 'net.minecraftforge'
+    j.use(`${base}.event.entity.player.PlayerInteractEvent`, neo ? 'net.neoforged.neoforge.common.NeoForge' : 'net.minecraftforge.common.MinecraftForge')
+    const bus = neo ? 'NeoForge.EVENT_BUS' : 'MinecraftForge.EVENT_BUS'
+    let tickSig: string
+    let tickBody: string
+    if (neo && p.jukeboxSongs) {
+      j.use('net.neoforged.neoforge.event.tick.LevelTickEvent')
+      tickSig = 'LevelTickEvent.Post event'
+      tickBody = 'tick(event.getLevel());'
+    } else {
+      j.use(`${base}.event.TickEvent`)
+      tickSig = `TickEvent.${oldForge ? 'WorldTickEvent' : 'LevelTickEvent'} event`
+      tickBody = `if (event.phase == TickEvent.Phase.END) tick(event.${oldForge ? 'world' : 'level'});`
+    }
+    hooks = `    public static void init() {
+        ${bus}.addListener(NkwJukeboxLoop::onRightClick);
+        ${bus}.addListener(NkwJukeboxLoop::onTick);
+    }
+
+    private static void onRightClick(PlayerInteractEvent.RightClickBlock event) {
+        onUse(event.${oldForge ? 'getWorld()' : 'getLevel()'}, event.getPos(), event.getItemStack());
+    }
+
+    private static void onTick(${tickSig}) {
+        ${tickBody}
+    }`
+  }
+
+  out(
+    'NkwJukeboxLoop',
+    j.render(`
+/** Restarts looping music discs in jukeboxes when their song ends. */
+public final class NkwJukeboxLoop {
+    /** level -> jukebox position -> game time the song (re)started */
+    private static final Map<Level, Map<BlockPos, Long>> TRACKED = new WeakHashMap<>();
+
+    private NkwJukeboxLoop() {}
+
+${hooks}
+
+    /** Song length in ticks (plus a short pause) for looping discs, 0 for everything else. */
+    private static int loopTicks(Item item) {
+${discs.map((d) => `        if (item == ${get('ModItems', d.id)}) return ${d.disc!.length * 20 + 20};`).join('\n')}
+        return 0;
+    }
+
+    private static void onUse(Level level, BlockPos pos, ItemStack held) {
+        if (level.isClientSide || loopTicks(held.getItem()) == 0) return;
+        if (!(level.getBlockEntity(pos) instanceof JukeboxBlockEntity)) return;
+        TRACKED.computeIfAbsent(level, l -> new HashMap<>()).put(pos.immutable(), level.getGameTime());
+    }
+
+    private static void tick(Level level) {
+        if (level.isClientSide) return;
+        Map<BlockPos, Long> jukeboxes = TRACKED.get(level);
+        if (jukeboxes == null || jukeboxes.isEmpty()) return;
+        Iterator<Map.Entry<BlockPos, Long>> it = jukeboxes.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<BlockPos, Long> entry = it.next();
+            BlockPos pos = entry.getKey();
+            if (!level.isLoaded(pos)) continue;
+            BlockEntity be = level.getBlockEntity(pos);
+            if (!(be instanceof JukeboxBlockEntity)) {
+                it.remove();
+                continue;
+            }
+            JukeboxBlockEntity jukebox = (JukeboxBlockEntity) be;
+            Item item = ${current}.getItem();
+            int ticks = loopTicks(item);
+            if (ticks == 0) {
+                it.remove();
+                continue;
+            }
+            ${restart}
+        }
+    }
+}`)
+  )
+}
+
 export function tabIconItems(ctx: GenCtx): { id: string; texture: string }[] {
   return ctx.ir.tabs.filter((t) => t.logo && !t.icon).map((t) => ({ id: `${t.id}_tab_icon`, texture: t.logo! }))
 }

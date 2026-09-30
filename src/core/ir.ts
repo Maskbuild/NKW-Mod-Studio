@@ -52,7 +52,7 @@ export interface ItemIR extends Named {
   food?: { nutrition: number; saturation: number; alwaysEdible: boolean; fast: boolean; effects: EffectIR[] }
   tool?: { type: ToolType; material: string; damage: number; speed: number; effects: EffectIR[] }
   armor?: { material: string; slot: ArmorSlot; geo: GeoRef | null; effects: EffectIR[] }
-  disc?: { sound: string; song: string; songTh: string; length: number; comparator: number; copyright: string }
+  disc?: { sound: string; song: string; songTh: string; length: number; comparator: number; copyright: string; loop?: boolean }
   /** registry id (without namespace) of a mod block this item places */
   places?: string | null
   /** 3D model shown in hand while `texture` is used as the inventory icon */

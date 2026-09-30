@@ -53,6 +53,8 @@ const CLASSES: Record<string, string> = {
   'net.minecraft.world.entity.Entity': 'net.minecraft.entity.Entity',
   'net.minecraft.world.level.Level': 'net.minecraft.world.World',
   'net.minecraft.world.item.ItemNameBlockItem': 'net.minecraft.item.BlockNamedItem',
+  'net.minecraft.world.level.block.entity.BlockEntity': 'net.minecraft.tileentity.TileEntity',
+  'net.minecraft.world.level.block.entity.JukeboxBlockEntity': 'net.minecraft.tileentity.JukeboxTileEntity',
   // Forge API that moved later
   'net.minecraftforge.registries.RegistryObject': 'net.minecraftforge.fml.RegistryObject'
 }
@@ -77,7 +79,9 @@ const NAMES: [RegExp, string][] = [
   [/\bMobEffects\b/g, 'Effects'],
   [/\bMobEffect\b/g, 'Effect'],
   [/\bLevel\b/g, 'World'],
-  [/\bItemNameBlockItem\b/g, 'BlockNamedItem']
+  [/\bItemNameBlockItem\b/g, 'BlockNamedItem'],
+  [/\bJukeboxBlockEntity\b/g, 'JukeboxTileEntity'],
+  [/\bBlockEntity\b/g, 'TileEntity']
 ]
 
 export function toMcp1165(java: string): string {

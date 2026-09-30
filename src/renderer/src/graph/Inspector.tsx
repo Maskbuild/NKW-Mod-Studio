@@ -12,6 +12,8 @@ import { newId, useStore, edgeStyle, type FlowNode } from '../store'
 import { TargetPicker } from '../components/TargetPicker'
 import { IAlert, IUpload, Logo } from '../components/Icons'
 
+import { CraftGrid } from './CraftGrid'
+
 const ModelPreview = lazy(() => import('./ModelPreview'))
 
 const VANILLA_ITEMS = [
@@ -390,6 +392,7 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
         <div className="bool-row">
           <span>{L(p.label)}</span>
           <button className={`switch${value ? ' on' : ''}`} role="switch" aria-checked={!!value} onClick={() => set(!value)} />
+          {p.hint && <span className="hint" style={{ flexBasis: '100%' }}>{L(p.hint)}</span>}
         </div>
       )
     case 'int':
@@ -455,6 +458,8 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
       return <NsidField node={node} p={p} />
     case 'animName':
       return <AnimNameField node={node} p={p} />
+    case 'craftGrid':
+      return <CraftGrid node={node} />
     default:
       return (
         <div className="field">
@@ -591,6 +596,23 @@ function ProjectSettings() {
   )
 }
 
+/** Pins for the summary list: growing groups collapse into one "Ingredient ×9" entry, legacy pins are left out. */
+function pinSummary(def: NodeDef): { p: NodeDef['inputs'][number]; n: number }[] {
+  const out: { p: NodeDef['inputs'][number]; n: number }[] = []
+  const groups = new Map<string, { p: NodeDef['inputs'][number]; n: number }>()
+  for (const p of [...def.inputs, ...def.outputs]) {
+    if (p.legacy) continue
+    const g = p.group && groups.get(p.group)
+    if (g) g.n++
+    else {
+      const e = { p, n: 1 }
+      if (p.group) groups.set(p.group, e)
+      out.push(e)
+    }
+  }
+  return out
+}
+
 export function Inspector() {
   const { t } = useTranslation()
   const selectedIds = useStoreWithEqualityFn(useStore, (s) => s.nodes.filter((n) => n.selected).map((n) => n.id), shallow)
@@ -634,9 +656,9 @@ export function Inspector() {
             {t('ws.inputs')} / {t('ws.outputs')}
           </div>
           <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
-            {[...def.inputs, ...def.outputs].map((p, i) => (
+            {pinSummary(def).map(({ p, n }, i) => (
               <span key={`${p.id}${i}`} className="badge" style={{ background: 'transparent', border: `1.5px solid ${PIN_COLORS[p.type]}` }}>
-                {L(p.label)}
+                {n > 1 ? `${L(p.label).replace(/\s*\d+$/, '')} ×${n}` : L(p.label)}
               </span>
             ))}
           </div>

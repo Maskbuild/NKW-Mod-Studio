@@ -6,6 +6,7 @@ import { compile } from '../src/core/compile/compile'
 import { FALLBACK_DEPS, TOOL_VERSIONS, generate } from '../src/core/gen/index'
 import { convertBBModel, rotateBoxes, shapeBoxes } from '../src/core/gen/model'
 import { PROFILES } from '../src/core/gen/profiles'
+import { NODE_DEF_MAP, visibleInputs } from '../src/core/nodes/defs'
 import { ASSET_RE, ProjectSchema, toId, type Project } from '../src/core/project'
 import { safeJoin } from '../src/main/services/builder'
 import { writeFixture } from '../scripts/fixture'
@@ -56,12 +57,34 @@ describe('compiler', () => {
     expect(withMain.tabs[0].items).not.toContain('nkwtest:ruby_crop')
     const disc = ir.items.find((i) => i.id === 'music_disc_nkw')!
     expect(disc.disc!.length).toBe(124)
+    expect(disc.disc!.loop).toBe(true)
+    expect(ir.tabs[0].items.slice(0, 3)).toEqual(['nkwtest:ruby', 'nkwtest:shiny_ruby', 'nkwtest:ruby_block'])
     expect(soup.food!.effects[2]).toMatchObject({ amplifier: 299, infinite: true })
   })
   it('trims shaped recipe patterns', () => {
     const { ir } = compile(project)
     const sword = ir.recipes.find((r) => r.kind === 'shaped' && r.result.endsWith('ruby_sword'))
     expect(sword && sword.kind === 'shaped' && sword.pattern).toEqual(['A', 'A', 'B'])
+  })
+  it('builds the shaped pattern from the grid, keeping old s1..s9 wires working', () => {
+    const { ir } = compile(project)
+    const old = ir.recipes.find((r) => r.kind === 'shaped' && r.result.endsWith('ruby_block'))
+    expect(old && old.kind === 'shaped' && old.pattern).toEqual(['AAA', 'AAA', 'AAA'])
+    // wired ingredients that were never placed on the grid → a clear hint
+    const p = structuredClone(project)
+    p.graph.nodes.find((n) => n.id === 'r2')!.data.grid = []
+    expect(compile(p).diagnostics.some((d) => d.nodeId === 'r2' && /grid/.test(d.message.en))).toBe(true)
+  })
+  it('grows grouped pins one at a time and hides unwired legacy pins', () => {
+    const def = NODE_DEF_MAP.recipeShaped
+    const none = visibleInputs(def, () => false)
+    expect(none.left.map((p) => p.id)).toEqual(['i1'])
+    expect(none.right.map((p) => p.id)).toEqual(['result'])
+    const two = visibleInputs(def, (id) => id === 'i1' || id === 'i2' || id === 's5')
+    expect(two.left.map((p) => p.id)).toEqual(['i1', 'i2', 'i3', 's5'])
+    const all = visibleInputs(def, (id) => /^i[1-9]$/.test(id))
+    expect(all.left.length).toBe(9)
+    expect(visibleInputs(NODE_DEF_MAP.creativeTab, () => false).left.map((p) => p.id)).toEqual(['logo', 'icon', 'item1'])
   })
   it('follows reroute nodes', () => {
     const { ir } = compile(project)

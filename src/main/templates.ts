@@ -65,21 +65,20 @@ function build(id: TemplateId, modName: string): Builder {
       const slow = b.node('effect', 1, 3.6, { effect: 'MOVEMENT_SLOWDOWN', level: 1, seconds: 3, chance: 0.5 })
       b.wire(slow, 'out', sword, 'effect1')
       b.wire(mat, 'out', sword, 'material')
-      const r1 = b.node('recipeShaped', 3, 0)
-      for (let i = 1; i <= 9; i++) b.wire(ruby, 'out', r1, `s${i}`)
+      const r1 = b.node('recipeShaped', 3, 0, { grid: Array(9).fill('i1') })
+      b.wire(ruby, 'out', r1, 'i1')
       b.wire(block, 'out', r1, 'result')
       const r2 = b.node('recipeShapeless', 3, 3, { count: 9 })
       b.wire(block, 'out', r2, 'i1')
       b.wire(ruby, 'out', r2, 'result')
       const stick = b.node('itemRef', 2, 6, { item: 'minecraft:stick' })
-      const r3 = b.node('recipeShaped', 4, 5)
-      b.wire(ruby, 'out', r3, 's2')
-      b.wire(ruby, 'out', r3, 's5')
-      b.wire(stick, 'out', r3, 's8')
+      const r3 = b.node('recipeShaped', 4, 5, { grid: ['', 'i1', '', '', 'i1', '', '', 'i2', ''] })
+      b.wire(ruby, 'out', r3, 'i1')
+      b.wire(stick, 'out', r3, 'i2')
       b.wire(sword, 'out', r3, 'result')
       const t = tab()
       b.wire(ruby, 'out', t, 'icon')
-      for (const it of [ruby, block, sword]) b.wire(it, 'out', t, 'items')
+      ;[ruby, block, sword].forEach((it, i) => b.wire(it, 'out', t, `item${i + 1}`))
       break
     }
     case 'armor': {
@@ -110,12 +109,12 @@ function build(id: TemplateId, modName: string): Builder {
       b.wire(nightVision, 'out', pieces[0], 'effect1')
       const speed = b.node('effect', 1, 12.2, { effect: 'MOVEMENT_SPEED', level: 1, particles: false })
       b.wire(speed, 'out', pieces[3], 'effect1')
-      const r = b.node('recipeShaped', 3, 0)
-      for (const s of ['s1', 's2', 's3', 's4', 's6']) b.wire(gem, 'out', r, s)
+      const r = b.node('recipeShaped', 3, 0, { grid: ['i1', 'i1', 'i1', 'i1', '', 'i1', '', '', ''] })
+      b.wire(gem, 'out', r, 'i1')
       b.wire(pieces[0], 'out', r, 'result')
       const t = tab()
       b.wire(pieces[1], 'out', t, 'icon')
-      for (const it of [gem, ...pieces]) b.wire(it, 'out', t, 'items')
+      ;[gem, ...pieces].forEach((it, i) => b.wire(it, 'out', t, `item${i + 1}`))
       break
     }
     case 'music': {
@@ -129,7 +128,7 @@ function build(id: TemplateId, modName: string): Builder {
       b.wire(tDisc, 'out', disc, 'texture')
       const t = tab()
       b.wire(disc, 'out', t, 'icon')
-      b.wire(disc, 'out', t, 'items')
+      b.wire(disc, 'out', t, 'item1')
       break
     }
     case 'farmersDelight': {
@@ -151,7 +150,7 @@ function build(id: TemplateId, modName: string): Builder {
       b.wire(kelp, 'out', cut, 'out1')
       const t = tab()
       b.wire(soup, 'out', t, 'icon')
-      b.wire(soup, 'out', t, 'items')
+      b.wire(soup, 'out', t, 'item1')
       break
     }
   }

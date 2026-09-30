@@ -34,6 +34,15 @@ const en = {
     create: 'Create project',
     cancel: 'Cancel'
   },
+  craft: {
+    title: 'Crafting grid',
+    noIngredients: 'Wire items into the node’s Ingredient pins — they show up here.',
+    chipHint: 'Drag onto the grid (or click, then click a cell)',
+    cellHint: 'Click to clear · drag to move · drag out to remove',
+    result: 'Result',
+    hint: 'Empty cells stay empty in the recipe.',
+    clear: 'Clear grid'
+  },
   ws: {
     home: 'Home',
     saved: 'Saved',
@@ -165,6 +174,15 @@ const th: Dict = {
     template: 'เทมเพลต',
     create: 'สร้างโปรเจกต์',
     cancel: 'ยกเลิก'
+  },
+  craft: {
+    title: 'ตารางคราฟ',
+    noIngredients: 'ลากสายไอเทมเข้าช่อง "วัตถุดิบ" ของ node แล้วของจะมาโผล่ตรงนี้',
+    chipHint: 'ลากไปวางบนตาราง (หรือคลิกแล้วคลิกช่องที่ต้องการ)',
+    cellHint: 'คลิกเพื่อล้าง · ลากเพื่อย้าย · ลากออกนอกตารางเพื่อลบ',
+    result: 'ผลลัพธ์',
+    hint: 'ช่องที่ว่างจะว่างในสูตรด้วย',
+    clear: 'ล้างตาราง'
   },
   ws: {
     home: 'หน้าแรก',
