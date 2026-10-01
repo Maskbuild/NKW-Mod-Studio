@@ -1,26 +1,12 @@
 import { ASSET_RE, ID_RE, NSID_RE, type GraphNode, type Project, type Target } from '../project'
 import { parseFit } from '../gen/geo'
 import { RESERVED_CLASSES, scriptAppliesTo, scriptClassName, scriptEntrypoints } from '../scriptApi'
-import { EFFECTS, NODE_DEF_MAP, canConnect, pinOf, type L10n, type PinType } from '../nodes/defs'
-import type {
-  ArmorMatIR,
-  ArmorSlot,
-  BlockIR,
-  Diagnostic,
-  EffectIR,
-  GeoRef,
-  Ingredient,
-  ItemIR,
-  ModIR,
-  ModelRef,
-  RecipeIR,
-  SoundIR,
-  ToolMatIR
-} from '../ir'
+import { EFFECTS, NODE_DEF_MAP, canConnect, pinOf, type L10n } from '../nodes/defs'
+import type { ArmorMatIR, ArmorSlot, BlockIR, Diagnostic, EffectIR, GeoRef, Ingredient, ItemIR, ModIR, ModelRef, SoundIR, ToolMatIR } from '../ir'
 import { farmersDelightFor, getProfile, isSupported } from '../gen/profiles'
 import { separateIconMode } from '../gen/assets'
 
-export const ARMOR_SLOTS: ArmorSlot[] = ['helmet', 'chestplate', 'leggings', 'boots']
+const ARMOR_SLOTS: ArmorSlot[] = ['helmet', 'chestplate', 'leggings', 'boots']
 const ARMOR_NAME: Record<ArmorSlot, L10n> = {
   helmet: { en: 'Helmet', th: 'หมวก' },
   chestplate: { en: 'Chestplate', th: 'เสื้อเกราะ' },
@@ -39,13 +25,13 @@ export interface CompileResult {
   diagnostics: Diagnostic[]
 }
 
+/** Material id used by tools / armor with no material wired in (iron stats). */
+const DEFAULT_MAT = 'nkw_iron'
+
 /**
  * Graph → IR. Pure function: no filesystem access, safe to run in a Web Worker.
  * Pass `target` to also check loader/version specific compatibility.
  */
-/** Material id used by tools / armor with no material wired in (iron stats). */
-export const DEFAULT_MAT = 'nkw_iron'
-
 /**
  * Brackets / quotes the generated Java would choke on, found before building (Gradle would report the
  * same, much later). Skips strings, chars and comments.
@@ -72,7 +58,12 @@ export function scriptBracketProblem(code: string): { en: string; th: string; li
     if (c === '"' || c === "'") {
       let j = i + 1
       while (j < code.length && code[j] !== c && code[j] !== '\n') j += code[j] === '\\' ? 2 : 1
-      if (code[j] !== c) return { en: `unclosed ${c === '"' ? 'string' : 'character'} (line ${line})`, th: `${c === '"' ? 'ข้อความ' : 'ตัวอักษร'}ไม่ได้ปิดเครื่องหมายคำพูด (บรรทัด ${line})`, line }
+      if (code[j] !== c)
+        return {
+          en: `unclosed ${c === '"' ? 'string' : 'character'} (line ${line})`,
+          th: `${c === '"' ? 'ข้อความ' : 'ตัวอักษร'}ไม่ได้ปิดเครื่องหมายคำพูด (บรรทัด ${line})`,
+          line
+        }
       i = j
       continue
     }
@@ -536,7 +527,8 @@ export function compile(project: Project, target?: Target): CompileResult {
         const slot = (ARMOR_SLOTS.includes(str(d, 'slot') as ArmorSlot) ? str(d, 'slot') : 'helmet') as ArmorSlot
         // inventory icon: the icon texture, or the 3D model itself
         const modelIcon = str(d, 'iconFrom') === 'model'
-        if (modelIcon && !g) warn(n.id, 'Connect a 3D model to use it as the icon (the icon texture is used)', 'ต่อโมเดล 3D ก่อนจึงจะใช้เป็นไอคอนได้ (ตอนนี้ใช้รูปไอคอนแทน)')
+        if (modelIcon && !g)
+          warn(n.id, 'Connect a 3D model to use it as the icon (the icon texture is used)', 'ต่อโมเดล 3D ก่อนจึงจะใช้เป็นไอคอนได้ (ตอนนี้ใช้รูปไอคอนแทน)')
         const iconModel = modelIcon && !!g
         ir.items.push({
           id: regId(n),
@@ -608,7 +600,11 @@ export function compile(project: Project, target?: Target): CompileResult {
             comparator: clamp(Math.round(num(d, 'comparator', 1)), 1, 15),
             copyright: ['free', 'licensed', 'copyrighted', 'none'].includes(str(d, 'copyright')) ? str(d, 'copyright') : 'none',
             // older projects stored a plain "loop" switch
-            onEnd: ['eject', 'loop', 'stay'].includes(str(d, 'onEnd')) ? (str(d, 'onEnd') as 'eject' | 'loop' | 'stay') : bool(d, 'loop', false) ? 'loop' : 'eject',
+            onEnd: ['eject', 'loop', 'stay'].includes(str(d, 'onEnd'))
+              ? (str(d, 'onEnd') as 'eject' | 'loop' | 'stay')
+              : bool(d, 'loop', false)
+                ? 'loop'
+                : 'eject',
             range: clamp(Math.round(num(d, 'range', 64)), 4, 256)
           }
         })
@@ -662,7 +658,14 @@ export function compile(project: Project, target?: Target): CompileResult {
         const result = item(n.id, 'result', true)
         if (!ings.length) err(n.id, 'Add at least one ingredient', 'ใส่วัตถุดิบอย่างน้อย 1 อย่าง')
         else if (result)
-          ir.recipes.push({ kind: 'shapeless', name: recipeName(result, 'shapeless'), nodeId: n.id, ingredients: ings, result, count: clamp(num(d, 'count', 1), 1, 64) })
+          ir.recipes.push({
+            kind: 'shapeless',
+            name: recipeName(result, 'shapeless'),
+            nodeId: n.id,
+            ingredients: ings,
+            result,
+            count: clamp(num(d, 'count', 1), 1, 64)
+          })
         break
       }
       case 'recipeCooking': {
@@ -670,14 +673,30 @@ export function compile(project: Project, target?: Target): CompileResult {
         const result = item(n.id, 'result', true)
         const station = str(d, 'kind', 'smelting') as 'smelting'
         if (input && result)
-          ir.recipes.push({ kind: 'cooking', station, name: recipeName(result, station), nodeId: n.id, input, result, xp: num(d, 'xp', 0.7), time: clamp(Math.round(num(d, 'time', 200)), 1, 72000) })
+          ir.recipes.push({
+            kind: 'cooking',
+            station,
+            name: recipeName(result, station),
+            nodeId: n.id,
+            input,
+            result,
+            xp: num(d, 'xp', 0.7),
+            time: clamp(Math.round(num(d, 'time', 200)), 1, 72000)
+          })
         break
       }
       case 'recipeStonecutting': {
         const input = ingredient(n.id, 'input', true)
         const result = item(n.id, 'result', true)
         if (input && result)
-          ir.recipes.push({ kind: 'stonecutting', name: recipeName(result, 'stonecutting'), nodeId: n.id, input, result, count: clamp(num(d, 'count', 1), 1, 64) })
+          ir.recipes.push({
+            kind: 'stonecutting',
+            name: recipeName(result, 'stonecutting'),
+            nodeId: n.id,
+            input,
+            result,
+            count: clamp(num(d, 'count', 1), 1, 64)
+          })
         break
       }
       case 'recipeSmithing': {
@@ -685,7 +704,15 @@ export function compile(project: Project, target?: Target): CompileResult {
         const addition = ingredient(n.id, 'addition', true)
         const result = item(n.id, 'result', true)
         if (base && addition && result)
-          ir.recipes.push({ kind: 'smithing', name: recipeName(result, 'smithing'), nodeId: n.id, template: ingredient(n.id, 'template', false), base, addition, result })
+          ir.recipes.push({
+            kind: 'smithing',
+            name: recipeName(result, 'smithing'),
+            nodeId: n.id,
+            template: ingredient(n.id, 'template', false),
+            base,
+            addition,
+            result
+          })
         break
       }
       case 'fdCutting': {
@@ -737,7 +764,12 @@ export function compile(project: Project, target?: Target): CompileResult {
           err(n.id, 'Java: declare a public class (e.g. "public class MyScript {")', 'Java: ต้องมี public class (เช่น "public class MyScript {")')
           break
         }
-        if (RESERVED_CLASSES.has(className)) err(n.id, `Java: the class name "${className}" is used by the generated mod — pick another`, `Java: ชื่อคลาส "${className}" ม็อดใช้อยู่แล้ว ตั้งชื่ออื่น`)
+        if (RESERVED_CLASSES.has(className))
+          err(
+            n.id,
+            `Java: the class name "${className}" is used by the generated mod — pick another`,
+            `Java: ชื่อคลาส "${className}" ม็อดใช้อยู่แล้ว ตั้งชื่ออื่น`
+          )
         const unbalanced = scriptBracketProblem(code)
         if (unbalanced) err(n.id, `Java: ${unbalanced.en}`, `Java: ${unbalanced.th}`)
         ir.scripts.push({ nodeId: n.id, className, targets, code, entry: scriptEntrypoints(code) })
@@ -763,7 +795,16 @@ export function compile(project: Project, target?: Target): CompileResult {
 
   // tools / armor without a material use iron (armor also looks like iron armor when worn)
   if (usesDefaultTool)
-    ir.toolMats.push({ id: DEFAULT_MAT, nodeId: '', durability: 250, speed: 6, damage: 2, level: 'iron', enchantability: 14, repair: { item: 'minecraft:iron_ingot' } })
+    ir.toolMats.push({
+      id: DEFAULT_MAT,
+      nodeId: '',
+      durability: 250,
+      speed: 6,
+      damage: 2,
+      level: 'iron',
+      enchantability: 14,
+      repair: { item: 'minecraft:iron_ingot' }
+    })
   if (usesDefaultArmor)
     ir.armorMats.push({
       id: DEFAULT_MAT,
@@ -801,7 +842,9 @@ export function compile(project: Project, target?: Target): CompileResult {
   for (const tb of ir.tabs) claim(`tab:${tb.id}`, tb.nodeId!)
   // items not wired into any tab: hidden (only /give) by default, or collected into a main tab
   const inTab = new Set(ir.tabs.flatMap((tb) => tb.items))
-  const loose = [...ir.items.map((i) => `${modid}:${i.id}`), ...ir.blocks.filter((b) => b.hasItem).map((b) => `${modid}:${b.id}`)].filter((id) => !inTab.has(id))
+  const loose = [...ir.items.map((i) => `${modid}:${i.id}`), ...ir.blocks.filter((b) => b.hasItem).map((b) => `${modid}:${b.id}`)].filter(
+    (id) => !inTab.has(id)
+  )
   if (project.meta.looseItems === 'main' && loose.length) {
     let main = ir.tabs.find((tb) => tb.id === 'main')
     if (!main) {
@@ -818,21 +861,38 @@ export function compile(project: Project, target?: Target): CompileResult {
       const p = getProfile(target.mc)
       const fdItems = JSON.stringify([ir.recipes, ir.tabs, ir.blocks.map((x) => x.drop)]).includes('farmersdelight:')
       if (fdItems && !usesFD && !farmersDelightFor(target.loader, target.mc))
-        warn(undefined, `Farmer's Delight items are used but Farmer's Delight is not available for ${target.loader} ${target.mc}`, `มีการใช้ไอเทมของ Farmer's Delight แต่ ${target.loader} ${target.mc} ไม่มี Farmer's Delight`)
+        warn(
+          undefined,
+          `Farmer's Delight items are used but Farmer's Delight is not available for ${target.loader} ${target.mc}`,
+          `มีการใช้ไอเทมของ Farmer's Delight แต่ ${target.loader} ${target.mc} ไม่มี Farmer's Delight`
+        )
       if (usesFD && !farmersDelightFor(target.loader, target.mc))
         for (const r of ir.recipes)
           if (r.kind === 'fdCutting' || r.kind === 'fdCooking')
-            warn(r.nodeId, `Farmer's Delight is not available for ${target.loader} ${target.mc}; recipe skipped`, `ไม่มี Farmer's Delight สำหรับ ${target.loader} ${target.mc} — ข้ามสูตรนี้`)
+            warn(
+              r.nodeId,
+              `Farmer's Delight is not available for ${target.loader} ${target.mc}; recipe skipped`,
+              `ไม่มี Farmer's Delight สำหรับ ${target.loader} ${target.mc} — ข้ามสูตรนี้`
+            )
       if (!separateIconMode({ p, loader: target.loader }))
         for (const it of ir.items)
           if (it.separateIcon)
-            warn(it.nodeId, `On ${target.loader} ${target.mc} the 3D model is also used as the inventory icon`, `ใน ${target.loader} ${target.mc} ไอคอนในช่องเก็บของจะใช้โมเดล 3D แทนเท็กซ์เจอร์`)
+            warn(
+              it.nodeId,
+              `On ${target.loader} ${target.mc} the 3D model is also used as the inventory icon`,
+              `ใน ${target.loader} ${target.mc} ไอคอนในช่องเก็บของจะใช้โมเดล 3D แทนเท็กซ์เจอร์`
+            )
       for (const it of ir.items)
-        if (it.places && !ir.blocks.some((b) => b.id === it.places)) err(it.nodeId, 'The connected block is not part of this mod', 'บล็อกที่ต่อไว้ไม่ได้อยู่ในม็อดนี้')
+        if (it.places && !ir.blocks.some((b) => b.id === it.places))
+          err(it.nodeId, 'The connected block is not part of this mod', 'บล็อกที่ต่อไว้ไม่ได้อยู่ในม็อดนี้')
       if (usesGeo && !p.geckoArmor)
         for (const it of ir.items)
           if (it.armor?.geo) {
-            warn(it.nodeId, `3D armor (GeckoLib) is not available on ${target.mc}; 2D armor is used`, `เกราะ 3D (GeckoLib) ใช้ไม่ได้ใน ${target.mc} — จะใช้เกราะ 2D แทน`)
+            warn(
+              it.nodeId,
+              `3D armor (GeckoLib) is not available on ${target.mc}; 2D armor is used`,
+              `เกราะ 3D (GeckoLib) ใช้ไม่ได้ใน ${target.mc} — จะใช้เกราะ 2D แทน`
+            )
             break
           }
     }
@@ -840,9 +900,4 @@ export function compile(project: Project, target?: Target): CompileResult {
 
   if (!ir.items.length && !ir.blocks.length) warn(undefined, 'The mod has no items or blocks yet', 'ม็อดยังไม่มีไอเทมหรือบล็อกเลย')
   return { ir, diagnostics: diags }
-}
-
-export const PIN_TYPE_OF = (type: string, handle: string, dir: 'in' | 'out'): PinType | undefined => {
-  const d = NODE_DEF_MAP[type]
-  return d ? pinOf(d, handle, dir)?.type : undefined
 }

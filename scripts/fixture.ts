@@ -12,8 +12,22 @@ export const HAT_BBMODEL = JSON.stringify({
   meta: { format_version: '4.10', model_format: 'java_block', box_uv: false },
   resolution: { width: 16, height: 16 },
   elements: [
-    { name: 'brim', uuid: 'a', from: [2, 0, 2], to: [14, 1, 14], faces: Object.fromEntries(['north', 'south', 'east', 'west', 'up', 'down'].map((f) => [f, { uv: [0, 0, 12, 1], texture: 0 }])) },
-    { name: 'crown', uuid: 'b', from: [4, 1, 4], to: [12, 9, 12], origin: [8, 1, 8], rotation: [0, 0, 5], faces: Object.fromEntries(['north', 'south', 'east', 'west', 'up', 'down'].map((f) => [f, { uv: [0, 4, 8, 12], texture: 0 }])) }
+    {
+      name: 'brim',
+      uuid: 'a',
+      from: [2, 0, 2],
+      to: [14, 1, 14],
+      faces: Object.fromEntries(['north', 'south', 'east', 'west', 'up', 'down'].map((f) => [f, { uv: [0, 0, 12, 1], texture: 0 }]))
+    },
+    {
+      name: 'crown',
+      uuid: 'b',
+      from: [4, 1, 4],
+      to: [12, 9, 12],
+      origin: [8, 1, 8],
+      rotation: [0, 0, 5],
+      faces: Object.fromEntries(['north', 'south', 'east', 'west', 'up', 'down'].map((f) => [f, { uv: [0, 4, 8, 12], texture: 0 }]))
+    }
   ],
   outliner: [{ name: 'hat', origin: [8, 0, 8], children: ['a', 'b'] }],
   textures: [{ name: 'hat.png', source: '' }]
@@ -50,9 +64,21 @@ export function png(w: number, h: number, color: [number, number, number, number
 const LAMP_MODEL = {
   textures: { '0': 'nkw:block/lamp', particle: 'nkw:block/lamp' },
   elements: [
-    { from: [4, 0, 4], to: [12, 2, 12], faces: Object.fromEntries(['north', 'east', 'south', 'west', 'up', 'down'].map((f) => [f, { uv: [0, 0, 8, 2], texture: '#0' }])) },
-    { from: [7, 2, 7], to: [9, 10, 9], faces: Object.fromEntries(['north', 'east', 'south', 'west', 'up', 'down'].map((f) => [f, { uv: [0, 0, 2, 8], texture: '#0' }])) },
-    { from: [5, 10, 2], to: [11, 14, 12], faces: Object.fromEntries(['north', 'east', 'south', 'west', 'up', 'down'].map((f) => [f, { uv: [0, 0, 6, 4], texture: '#0' }])) }
+    {
+      from: [4, 0, 4],
+      to: [12, 2, 12],
+      faces: Object.fromEntries(['north', 'east', 'south', 'west', 'up', 'down'].map((f) => [f, { uv: [0, 0, 8, 2], texture: '#0' }]))
+    },
+    {
+      from: [7, 2, 7],
+      to: [9, 10, 9],
+      faces: Object.fromEntries(['north', 'east', 'south', 'west', 'up', 'down'].map((f) => [f, { uv: [0, 0, 2, 8], texture: '#0' }]))
+    },
+    {
+      from: [5, 10, 2],
+      to: [11, 14, 12],
+      faces: Object.fromEntries(['north', 'east', 'south', 'west', 'up', 'down'].map((f) => [f, { uv: [0, 0, 6, 4], texture: '#0' }]))
+    }
   ]
 }
 
@@ -90,7 +116,11 @@ export function writeFixture(dir: string): Project {
     JSON.stringify({
       textures: { '0': 'nkw:block/ruby', '1': 'nkw:block/lamp' },
       elements: [
-        { from: [4, 0, 4], to: [12, 3, 12], faces: { north: { uv: [0, 0, 8, 3], texture: '#0' }, up: { uv: [0, 0, 8, 8], texture: '#0' }, east: { texture: '#0' } } },
+        {
+          from: [4, 0, 4],
+          to: [12, 3, 12],
+          faces: { north: { uv: [0, 0, 8, 3], texture: '#0' }, up: { uv: [0, 0, 8, 8], texture: '#0' }, east: { texture: '#0' } }
+        },
         { from: [7, 3, 7], to: [9, 5, 9], rotation: { angle: 45, axis: 'y', origin: [8, 3, 8] }, faces: { north: { uv: [0, 0, 2, 2], texture: '#1' } } }
       ]
     })
@@ -102,7 +132,13 @@ export function writeFixture(dir: string): Project {
     join(dir, 'assets', 'animations', 'ruby_armor.json'),
     JSON.stringify({
       format_version: '1.8.0',
-      animations: { 'animation.ruby_armor.idle': { loop: true, animation_length: 2, bones: { armorHead: { rotation: { '0.0': [0, 0, 0], '1.0': [0, 10, 0], '2.0': [0, 0, 0] } } } } }
+      animations: {
+        'animation.ruby_armor.idle': {
+          loop: true,
+          animation_length: 2,
+          bones: { armorHead: { rotation: { '0.0': [0, 0, 0], '1.0': [0, 10, 0], '2.0': [0, 0, 0] } } }
+        }
+      }
     })
   )
   writeFileSync(join(dir, 'assets', 'sounds', 'song.ogg'), Buffer.from('OggS fixture'))
@@ -114,9 +150,11 @@ export function writeFixture(dir: string): Project {
     nodes.push({ id, type, position: { x: 0, y: (y += 120) }, data: { ...defaultData(NODE_DEF_MAP[type]), ...data } })
     return id
   }
-  const wire = (s: string, sh: string, t: string, th: string) => edges.push({ id: `${s}-${sh}-${t}-${th}`, source: s, sourceHandle: sh, target: t, targetHandle: th })
+  const wire = (s: string, sh: string, t: string, th: string) =>
+    edges.push({ id: `${s}-${sh}-${t}-${th}`, source: s, sourceHandle: sh, target: t, targetHandle: th })
 
-  for (const t of ['ruby', 'ruby_block', 'lamp', 'sword', 'layer1', 'layer2', 'geo_tex', 'disc', 'soup']) node(`tex_${t}`, 'texture', { asset: `textures/${t}.png` })
+  for (const t of ['ruby', 'ruby_block', 'lamp', 'sword', 'layer1', 'layer2', 'geo_tex', 'disc', 'soup'])
+    node(`tex_${t}`, 'texture', { asset: `textures/${t}.png` })
   node('m_lamp', 'model', { asset: 'models/lamp.json', textureSlots: 1 })
   wire('tex_lamp', 'out', 'm_lamp', 'tex0')
   node('geo', 'geoModel', { asset: 'models/ruby_armor.json' })
@@ -169,7 +207,16 @@ export function writeFixture(dir: string): Project {
 
   node('se', 'soundEvent', { id: 'nkw_song', subtitle: 'NKW song plays', subtitleTh: 'เพลง NKW', stream: true })
   wire('snd_file', 'out', 'se', 'sound1')
-  node('disc', 'musicDisc', { id: 'music_disc_nkw', name: 'Music Disc', song: 'NKW - Theme', length: 95, comparator: 7, copyright: 'free', onEnd: 'loop', range: 96 })
+  node('disc', 'musicDisc', {
+    id: 'music_disc_nkw',
+    name: 'Music Disc',
+    song: 'NKW - Theme',
+    length: 95,
+    comparator: 7,
+    copyright: 'free',
+    onEnd: 'loop',
+    range: 96
+  })
   wire('se', 'out', 'disc', 'sound')
   wire('tex_disc', 'out', 'disc', 'texture')
 
@@ -235,7 +282,13 @@ export function writeFixture(dir: string): Project {
   node('geo_anim', 'geoModel', { asset: 'models/ruby_armor.json' })
   wire('tex_geo_tex', 'out', 'geo_anim', 'texture')
   wire('anim', 'out', 'geo_anim', 'animation')
-  node('piece_boots', 'armorPiece', { id: 'winged_boots', name: 'Winged Boots', slot: 'boots', iconFrom: 'model', fit: { offset: [0, 0, -0.5], rotation: [0, 0, 0], scale: [1.1, 1.1, 1.1] } })
+  node('piece_boots', 'armorPiece', {
+    id: 'winged_boots',
+    name: 'Winged Boots',
+    slot: 'boots',
+    iconFrom: 'model',
+    fit: { offset: [0, 0, -0.5], rotation: [0, 0, 0], scale: [1.1, 1.1, 1.1] }
+  })
   wire('am', 'out', 'piece_boots', 'material')
   wire('tex_ruby', 'out', 'piece_boots', 'icon')
   wire('geo_anim', 'out', 'piece_boots', 'geo')
@@ -243,7 +296,13 @@ export function writeFixture(dir: string): Project {
   // a plain Blockbench model worn as a helmet, moved / tilted / resized
   node('geo_hat', 'geoModel', { asset: 'geo/top_hat.json' })
   wire('tex_geo_tex', 'out', 'geo_hat', 'texture')
-  node('piece_hat', 'armorPiece', { id: 'top_hat', name: 'Top Hat', slot: 'helmet', iconFrom: 'model', fit: { offset: [0, 1, 0], rotation: [0, 0, -8], scale: [1.25, 1.25, 1.25] } })
+  node('piece_hat', 'armorPiece', {
+    id: 'top_hat',
+    name: 'Top Hat',
+    slot: 'helmet',
+    iconFrom: 'model',
+    fit: { offset: [0, 1, 0], rotation: [0, 0, -8], scale: [1.25, 1.25, 1.25] }
+  })
   wire('am', 'out', 'piece_hat', 'material')
   wire('tex_ruby', 'out', 'piece_hat', 'icon')
   wire('geo_hat', 'out', 'piece_hat', 'geo')
@@ -270,7 +329,12 @@ export function writeFixture(dir: string): Project {
     for (const loader of p.loaders)
       for (const preset of SCRIPT_PRESETS) {
         const key = `${loader}-${p.mc}`
-        const code = preset.code({ loader, mc: p.mc }).replace(/(public class (\w+)[^{]*\{)/, (_m, head: string, cls: string) => `${head}\n    static {\n        NkwMod.LOGGER.info("[NKW] script loaded: ${cls}");\n    }\n`)
+        const code = preset
+          .code({ loader, mc: p.mc })
+          .replace(
+            /(public class (\w+)[^{]*\{)/,
+            (_m, head: string, cls: string) => `${head}\n    static {\n        NkwMod.LOGGER.info("[NKW] script loaded: ${cls}");\n    }\n`
+          )
         node(`sc_${preset.id}_${key.replace(/[.-]/g, '_')}`, 'script', { targets: [key], code })
       }
   node('piece_legs', 'armorPiece', { id: 'plain_leggings', name: 'Plain Leggings', slot: 'leggings' })

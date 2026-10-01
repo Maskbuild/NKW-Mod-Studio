@@ -1,4 +1,5 @@
 import { inflateSync } from 'node:zlib'
+import { CORNERS, DEFAULT_UV, type Face, type V3 } from '@core/gen/faces'
 import { encodePng } from './png'
 
 /**
@@ -124,9 +125,6 @@ export function decodePng(buf: Buffer): Img | null {
   return { w, h, px }
 }
 
-type Dir = 'north' | 'south' | 'east' | 'west' | 'up' | 'down'
-type V3 = [number, number, number]
-
 export interface ModelFace {
   uv?: number[]
   texture?: string
@@ -137,7 +135,7 @@ export interface ModelElement {
   from: V3
   to: V3
   rotation?: { origin: V3; axis: 'x' | 'y' | 'z'; angle: number; rescale?: boolean }
-  faces?: Partial<Record<Dir, ModelFace>>
+  faces?: Partial<Record<Face, ModelFace>>
 }
 export interface JsonModel {
   parent?: string
@@ -186,7 +184,7 @@ export function resolveModel(ref: string, load: (ref: string) => JsonModel | nul
 }
 
 /** Follows #variables to a texture reference like "minecraft:block/stone". */
-export function textureRef(textures: Record<string, string>, v: string | undefined): string | null {
+function textureRef(textures: Record<string, string>, v: string | undefined): string | null {
   for (let i = 0; v && i < 16; i++) {
     if (!v.startsWith('#')) return v
     v = textures[v.slice(1)]
@@ -194,25 +192,8 @@ export function textureRef(textures: Record<string, string>, v: string | undefin
   return null
 }
 
-// Corners of each face as seen from outside: top-left, top-right, bottom-right, bottom-left.
-const CORNERS: Record<Dir, (a: V3, b: V3) => V3[]> = {
-  north: (a, b) => [[b[0], b[1], a[2]], [a[0], b[1], a[2]], [a[0], a[1], a[2]], [b[0], a[1], a[2]]],
-  south: (a, b) => [[a[0], b[1], b[2]], [b[0], b[1], b[2]], [b[0], a[1], b[2]], [a[0], a[1], b[2]]],
-  west: (a, b) => [[a[0], b[1], a[2]], [a[0], b[1], b[2]], [a[0], a[1], b[2]], [a[0], a[1], a[2]]],
-  east: (a, b) => [[b[0], b[1], b[2]], [b[0], b[1], a[2]], [b[0], a[1], a[2]], [b[0], a[1], b[2]]],
-  up: (a, b) => [[a[0], b[1], a[2]], [b[0], b[1], a[2]], [b[0], b[1], b[2]], [a[0], b[1], b[2]]],
-  down: (a, b) => [[a[0], a[1], b[2]], [b[0], a[1], b[2]], [b[0], a[1], a[2]], [a[0], a[1], a[2]]]
-}
-const DEFAULT_UV: Record<Dir, (a: V3, b: V3) => number[]> = {
-  north: (a, b) => [16 - b[0], 16 - b[1], 16 - a[0], 16 - a[1]],
-  south: (a, b) => [a[0], 16 - b[1], b[0], 16 - a[1]],
-  west: (a, b) => [a[2], 16 - b[1], b[2], 16 - a[1]],
-  east: (a, b) => [16 - b[2], 16 - b[1], 16 - a[2], 16 - a[1]],
-  up: (a, b) => [a[0], a[2], b[0], b[2]],
-  down: (a, b) => [a[0], 16 - b[2], b[0], 16 - a[2]]
-}
 /** Minecraft's fixed per-direction block shading. */
-const SHADE: Record<Dir, number> = { up: 1, down: 0.5, north: 0.8, south: 0.8, east: 0.6, west: 0.6 }
+const SHADE: Record<Face, number> = { up: 1, down: 0.5, north: 0.8, south: 0.8, east: 0.6, west: 0.6 }
 
 const rad = (d: number) => (d * Math.PI) / 180
 function rotAxis(p: V3, axis: 'x' | 'y' | 'z', deg: number, o: V3): V3 {
@@ -249,7 +230,7 @@ export function renderModel(model: ResolvedModel, texture: (ref: string) => Img 
   for (const el of model.elements) {
     const a = el.from
     const b = el.to
-    for (const dir of Object.keys(el.faces ?? {}) as Dir[]) {
+    for (const dir of Object.keys(el.faces ?? {}) as Face[]) {
       const face = el.faces![dir]!
       const ref = textureRef(model.textures, face.texture)
       const img = ref ? texture(ref) : null
@@ -267,7 +248,7 @@ export function renderModel(model: ResolvedModel, texture: (ref: string) => Img 
         [uv[2], uv[3]],
         [uv[0], uv[3]]
       ]
-      const turns = (((face.rotation ?? 0) / 90) % 4 + 4) % 4
+      const turns = ((((face.rotation ?? 0) / 90) % 4) + 4) % 4
       for (let t = 0; t < turns; t++) UV = [UV[3], UV[0], UV[1], UV[2]]
       const fw = img.w
       const fh = Math.min(img.h, img.w) // animated textures: first frame

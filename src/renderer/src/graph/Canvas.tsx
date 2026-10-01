@@ -45,7 +45,17 @@ export function connect(edges: Edge[], nodes: FlowNode[], c: Connection): Edge[]
   const rest = isMulti
     ? edges.filter((e) => !(e.target === c.target && e.targetHandle === c.targetHandle && e.source === c.source && e.sourceHandle === c.sourceHandle))
     : edges.filter((e) => !(e.target === c.target && e.targetHandle === c.targetHandle))
-  return [...rest, { id: newId('e'), source: c.source, target: c.target, sourceHandle: c.sourceHandle, targetHandle: c.targetHandle, style: edgeStyle(src?.type ?? '', c.sourceHandle ?? '') }]
+  return [
+    ...rest,
+    {
+      id: newId('e'),
+      source: c.source,
+      target: c.target,
+      sourceHandle: c.sourceHandle,
+      targetHandle: c.targetHandle,
+      style: edgeStyle(src?.type ?? '', c.sourceHandle ?? '')
+    }
+  ]
 }
 
 export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((x: number, y: number) => void) | null> }) {
@@ -66,8 +76,14 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
     const s = useStore.getState()
     if (changes.some((c) => c.type === 'remove')) s.checkpoint()
     const next = applyNodeChanges(changes, s.nodes)
-    const meaningful = changes.some((c) => c.type === 'remove' || c.type === 'add' || (c.type === 'position' && !c.dragging) || (c.type === 'dimensions' && c.resizing))
-    if (meaningful) s.setGraph(next, s.edges.filter((e) => next.some((n) => n.id === e.source) && next.some((n) => n.id === e.target)))
+    const meaningful = changes.some(
+      (c) => c.type === 'remove' || c.type === 'add' || (c.type === 'position' && !c.dragging) || (c.type === 'dimensions' && c.resizing)
+    )
+    if (meaningful)
+      s.setGraph(
+        next,
+        s.edges.filter((e) => next.some((n) => n.id === e.source) && next.some((n) => n.id === e.target))
+      )
     else useStore.setState({ nodes: next })
   }, [])
 
@@ -119,7 +135,10 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
     if (p) {
       const handle = matchPin(def, p)
       if (handle) {
-        const c: Connection = p.dir === 'out' ? { source: p.nodeId, sourceHandle: p.handle, target: id, targetHandle: handle } : { source: id, sourceHandle: handle, target: p.nodeId, targetHandle: p.handle }
+        const c: Connection =
+          p.dir === 'out'
+            ? { source: p.nodeId, sourceHandle: p.handle, target: id, targetHandle: handle }
+            : { source: id, sourceHandle: handle, target: p.nodeId, targetHandle: p.handle }
         const st = useStore.getState()
         useStore.setState({ edges: connect(st.edges, st.nodes, c) })
       }
@@ -178,8 +197,15 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
   const nodeAction = (action: 'duplicate' | 'delete' | 'disconnect' | 'disable') => {
     if (!menu) return
     const s = useStore.getState()
-    useStore.setState({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === menu.id || (n.selected && s.nodes.find((x) => x.id === menu.id)?.selected) || false })) })
-    const ids = new Set(useStore.getState().nodes.filter((n) => n.selected).map((n) => n.id))
+    useStore.setState({
+      nodes: s.nodes.map((n) => ({ ...n, selected: n.id === menu.id || (n.selected && s.nodes.find((x) => x.id === menu.id)?.selected) || false }))
+    })
+    const ids = new Set(
+      useStore
+        .getState()
+        .nodes.filter((n) => n.selected)
+        .map((n) => n.id)
+    )
     if (action === 'duplicate') s.duplicate()
     else if (action === 'disable') s.toggleDisabled([...ids])
     else {
@@ -192,7 +218,15 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
   }
 
   return (
-    <div className="canvas" ref={wrap} onPointerDownCapture={(e) => { if (e.button === 2) rightDown.current = { x: e.clientX, y: e.clientY } }} onDragOver={(e) => (e.preventDefault(), (e.dataTransfer.dropEffect = 'copy'))} onDrop={onDrop}>
+    <div
+      className="canvas"
+      ref={wrap}
+      onPointerDownCapture={(e) => {
+        if (e.button === 2) rightDown.current = { x: e.clientX, y: e.clientY }
+      }}
+      onDragOver={(e) => (e.preventDefault(), (e.dataTransfer.dropEffect = 'copy'))}
+      onDrop={onDrop}
+    >
       <ReactFlow<FlowNode>
         nodes={nodes}
         edges={edges}
@@ -237,7 +271,13 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
         fitViewOptions={{ padding: 0.2, maxZoom: 1.1 }}
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1.4} color="var(--grid)" />
-        <MiniMap pannable zoomable style={{ width: 170, height: 110 }} nodeColor={(n) => CATEGORY_COLOR[NODE_DEF_MAP[n.type ?? '']?.category ?? 'util']} nodeBorderRadius={6} />
+        <MiniMap
+          pannable
+          zoomable
+          style={{ width: 170, height: 110 }}
+          nodeColor={(n) => CATEGORY_COLOR[NODE_DEF_MAP[n.type ?? '']?.category ?? 'util']}
+          nodeBorderRadius={6}
+        />
         <Controls showInteractive={false}>
           <ControlButton onClick={() => rf.fitView({ padding: 0.2, duration: 300 })} title={t('ws.fit')}>
             <IFit size={14} />
@@ -248,8 +288,19 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
       {qa && <QuickAdd x={qa.x} y={qa.y} pending={qa.pending} onPick={pick} onClose={() => setQa(null)} />}
       {menu && (
         <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onMouseDown={() => setMenu(null)} onContextMenu={(e) => (e.preventDefault(), setMenu(null))} />
-          <div className="qa ctx" style={{ left: Math.min(menu.x, window.innerWidth - 210), top: Math.min(menu.y, window.innerHeight - 180 - Math.min(8, wiresOf(menu.id).length) * 30) }} role="menu">
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+            onMouseDown={() => setMenu(null)}
+            onContextMenu={(e) => (e.preventDefault(), setMenu(null))}
+          />
+          <div
+            className="qa ctx"
+            style={{
+              left: Math.min(menu.x, window.innerWidth - 210),
+              top: Math.min(menu.y, window.innerHeight - 180 - Math.min(8, wiresOf(menu.id).length) * 30)
+            }}
+            role="menu"
+          >
             <div className="qa-item" role="menuitem" onMouseDown={() => nodeAction('duplicate')}>
               <ICopy size={14} /> {t('ws.duplicate')} <small>Ctrl+D</small>
             </div>
@@ -288,8 +339,16 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
       )}
       {edgeMenu && (
         <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onMouseDown={() => setEdgeMenu(null)} onContextMenu={(e) => (e.preventDefault(), setEdgeMenu(null))} />
-          <div className="qa ctx" style={{ left: Math.min(edgeMenu.x, window.innerWidth - 210), top: Math.min(edgeMenu.y, window.innerHeight - 60) }} role="menu">
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+            onMouseDown={() => setEdgeMenu(null)}
+            onContextMenu={(e) => (e.preventDefault(), setEdgeMenu(null))}
+          />
+          <div
+            className="qa ctx"
+            style={{ left: Math.min(edgeMenu.x, window.innerWidth - 210), top: Math.min(edgeMenu.y, window.innerHeight - 60) }}
+            role="menu"
+          >
             <div
               className="qa-item danger"
               role="menuitem"

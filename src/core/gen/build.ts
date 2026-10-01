@@ -88,8 +88,10 @@ export function genBuild(ctx: GenCtx): void {
   if (loader === 'forge' || loader === 'neoforge') logo(`${RES}/nkw_logo.png`)
   // 1.20+: jump straight into the test world once the user has created it
   const quickPlay = (call: string) =>
-    p.smithingTransform ? `            if (file('run/saves/NKW Test').exists()) ${call} '--quickPlaySingleplayer', 'NKW Test'
-` : ''
+    p.smithingTransform
+      ? `            if (file('run/saves/NKW Test').exists()) ${call} '--quickPlaySingleplayer', 'NKW Test'
+`
+      : ''
 
   const pluginRepos: Record<string, string> = {
     fabric: "        maven { url = 'https://maven.fabricmc.net/' }",
@@ -128,8 +130,12 @@ org.gradle.java.installations.auto-download=false
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
-${p.java > 8 ? `    options.release = ${p.java}
-` : ''}}`
+${
+  p.java > 8
+    ? `    options.release = ${p.java}
+`
+    : ''
+}}`
 
   const quiltRepo =
     loader === 'quilt'
@@ -151,7 +157,9 @@ ${p.java > 8 ? `    options.release = ${p.java}
     // understands quilt_installer.json) is used for Quilt too.
     const plugin = `id 'net.fabricmc.fabric-loom-remap' version '${deps.loom}'`
     const loaderDep =
-      loader === 'fabric' ? `modImplementation 'net.fabricmc:fabric-loader:${deps.fabricLoader}'` : `modImplementation 'org.quiltmc:quilt-loader:${deps.quiltLoader}'`
+      loader === 'fabric'
+        ? `modImplementation 'net.fabricmc:fabric-loader:${deps.fabricLoader}'`
+        : `modImplementation 'org.quiltmc:quilt-loader:${deps.quiltLoader}'`
     if (loader === 'quilt') for (const lib of deps.quiltLibraries ?? []) extraDeps.push(`    runtimeOnly '${lib}'`)
     // Mod Menu is added to test runs so the mod list / config screen is available in game
     if (deps.modMenu) extraDeps.push(`    modRuntimeOnly '${deps.modMenu}'`)
@@ -215,7 +223,12 @@ ${toolchain}
           version: meta.version,
           name: meta.name,
           description: meta.description,
-          authors: meta.authors ? meta.authors.split(',').map((s) => s.trim()).filter(Boolean) : ['Nam Kueap Wan (NKW)'],
+          authors: meta.authors
+            ? meta.authors
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : ['Nam Kueap Wan (NKW)'],
           license: 'All-Rights-Reserved',
           environment: '*',
           icon: `assets/${ns}/icon.png`,
@@ -252,12 +265,7 @@ ${toolchain}
             },
             intermediate_mappings: 'net.fabricmc:intermediary',
             entrypoints: { main: [`${pkg}.NkwMod`, ...entry('main')], client: [`${pkg}.NkwClient`, ...entry('client')] },
-            depends: [
-              { id: 'quilt_loader', versions: '>=0.17.0' },
-              { id: 'minecraft', versions: mcRange },
-              apiId,
-              ...(geckoDep ? ['geckolib'] : [])
-            ]
+            depends: [{ id: 'quilt_loader', versions: '>=0.17.0' }, { id: 'minecraft', versions: mcRange }, apiId, ...(geckoDep ? ['geckolib'] : [])]
           }
         })
       })

@@ -17,13 +17,31 @@ import {
 } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { bracketMatching, foldGutter, foldKeymap, HighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language'
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, snippetCompletion, type Completion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete'
-import { linter, lintGutter, lintKeymap, type Diagnostic } from '@codemirror/lint'
+import {
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completionKeymap,
+  snippetCompletion,
+  type Completion,
+  type CompletionContext,
+  type CompletionResult
+} from '@codemirror/autocomplete'
+import { diagnosticCount, linter, lintGutter, lintKeymap, type Diagnostic } from '@codemirror/lint'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { java } from '@codemirror/lang-java'
 import { tags } from '@lezer/highlight'
 import { scriptBracketProblem } from '@core/compile/compile'
-import { RESERVED_CLASSES, SCRIPT_PRESETS, importInsertPos, javaClassCatalog, scriptClassName, targetKey, type JavaClassInfo } from '@core/scriptApi'
+import {
+  JAVA_KEYWORDS,
+  RESERVED_CLASSES,
+  SCRIPT_PRESETS,
+  importInsertPos,
+  javaClassCatalog,
+  scriptClassName,
+  targetKey,
+  type JavaClassInfo
+} from '@core/scriptApi'
 import { javaPackage, type Target } from '@core/project'
 import { api } from '../api'
 import { L } from '../i18n'
@@ -52,7 +70,11 @@ function snippets(target: Target): Completion[] {
     snippetCompletion('for (int ${i} = 0; ${i} < ${count}; ${i}++) {\n\t${}\n}', { label: 'for', type: 'keyword', detail: 'for (int i …)' }),
     snippetCompletion('for (${Type} ${item} : ${list}) {\n\t${}\n}', { label: 'foreach', type: 'keyword', detail: 'for (x : list)' }),
     snippetCompletion('while (${condition}) {\n\t${}\n}', { label: 'while', type: 'keyword', detail: 'while (…)' }),
-    snippetCompletion('try {\n\t${}\n} catch (Exception ${e}) {\n\tNkwMod.LOGGER.error("failed", ${e});\n}', { label: 'try', type: 'keyword', detail: 'try … catch' }),
+    snippetCompletion('try {\n\t${}\n} catch (Exception ${e}) {\n\tNkwMod.LOGGER.error("failed", ${e});\n}', {
+      label: 'try',
+      type: 'keyword',
+      detail: 'try … catch'
+    }),
     snippetCompletion('NkwMod.LOGGER.info("${message}");', { label: 'log', type: 'function', detail: 'NkwMod.LOGGER.info(…)', boost: 2 }),
     snippetCompletion('@Override\npublic ${void} ${name}(${}) {\n\t\n}', { label: 'override', type: 'keyword', detail: '@Override method' })
   ]
@@ -62,10 +84,14 @@ function snippets(target: Target): Completion[] {
     )
   else
     list.push(
-      snippetCompletion('@SubscribeEvent\npublic static void ${onEvent}(${EventType} event) {\n\t${}\n}', { label: 'subscribe', type: 'function', detail: '@SubscribeEvent handler', boost: 3 })
+      snippetCompletion('@SubscribeEvent\npublic static void ${onEvent}(${EventType} event) {\n\t${}\n}', {
+        label: 'subscribe',
+        type: 'function',
+        detail: '@SubscribeEvent handler',
+        boost: 3
+      })
     )
-  for (const k of ['public', 'private', 'static', 'final', 'void', 'int', 'long', 'float', 'double', 'boolean', 'String', 'class', 'interface', 'enum', 'extends', 'implements', 'return', 'new', 'this', 'true', 'false', 'null', 'else', 'break', 'continue', 'instanceof', 'import', 'package', 'throw', 'var'])
-    list.push({ label: k, type: 'keyword' })
+  for (const k of [...JAVA_KEYWORDS, 'String']) list.push({ label: k, type: 'keyword' })
   return list
 }
 
@@ -73,8 +99,14 @@ function snippets(target: Target): Completion[] {
 function modMembers(cls: string, target: Target): Completion[] {
   const s = useStore.getState()
   const holder = target.loader === 'forge' || target.loader === 'neoforge'
-  const ids = (types: string[]) => s.nodes.filter((n) => types.includes(n.type ?? '') && !n.data.disabled && typeof n.data.id === 'string').map((n) => n.data.id as string)
-  const field = (id: string, kind: string) => ({ label: C(id) + (holder ? '.get()' : ''), type: 'constant', detail: kind, apply: C(id) + (holder ? '.get()' : '') })
+  const ids = (types: string[]) =>
+    s.nodes.filter((n) => types.includes(n.type ?? '') && !n.data.disabled && typeof n.data.id === 'string').map((n) => n.data.id as string)
+  const field = (id: string, kind: string) => ({
+    label: C(id) + (holder ? '.get()' : ''),
+    type: 'constant',
+    detail: kind,
+    apply: C(id) + (holder ? '.get()' : '')
+  })
   switch (cls) {
     case 'NkwMod':
       return [
@@ -107,13 +139,15 @@ function completions(target: () => Target) {
     if (ann) {
       const catalog = javaClassCatalog(tg)
       const opts: Completion[] = [{ label: 'Override', type: 'type' }]
-      for (const c of catalog.filter((x) => ['SubscribeEvent', 'EventBusSubscriber', 'Mod'].includes(x.name)))
-        opts.push({
-          label: c.name === 'Mod' ? 'Mod.EventBusSubscriber(modid = NkwMod.MOD_ID)' : c.name === 'EventBusSubscriber' ? 'EventBusSubscriber(modid = NkwMod.MOD_ID)' : c.name,
-          type: 'type',
-          detail: c.fqcn,
-          apply: (view, _c, from, to) => applyWithImport(view, from, to, c.name === 'Mod' ? 'Mod.EventBusSubscriber(modid = NkwMod.MOD_ID)' : c.name === 'EventBusSubscriber' ? 'EventBusSubscriber(modid = NkwMod.MOD_ID)' : c.name, c)
-        })
+      for (const c of catalog.filter((x) => ['SubscribeEvent', 'EventBusSubscriber', 'Mod'].includes(x.name))) {
+        const text =
+          c.name === 'Mod'
+            ? 'Mod.EventBusSubscriber(modid = NkwMod.MOD_ID)'
+            : c.name === 'EventBusSubscriber'
+              ? 'EventBusSubscriber(modid = NkwMod.MOD_ID)'
+              : c.name
+        opts.push({ label: text, type: 'type', detail: c.fqcn, apply: (view, _c, from, to) => applyWithImport(view, from, to, text, c) })
+      }
       return { from: ann.from + 1, options: opts, validFor: /^[\w.]*$/ }
     }
     const word = cx.matchBefore(/\w+/)
@@ -186,10 +220,21 @@ function javaLinter(th: boolean, javaErrors: () => { line: number; message: stri
         out.push({ from: l.from, to: l.to, severity: 'error', message: th ? bracket.th : bracket.en })
       }
       const cls = scriptClassName(text)
-      if (!cls) out.push({ from: 0, to: Math.min(text.length, 1), severity: 'error', message: th ? 'ต้องมี public class (เช่น public class MyScript { … })' : 'Declare a public class (e.g. public class MyScript { … })' })
+      if (!cls)
+        out.push({
+          from: 0,
+          to: Math.min(text.length, 1),
+          severity: 'error',
+          message: th ? 'ต้องมี public class (เช่น public class MyScript { … })' : 'Declare a public class (e.g. public class MyScript { … })'
+        })
       else if (RESERVED_CLASSES.has(cls)) {
         const at = text.indexOf(cls)
-        out.push({ from: at, to: at + cls.length, severity: 'error', message: th ? `ชื่อคลาส ${cls} ม็อดใช้อยู่แล้ว` : `${cls} is used by the generated mod — pick another name` })
+        out.push({
+          from: at,
+          to: at + cls.length,
+          severity: 'error',
+          message: th ? `ชื่อคลาส ${cls} ม็อดใช้อยู่แล้ว` : `${cls} is used by the generated mod — pick another name`
+        })
       }
       // real javac errors from the last build / check
       for (const e of javaErrors()) {
@@ -253,8 +298,18 @@ function EditorBox({ node, target, tall }: { node: FlowNode; target: Target; tal
       classHover(() => targetRef.current),
       java(),
       EditorState.tabSize.of(4),
-      keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap, ...lintKeymap, indentWithTab]),
+      keymap.of([
+        ...closeBracketsKeymap,
+        ...defaultKeymap,
+        ...searchKeymap,
+        ...historyKeymap,
+        ...foldKeymap,
+        ...completionKeymap,
+        ...lintKeymap,
+        indentWithTab
+      ]),
       EditorView.updateListener.of((u) => {
+        setProblems(diagnosticCount(u.state))
         if (u.docChanged) save(u.state.doc.toString())
         if (u.selectionSet || u.docChanged) {
           const head = u.state.selection.main.head
@@ -265,9 +320,7 @@ function EditorBox({ node, target, tall }: { node: FlowNode; target: Target; tal
     ]
     const v = new EditorView({ parent: el, state: EditorState.create({ doc: String(node.data.code ?? ''), extensions }) })
     view.current = v
-    const poll = setInterval(() => setProblems(v.dom.querySelectorAll('.cm-lint-marker-error, .cm-lint-marker-warning').length), 800)
     return () => {
-      clearInterval(poll)
       if (timer) {
         clearTimeout(timer)
         useStore.getState().updateData(node.id, { code: v.state.doc.toString() })
@@ -319,7 +372,10 @@ export function ScriptTargets({ node }: { node: FlowNode }) {
     <div className="field">
       <label>{t('script.targets')}</label>
       <div className="row script-targets">
-        <button className={`chip${chosen.length ? '' : ' on'}`} onClick={() => (useStore.getState().checkpoint(), useStore.getState().updateData(node.id, { targets: [] }))}>
+        <button
+          className={`chip${chosen.length ? '' : ' on'}`}
+          onClick={() => (useStore.getState().checkpoint(), useStore.getState().updateData(node.id, { targets: [] }))}
+        >
           {t('script.allTargets')}
         </button>
         {targets.map((tg) => {
@@ -345,7 +401,9 @@ export function ScriptEditor({ node }: { node: FlowNode }) {
   const building = useStore((s) => s.build.running)
   const chosen = Array.isArray(node.data.targets) ? (node.data.targets as string[]) : []
   // suggestions / examples / checks follow the first chosen target, else the active one
-  const target: Target = projectTargets.find((tg) => chosen.includes(targetKey(tg))) ?? projectTargets[active] ?? projectTargets[0] ?? { loader: 'fabric', mc: '1.21.1' }
+  const target: Target = projectTargets.find((tg) => chosen.includes(targetKey(tg))) ??
+    projectTargets[active] ??
+    projectTargets[0] ?? { loader: 'fabric', mc: '1.21.1' }
   const appliesToActive = !chosen.length || chosen.includes(targetKey(projectTargets[active] ?? target))
 
   const applyPreset = (id: string) => {
@@ -353,7 +411,8 @@ export function ScriptEditor({ node }: { node: FlowNode }) {
     if (!preset) return
     const current = String(node.data.code ?? '').trim()
     // the untouched starter or another example can be replaced without asking
-    const pristine = !current || /public class MyScript \{\s*\}\s*$/.test(current) || SCRIPT_PRESETS.some((p) => p.code(target).replace(/^package mod;/, '').trim() === current.replace(/^package [\w.]+;/, '').trim())
+    const body = (code: string) => code.replace(/^package [\w.]+;/, '').trim()
+    const pristine = !current || /public class MyScript \{\s*\}\s*$/.test(current) || SCRIPT_PRESETS.some((p) => body(p.code(target)) === body(current))
     if (!pristine && !window.confirm(t('script.replace'))) return
     useStore.getState().checkpoint()
     const meta = useStore.getState().meta

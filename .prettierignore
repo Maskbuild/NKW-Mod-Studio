@@ -1,0 +1,9 @@
+node_modules
+out
+dist
+release
+coverage
+.verify
+*.nkw
+package-lock.json
+src/core/gen/icon.ts

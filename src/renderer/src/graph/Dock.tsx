@@ -9,7 +9,19 @@ import { IAlert, ICheck, IChevron, ITerminal } from '../components/Icons'
 
 export type DockTab = 'problems' | 'console'
 
-export function Dock({ tab, setTab, open, setOpen, height }: { tab: DockTab; setTab: (t: DockTab) => void; open: boolean; setOpen: (o: boolean) => void; height: number }) {
+export function Dock({
+  tab,
+  setTab,
+  open,
+  setOpen,
+  height
+}: {
+  tab: DockTab
+  setTab: (t: DockTab) => void
+  open: boolean
+  setOpen: (o: boolean) => void
+  height: number
+}) {
   const { t } = useTranslation()
   const diagnostics = useStore((s) => s.diagnostics)
   const logs = useStore((s) => s.build.logs)

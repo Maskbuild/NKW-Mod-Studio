@@ -29,7 +29,7 @@ const ALLOWED_HOSTS = [
   'resources.download.minecraft.net'
 ]
 
-export function assertAllowed(url: string): URL {
+function assertAllowed(url: string): URL {
   const u = new URL(url)
   if (u.protocol !== 'https:') throw new Error(`Blocked non-HTTPS URL: ${url}`)
   if (!ALLOWED_HOSTS.includes(u.hostname)) throw new Error(`Blocked host: ${u.hostname}`)

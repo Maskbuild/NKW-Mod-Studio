@@ -6,7 +6,7 @@ import { NODE_DEF_MAP } from '@core/nodes/defs'
 import { L } from '../i18n'
 import { assetUrl, vanillaIconUrl } from '../api'
 import { useItemInfo } from './VanillaPanel'
-import { useStore, type FlowNode } from '../store'
+import { useStore, wireSource, type FlowNode } from '../store'
 
 const DRAG = 'application/nkw-ing'
 const EMPTY = ['', '', '', '', '', '', '', '', '']
@@ -18,19 +18,12 @@ type GraphEdge = State['edges'][number]
 
 /** What comes in through edge `e` (reroutes followed), in a form the UI can draw. */
 function resolve(s: State, e: GraphEdge | undefined): Wired {
-  for (let g = 0; e && g < 64; g++) {
-    const n = s.nodes.find((x) => x.id === e!.source)
-    if (!n) return null
-    if (n.type === 'reroute') {
-      e = s.edges.find((x) => x.target === n.id && x.targetHandle === 'in')
-      continue
-    }
-    const d = n.data
-    if (n.type === 'itemRef') return { kind: 'ref', id: String(d.item ?? '') }
-    if (n.type === 'tagRef') return { kind: 'tag', id: String(d.tag ?? '') }
-    return { kind: 'node', name: String(d.name || d.id || L(NODE_DEF_MAP[n.type ?? '']?.title ?? '')), tex: textureOf(s.nodes, s.edges, n) }
-  }
-  return null
+  const n = wireSource(s.nodes, s.edges, e)
+  if (!n) return null
+  const d = n.data
+  if (n.type === 'itemRef') return { kind: 'ref', id: String(d.item ?? '') }
+  if (n.type === 'tagRef') return { kind: 'tag', id: String(d.tag ?? '') }
+  return { kind: 'node', name: String(d.name || d.id || L(NODE_DEF_MAP[n.type ?? '']?.title ?? '')), tex: textureOf(s.nodes, s.edges, n) }
 }
 
 /** What is plugged into `handle` of node `nodeId` — or comes through edge `edgeId` — in a form the UI can draw. */
@@ -44,7 +37,8 @@ function useWired(nodeId: string, handle: string, edgeId?: string): Wired {
 
 /** English display name of what comes through an edge (game items by their in-game name), for sorting. */
 export function wiredName(s: State, edgeId: string): string {
-  const w = resolve(s, s.edges.find((x) => x.id === edgeId))
+  const edge = s.edges.find((x) => x.id === edgeId)
+  const w = resolve(s, edge)
   if (!w) return ''
   if (w.kind === 'tag') return `#${w.id}`
   if (w.kind === 'node') return w.name
@@ -53,7 +47,7 @@ export function wiredName(s: State, edgeId: string): string {
   return s.vanilla[`${ns}@${mc}`]?.items.find((i) => i.id === path)?.en ?? pretty(w.id)
 }
 
-function textureOf(nodes: FlowNode[], edges: { source: string; target: string; targetHandle?: string | null }[], n: FlowNode): string {
+function textureOf(nodes: FlowNode[], edges: GraphEdge[], n: FlowNode): string {
   for (const h of TEX_PINS) {
     const e = edges.find((x) => x.target === n.id && x.targetHandle === h)
     const t = e && nodes.find((x) => x.id === e.source)
@@ -106,10 +100,7 @@ export function CraftGrid({ node }: { node: FlowNode }) {
   const grid = EMPTY.map((_, i) => (typeof raw[i] === 'string' ? (raw[i] as string) : ''))
   const wiredPins = useStoreWithEqualityFn(
     useStore,
-    (s) =>
-      [1, 2, 3, 4, 5, 6, 7, 8, 9]
-        .map((i) => `i${i}`)
-        .filter((p) => s.edges.some((e) => e.target === node.id && e.targetHandle === p)),
+    (s) => [1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => `i${i}`).filter((p) => s.edges.some((e) => e.target === node.id && e.targetHandle === p)),
     shallow
   )
   const legacy = useStoreWithEqualityFn(

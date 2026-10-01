@@ -6,7 +6,19 @@ import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
 import { MetaSchema, ProjectSchema, TargetSchema, newProject, type Project } from '@core/project'
 import { NeedsDownloadError, findJdks } from './services/toolchain'
-import { EXTENSIONS, FOLDER_RE, animationNames, assetsUnder, detectKind, importAsset, listAssets, makeFolder, moveAsset, readModel, type AssetKind } from './services/assets'
+import {
+  EXTENSIONS,
+  FOLDER_RE,
+  animationNames,
+  assetsUnder,
+  detectKind,
+  importAsset,
+  listAssets,
+  makeFolder,
+  moveAsset,
+  readModel,
+  type AssetKind
+} from './services/assets'
 import { CONVERTIBLE } from './services/audio'
 import { ensureFarmersDelight, ensureVanilla, loadFarmersDelight, loadVanilla, vanillaIconPath, vanillaSkinPath } from './services/vanilla'
 import { assetPath, buildDir, findJar, startBuild, type RunningBuild } from './services/builder'
@@ -47,7 +59,9 @@ export function registerAssetProtocol() {
       } else file = assetPath(requireProject(), rel)
       const res = await net.fetch(pathToFileURL(file).toString())
       const type = rel.endsWith('.png') ? 'image/png' : rel.endsWith('.ogg') ? 'audio/ogg' : 'application/json'
-      return new Response(res.body, { headers: { 'content-type': type, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff', 'access-control-allow-origin': '*' } })
+      return new Response(res.body, {
+        headers: { 'content-type': type, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff', 'access-control-allow-origin': '*' }
+      })
     } catch {
       return new Response('Not found', { status: 404 })
     }
@@ -288,7 +302,17 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
 
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          running = await startBuild({ projectDir: dir, project, target, toolsDir: toolsDir(), allowDownload, task, log, progress, memoryMb: settings.get().memoryMb })
+          running = await startBuild({
+            projectDir: dir,
+            project,
+            target,
+            toolsDir: toolsDir(),
+            allowDownload,
+            task,
+            log,
+            progress,
+            memoryMb: settings.get().memoryMb
+          })
           break
         } catch (e) {
           if (e instanceof NeedsDownloadError && !allowDownload) {
@@ -361,7 +385,14 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
     return true
   })
   handle('shell:openExternal', z.object({ url: z.string().url() }), async ({ url }) => {
-    const allowed = ['https://www.blockbench.net', 'https://blockbench.net', 'https://modrinth.com', 'https://github.com', 'https://audacityteam.org', 'https://www.audacityteam.org']
+    const allowed = [
+      'https://www.blockbench.net',
+      'https://blockbench.net',
+      'https://modrinth.com',
+      'https://github.com',
+      'https://audacityteam.org',
+      'https://www.audacityteam.org'
+    ]
     if (allowed.some((a) => url === a || url.startsWith(a + '/'))) await shell.openExternal(url)
     return true
   })

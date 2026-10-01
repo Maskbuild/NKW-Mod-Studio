@@ -64,7 +64,7 @@ export async function findJdks(toolsDir: string): Promise<Jdk[]> {
   return out
 }
 
-export async function findJdk(toolsDir: string, major: number): Promise<Jdk | null> {
+async function findJdk(toolsDir: string, major: number): Promise<Jdk | null> {
   const all = await findJdks(toolsDir)
   return all.find((j) => j.major === major) ?? null
 }
@@ -75,7 +75,7 @@ interface AdoptiumAsset {
 }
 
 /** Downloads Eclipse Temurin (checksum-verified) into the tools folder. */
-export async function installJdk(toolsDir: string, major: number, progress: Progress): Promise<Jdk> {
+async function installJdk(toolsDir: string, major: number, progress: Progress): Promise<Jdk> {
   const os = isWin ? 'windows' : process.platform === 'darwin' ? 'mac' : 'linux'
   const arch = process.arch === 'arm64' ? 'aarch64' : 'x64'
   const assets = await getJson<AdoptiumAsset[]>(
@@ -113,7 +113,7 @@ export class NeedsDownloadError extends Error {
   }
 }
 
-export function gradleHome(toolsDir: string, version: string): string {
+function gradleHome(toolsDir: string, version: string): string {
   return join(toolsDir, 'gradle', `gradle-${version}`)
 }
 

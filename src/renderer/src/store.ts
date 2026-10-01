@@ -18,13 +18,32 @@ export function newId(prefix = 'n'): string {
   return `${prefix}${(++idSeq).toString(36)}${Math.random().toString(36).slice(2, 5)}`
 }
 
+/** The node a wire really comes from, following reroute nodes (undefined if none / a loop). */
+export function wireSource(nodes: FlowNode[], edges: Edge[], edge: Edge | undefined): FlowNode | undefined {
+  for (let i = 0; edge && i < 64; i++) {
+    const from = edge.source
+    const n = nodes.find((x) => x.id === from)
+    if (n?.type !== 'reroute') return n
+    edge = edges.find((x) => x.target === n.id && x.targetHandle === 'in')
+  }
+  return undefined
+}
+
+/** The node plugged into input `handle` of `target` (reroutes followed). */
+export const inputSource = (nodes: FlowNode[], edges: Edge[], target: string, handle: string) =>
+  wireSource(
+    nodes,
+    edges,
+    edges.find((x) => x.target === target && x.targetHandle === handle)
+  )
+
 export function edgeStyle(sourceType: string, sourceHandle: string): Edge['style'] {
   const def = NODE_DEF_MAP[sourceType]
   const pin = def ? pinOf(def, sourceHandle, 'out') : undefined
   return { stroke: PIN_COLORS[pin?.type ?? 'any'], strokeWidth: 2.2 }
 }
 
-export function toFlow(p: Project): Snapshot {
+function toFlow(p: Project): Snapshot {
   const types = new Map(p.graph.nodes.map((n) => [n.id, n.type]))
   return {
     nodes: p.graph.nodes.map((n) => ({
@@ -51,7 +70,13 @@ function fromFlow(nodes: FlowNode[], edges: Edge[]): Project['graph'] {
       }
       return g
     }),
-    edges: edges.map((e): GraphEdge => ({ id: e.id, source: e.source, sourceHandle: e.sourceHandle ?? 'out', target: e.target, targetHandle: e.targetHandle ?? 'in' }))
+    edges: edges.map((e): GraphEdge => ({
+      id: e.id,
+      source: e.source,
+      sourceHandle: e.sourceHandle ?? 'out',
+      target: e.target,
+      targetHandle: e.targetHandle ?? 'in'
+    }))
   }
 }
 
@@ -313,7 +338,10 @@ export const useStore = create<State>((set, get) => ({
     const drop = new Set(edgeIds)
     if (!s.edges.some((e) => drop.has(e.id))) return
     s.checkpoint()
-    s.setGraph(s.nodes, s.edges.filter((e) => !drop.has(e.id)))
+    s.setGraph(
+      s.nodes,
+      s.edges.filter((e) => !drop.has(e.id))
+    )
   },
   toggleDisabled(ids) {
     const s = get()
@@ -335,7 +363,9 @@ export const useStore = create<State>((set, get) => ({
     set((s) => {
       const logs = s.build.logs.length + lines.length > 6000 ? [...s.build.logs.slice(-(6000 - lines.length)), ...lines] : [...s.build.logs, ...lines]
       // javac errors of Script files are shown in their editor
-      const found = lines.map(parseJavacError).filter((e): e is NonNullable<typeof e> => !!e)
+      const found = lines
+        .map(parseJavacError)
+        .filter((e): e is NonNullable<typeof e> => !!e)
         .filter((e) => !s.build.javaErrors.some((x) => x.cls === e.cls && x.line === e.line && x.message === e.message))
       return { build: { ...s.build, logs, javaErrors: found.length ? [...s.build.javaErrors, ...found].slice(-200) : s.build.javaErrors } }
     })

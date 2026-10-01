@@ -23,39 +23,44 @@ const targets = PROFILES.flatMap((p) => p.loaders.map((loader) => ({ loader, mc:
 
 const results: { target: string; ok: boolean; secs: number; tail: string[] }[] = []
 async function main() {
-for (const target of targets) {
-  const name = `${target.loader}-${target.mc}`
-  const t0 = Date.now()
-  const lines: string[] = []
-  process.stdout.write(`▶ ${name} … `)
-  try {
-    const run = await startBuild({
-      projectDir,
-      project: { ...project, targets: [target] },
-      target,
-      toolsDir,
-      allowDownload: true,
-      task,
-      log: (l) => {
-        lines.push(l)
-        if (process.env.VERBOSE) console.log(l)
-      },
-      progress: () => {}
-    })
-    const code = await run.done
-    const ok = code === 0
-    results.push({ target: name, ok, secs: (Date.now() - t0) / 1000, tail: ok ? [] : lines.filter((l) => /error|FAILED|What went wrong|\.java:\d+/i.test(l)).slice(0, 40) })
-    console.log(ok ? `OK (${((Date.now() - t0) / 1000).toFixed(0)}s)` : `FAILED (exit ${code})`)
-  } catch (e) {
-    results.push({ target: name, ok: false, secs: 0, tail: [(e as Error).stack ?? String(e)] })
-    console.log('ERROR', (e as Error).message)
+  for (const target of targets) {
+    const name = `${target.loader}-${target.mc}`
+    const t0 = Date.now()
+    const lines: string[] = []
+    process.stdout.write(`▶ ${name} … `)
+    try {
+      const run = await startBuild({
+        projectDir,
+        project: { ...project, targets: [target] },
+        target,
+        toolsDir,
+        allowDownload: true,
+        task,
+        log: (l) => {
+          lines.push(l)
+          if (process.env.VERBOSE) console.log(l)
+        },
+        progress: () => {}
+      })
+      const code = await run.done
+      const ok = code === 0
+      results.push({
+        target: name,
+        ok,
+        secs: (Date.now() - t0) / 1000,
+        tail: ok ? [] : lines.filter((l) => /error|FAILED|What went wrong|\.java:\d+/i.test(l)).slice(0, 40)
+      })
+      console.log(ok ? `OK (${((Date.now() - t0) / 1000).toFixed(0)}s)` : `FAILED (exit ${code})`)
+    } catch (e) {
+      results.push({ target: name, ok: false, secs: 0, tail: [(e as Error).stack ?? String(e)] })
+      console.log('ERROR', (e as Error).message)
+    }
   }
-}
-console.log('\n──────── summary ────────')
-for (const r of results) {
-  console.log(`${r.ok ? '✔' : '✘'} ${r.target}`)
-  for (const l of r.tail) console.log('    ' + l)
-}
-process.exit(results.every((r) => r.ok) ? 0 : 1)
+  console.log('\n──────── summary ────────')
+  for (const r of results) {
+    console.log(`${r.ok ? '✔' : '✘'} ${r.target}`)
+    for (const l of r.tail) console.log('    ' + l)
+  }
+  process.exit(results.every((r) => r.ok) ? 0 : 1)
 }
 void main()

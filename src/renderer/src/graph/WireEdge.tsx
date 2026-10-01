@@ -26,7 +26,18 @@ function WireX({ id, x, y }: { id: string; x: number; y: number }) {
 }
 
 /** A wire. When selected (click it) a × button on its middle removes just this wire. */
-export const WireEdge = memo(function WireEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, selected, markerEnd }: EdgeProps) {
+export const WireEdge = memo(function WireEdge({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  style,
+  selected,
+  markerEnd
+}: EdgeProps) {
   const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })
   return (
     <>

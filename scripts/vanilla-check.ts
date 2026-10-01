@@ -9,7 +9,13 @@ async function main() {
     console.log(`\n${mc}: ${d.items.length} items, ${d.items.filter((i) => i.icon).length} icons, ${d.tags.length} tags`)
     const fd = await ensureFarmersDelight(tools, mc, p)
     if (!fd) console.log(`  Farmer's Delight: not available for ${mc}`)
-    else console.log(`  Farmer's Delight: ${fd.items.length} items, ${fd.items.filter((i) => i.icon).length} icons, ${fd.tags.length} tags, e.g. ${fd.items.slice(0, 6).map((i) => i.en).join(', ')}`)
+    else
+      console.log(
+        `  Farmer's Delight: ${fd.items.length} items, ${fd.items.filter((i) => i.icon).length} icons, ${fd.tags.length} tags, e.g. ${fd.items
+          .slice(0, 6)
+          .map((i) => i.en)
+          .join(', ')}`
+      )
   }
 }
 void main()

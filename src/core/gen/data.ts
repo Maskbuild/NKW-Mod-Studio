@@ -99,12 +99,7 @@ export function genData(ctx: GenCtx): void {
     }
 }
 
-function recipeJson(
-  ctx: GenCtx,
-  r: RecipeIR,
-  ing: (i: Ingredient) => unknown,
-  stack: (id: string, count?: number) => Record<string, unknown>
-): unknown {
+function recipeJson(ctx: GenCtx, r: RecipeIR, ing: (i: Ingredient) => unknown, stack: (id: string, count?: number) => Record<string, unknown>): unknown {
   const { p } = ctx
   switch (r.kind) {
     case 'shaped':

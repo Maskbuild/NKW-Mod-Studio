@@ -138,7 +138,9 @@ export async function startBuild(o: BuildOptions): Promise<RunningBuild> {
   }
   delete env.ELECTRON_RUN_AS_NODE
   if (o.task === 'runClient' && profile.smithingTransform && !existsSync(join(outDir, 'run', 'saves', 'NKW Test')))
-    o.log('[NKW] Tip: create a world named "NKW Test" once — later tests will open it automatically. / สร้างโลกชื่อ "NKW Test" ครั้งเดียว ครั้งต่อไประบบจะเข้าโลกนี้ให้อัตโนมัติ')
+    o.log(
+      '[NKW] Tip: create a world named "NKW Test" once — later tests will open it automatically. / สร้างโลกชื่อ "NKW Test" ครั้งเดียว ครั้งต่อไประบบจะเข้าโลกนี้ให้อัตโนมัติ'
+    )
   o.progress(`Running ${o.task}`)
   o.log(`[NKW] gradle ${o.task} (Java ${gradleJdk.major} for Gradle, Java ${targetJdk.major} for Minecraft ${o.target.mc})`)
 

@@ -57,7 +57,13 @@ export interface ItemIR extends Named {
   food?: { nutrition: number; saturation: number; alwaysEdible: boolean; fast: boolean; effects: EffectIR[] }
   tool?: { type: ToolType; material: string; damage: number; speed: number; effects: EffectIR[] }
   armor?: { material: string; slot: ArmorSlot; geo: GeoRef | null; effects: EffectIR[] }
-  disc?: { sound: string; song: string; songTh: string; length: number; comparator: number; copyright: string
+  disc?: {
+    sound: string
+    song: string
+    songTh: string
+    length: number
+    comparator: number
+    copyright: string
     /** what the jukebox does when the song ends */
     onEnd: 'eject' | 'loop' | 'stay'
     /** hearing range in blocks (vanilla 64) */

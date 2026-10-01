@@ -1,4 +1,6 @@
 import type { ArmorSlot } from '../ir'
+import { CORNERS, DEFAULT_UV, isFace, type Face, type V3 } from './faces'
+export { CORNERS, type Face, type V3 }
 
 /**
  * GeckoLib (Bedrock) geometry helpers shared by the generator and the 3D preview:
@@ -9,7 +11,6 @@ import type { ArmorSlot } from '../ir'
  * 1 unit = 1 pixel, feet at y = 0. GeckoLib mirrors x when it builds the model.
  */
 
-export type V3 = [number, number, number]
 export interface GeoFaceUv {
   uv: [number, number]
   uv_size: [number, number]
@@ -43,7 +44,7 @@ export interface ArmorFit {
   scale: V3
 }
 export const NO_FIT: ArmorFit = { offset: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }
-export const isNoFit = (f: ArmorFit | null | undefined): boolean =>
+const isNoFit = (f: ArmorFit | null | undefined): boolean =>
   !f || (f.offset.every((v) => v === 0) && f.rotation.every((v) => v === 0) && f.scale.every((v) => v === 1))
 
 /** Bones GeckoLib shows for each armor slot. */
@@ -55,7 +56,7 @@ export const SLOT_BONES: Record<ArmorSlot, string[]> = {
 }
 
 /** Where each armor bone sits on the player (pivot) and the body part it covers (Steve proportions). */
-export const PLAYER_PARTS: Record<string, { pivot: V3; from: V3; to: V3 }> = {
+const PLAYER_PARTS: Record<string, { pivot: V3; from: V3; to: V3 }> = {
   armorHead: { pivot: [0, 24, 0], from: [-4, 24, -4], to: [4, 32, 4] },
   armorBody: { pivot: [0, 24, 0], from: [-4, 12, -2], to: [4, 24, 2] },
   armorRightArm: { pivot: [-5, 22, 0], from: [-8, 12, -2], to: [-4, 24, 2] },
@@ -69,7 +70,7 @@ const ARMOR_BONES = Object.keys(PLAYER_PARTS)
 
 export const FIT_PREFIX = 'nkw_fit_'
 /** Name of the looping GeckoLib animation that carries the fit scale. */
-export const FIT_ANIMATION = 'animation.nkw.fit'
+const FIT_ANIMATION = 'animation.nkw.fit'
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
@@ -202,7 +203,7 @@ export function bbmodelToGeo(text: string, identifier = 'geometry.nkw'): { geo: 
     } else walk(node)
   }
   // elements not listed in the outliner (older files) go to a root bone
-  for (const e of bb.elements ?? []) if (!used.has(e.uuid)) (cube(e) && loose.push(cube(e)!))
+  for (const e of bb.elements ?? []) if (!used.has(e.uuid)) cube(e) && loose.push(cube(e)!)
   if (loose.length) bones.unshift({ name: uniqueName('root'), pivot: [0, 0, 0], cubes: loose })
 
   const textures = (bb.textures ?? []).map((t, i) => {
@@ -211,7 +212,19 @@ export function bbmodelToGeo(text: string, identifier = 'geometry.nkw'): { geo: 
   })
   const geo: GeoFile = {
     format_version: '1.12.0',
-    'minecraft:geometry': [{ description: { identifier, texture_width: tw, texture_height: th, visible_bounds_width: 3, visible_bounds_height: 3.5, visible_bounds_offset: [0, 1.25, 0] }, bones }]
+    'minecraft:geometry': [
+      {
+        description: {
+          identifier,
+          texture_width: tw,
+          texture_height: th,
+          visible_bounds_width: 3,
+          visible_bounds_height: 3.5,
+          visible_bounds_offset: [0, 1.25, 0]
+        },
+        bones
+      }
+    ]
   }
   return { geo, textures }
 }
@@ -226,15 +239,6 @@ interface JavaModelLike {
     rotation?: { angle: number; axis: 'x' | 'y' | 'z'; origin: number[] }
     faces?: Record<string, { uv?: number[]; texture?: string }>
   }[]
-}
-
-const JAVA_DEFAULT_UV: Record<string, (a: number[], b: number[]) => number[]> = {
-  north: (a, b) => [16 - b[0], 16 - b[1], 16 - a[0], 16 - a[1]],
-  south: (a, b) => [a[0], 16 - b[1], b[0], 16 - a[1]],
-  west: (a, b) => [a[2], 16 - b[1], b[2], 16 - a[1]],
-  east: (a, b) => [16 - b[2], 16 - b[1], 16 - a[2], 16 - a[1]],
-  up: (a, b) => [a[0], a[2], b[0], b[2]],
-  down: (a, b) => [a[0], 16 - b[2], b[0], 16 - a[2]]
 }
 
 /**
@@ -252,8 +256,8 @@ export function javaModelToGeo(model: JavaModelLike, textureKeys: string[], text
     const r = e.rotation
     const faces: BBElement['faces'] = {}
     for (const [f, face] of Object.entries(e.faces ?? {})) {
-      if (!JAVA_DEFAULT_UV[f]) continue
-      const uv = face.uv ?? JAVA_DEFAULT_UV[f](e.from, e.to)
+      if (!isFace(f)) continue
+      const uv = face.uv ?? DEFAULT_UV[f](e.from, e.to)
       const dv = 16 * index(face.texture)
       faces[f] = { uv: [uv[0], uv[1] + dv, uv[2], uv[3] + dv], texture: 0 }
     }
@@ -307,7 +311,7 @@ function bounds(cubes: GeoCube[]): { min: V3; max: V3 } | null {
  * resting on top of the head for helmets, on the feet for boots, covering the part otherwise.
  * Leggings/boots/chestplate arms get a copy per side.
  */
-export function attachToSlot(input: GeoFile, slot: ArmorSlot): GeoFile {
+function attachToSlot(input: GeoFile, slot: ArmorSlot): GeoFile {
   const geo = clone(input)
   const g = geo['minecraft:geometry'][0]
   const bones = g.bones ?? []
@@ -348,7 +352,7 @@ export function attachToSlot(input: GeoFile, slot: ArmorSlot): GeoFile {
  * rotation, and all its geometry is moved by the offset. Scale is applied by GeckoLib at run time
  * through the fit animation (see fitAnimation), so the texture mapping is never touched.
  */
-export function applyFit(input: GeoFile, slot: ArmorSlot, fit: ArmorFit): GeoFile {
+function applyFit(input: GeoFile, slot: ArmorSlot, fit: ArmorFit): GeoFile {
   const geo = clone(input)
   const g = geo['minecraft:geometry'][0]
   let bones = g.bones ?? []
@@ -433,22 +437,11 @@ export function fitAnimation(anim: AnimFile | null, loopName: string | null, slo
 
 // ───────────── faces and UVs (shared by the preview and the icon converter) ─────────────
 
-export type Face = 'north' | 'south' | 'east' | 'west' | 'up' | 'down'
 /** UV rectangle in texture pixels; top-left corner (u, v) and signed size (flipped when negative). */
 export type Rect = { u: number; v: number; us: number; vs: number }
 
-/** Face corners as seen from outside: top-left, top-right, bottom-right, bottom-left (render space). */
-export const CORNERS: Record<Face, (a: V3, b: V3) => V3[]> = {
-  north: (a, b) => [[b[0], b[1], a[2]], [a[0], b[1], a[2]], [a[0], a[1], a[2]], [b[0], a[1], a[2]]],
-  south: (a, b) => [[a[0], b[1], b[2]], [b[0], b[1], b[2]], [b[0], a[1], b[2]], [a[0], a[1], b[2]]],
-  west: (a, b) => [[a[0], b[1], a[2]], [a[0], b[1], b[2]], [a[0], a[1], b[2]], [a[0], a[1], a[2]]],
-  east: (a, b) => [[b[0], b[1], b[2]], [b[0], b[1], a[2]], [b[0], a[1], a[2]], [b[0], a[1], b[2]]],
-  up: (a, b) => [[a[0], b[1], a[2]], [b[0], b[1], a[2]], [b[0], b[1], b[2]], [a[0], b[1], b[2]]],
-  down: (a, b) => [[a[0], a[1], b[2]], [b[0], a[1], b[2]], [b[0], a[1], a[2]], [a[0], a[1], a[2]]]
-}
-
 /** Box UV → per-face rectangles, the way GeckoLib lays them out. */
-export function boxRects(uv: [number, number], size: V3): Record<Face, Rect> {
+function boxRects(uv: [number, number], size: V3): Record<Face, Rect> {
   const [u, v] = uv
   const w = Math.floor(size[0])
   const h = Math.floor(size[1])
@@ -490,9 +483,23 @@ const I3: M3 = [
 function axisRot(axis: 0 | 1 | 2, deg: number): M3 {
   const c = Math.cos((deg * Math.PI) / 180)
   const s = Math.sin((deg * Math.PI) / 180)
-  if (axis === 0) return [[1, 0, 0], [0, c, -s], [0, s, c]]
-  if (axis === 1) return [[c, 0, s], [0, 1, 0], [-s, 0, c]]
-  return [[c, -s, 0], [s, c, 0], [0, 0, 1]]
+  if (axis === 0)
+    return [
+      [1, 0, 0],
+      [0, c, -s],
+      [0, s, c]
+    ]
+  if (axis === 1)
+    return [
+      [c, 0, s],
+      [0, 1, 0],
+      [-s, 0, c]
+    ]
+  return [
+    [c, -s, 0],
+    [s, c, 0],
+    [0, 0, 1]
+  ]
 }
 /** Geo rotation in render space: GeckoLib negates x and y and applies Z·Y·X. */
 const geoRot = (r?: V3): M3 => (r ? mul(mul(axisRot(2, r[2]), axisRot(1, -r[1])), axisRot(0, -r[0])) : I3)
@@ -503,9 +510,9 @@ function javaRotation(m: M3): { axis: 'x' | 'y' | 'z'; angle: number } | null {
   const eps = 1e-3
   let axis: 'x' | 'y' | 'z' | null = null
   let deg = 0
-  if (Math.abs(m[0][0] - 1) < eps) (axis = 'x'), (deg = (Math.atan2(m[2][1], m[1][1]) * 180) / Math.PI)
-  else if (Math.abs(m[1][1] - 1) < eps) (axis = 'y'), (deg = (Math.atan2(m[0][2], m[0][0]) * 180) / Math.PI)
-  else if (Math.abs(m[2][2] - 1) < eps) (axis = 'z'), (deg = (Math.atan2(m[1][0], m[0][0]) * 180) / Math.PI)
+  if (Math.abs(m[0][0] - 1) < eps) ((axis = 'x'), (deg = (Math.atan2(m[2][1], m[1][1]) * 180) / Math.PI))
+  else if (Math.abs(m[1][1] - 1) < eps) ((axis = 'y'), (deg = (Math.atan2(m[0][2], m[0][0]) * 180) / Math.PI))
+  else if (Math.abs(m[2][2] - 1) < eps) ((axis = 'z'), (deg = (Math.atan2(m[1][0], m[0][0]) * 180) / Math.PI))
   if (!axis) return null
   const snapped = Math.max(-45, Math.min(45, Math.round(deg / 22.5) * 22.5))
   return snapped === 0 ? null : { axis, angle: snapped }

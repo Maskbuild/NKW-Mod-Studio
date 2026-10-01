@@ -10,7 +10,7 @@ import type { AssetReader, GenCtx, GenFile, ResolvedDeps } from './types'
 export type { GenFile, ResolvedDeps, AssetReader } from './types'
 
 /** FD recipes, or any Farmer's Delight item/tag used as an ingredient, result, drop or tab entry. */
-export function usesFarmersDelight(ir: ModIR): boolean {
+function usesFarmersDelight(ir: ModIR): boolean {
   if (ir.recipes.some((r) => r.kind === 'fdCutting' || r.kind === 'fdCooking')) return true
   return JSON.stringify([ir.recipes, ir.tabs, ir.blocks.map((b) => b.drop), ir.toolMats, ir.armorMats]).includes('farmersdelight:')
 }
@@ -21,7 +21,15 @@ function geoNames(ir: ModIR): Map<string, string> {
   for (const it of ir.items) {
     const g = it.armor?.geo
     if (!g) continue
-    const key = [g.asset, g.texture, (g.java?.textures ?? []).join(','), g.animation?.asset ?? '', g.animation?.name ?? '', it.armor!.slot, JSON.stringify(g.fit ?? null)].join('|')
+    const key = [
+      g.asset,
+      g.texture,
+      (g.java?.textures ?? []).join(','),
+      g.animation?.asset ?? '',
+      g.animation?.name ?? '',
+      it.armor!.slot,
+      JSON.stringify(g.fit ?? null)
+    ].join('|')
     if (!byKey.has(key)) byKey.set(key, it.id)
     out.set(it.id, byKey.get(key)!)
   }

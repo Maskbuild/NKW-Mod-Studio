@@ -17,7 +17,19 @@ export function matchPin(def: NodeDef, p: Pending): string | null {
   return def.outputs.find((o) => canConnect(o.type, p.type))?.id ?? null
 }
 
-export function QuickAdd({ x, y, pending, onPick, onClose }: { x: number; y: number; pending: Pending | null; onPick: (type: string) => void; onClose: () => void }) {
+export function QuickAdd({
+  x,
+  y,
+  pending,
+  onPick,
+  onClose
+}: {
+  x: number
+  y: number
+  pending: Pending | null
+  onPick: (type: string) => void
+  onClose: () => void
+}) {
   const { t } = useTranslation()
   const [q, setQ] = useState('')
   const [idx, setIdx] = useState(0)
@@ -56,7 +68,12 @@ export function QuickAdd({ x, y, pending, onPick, onClose }: { x: number; y: num
         />
         <div className="qa-list" ref={listRef}>
           {items.map((d, i) => (
-            <div key={d.type} className={`qa-item${i === idx ? ' on' : ''}`} onMouseEnter={() => setIdx(i)} onMouseDown={(e) => (e.preventDefault(), onPick(d.type))}>
+            <div
+              key={d.type}
+              className={`qa-item${i === idx ? ' on' : ''}`}
+              onMouseEnter={() => setIdx(i)}
+              onMouseDown={(e) => (e.preventDefault(), onPick(d.type))}
+            >
               <span aria-hidden>{d.icon}</span>
               {L(d.title)}
               <small>{L(CATEGORY_LABEL[d.category])}</small>

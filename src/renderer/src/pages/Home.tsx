@@ -87,7 +87,14 @@ export function Home() {
           ) : (
             <div className="recent-grid">
               {settings.recent.map((r) => (
-                <div key={r.dir} className="recent" role="button" tabIndex={0} onClick={() => open(() => api.openRecent(r.dir))} onKeyDown={(e) => e.key === 'Enter' && open(() => api.openRecent(r.dir))}>
+                <div
+                  key={r.dir}
+                  className="recent"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => open(() => api.openRecent(r.dir))}
+                  onKeyDown={(e) => e.key === 'Enter' && open(() => api.openRecent(r.dir))}
+                >
                   <div className="recent-icon">{r.name.slice(0, 1).toUpperCase()}</div>
                   <div className="grow">
                     <b>{r.name}</b>

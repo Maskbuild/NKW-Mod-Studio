@@ -60,7 +60,15 @@ export const api = {
   animationNames: (asset: string) => call<string[]>('assets:animationNames', { asset }),
   /** Imports files dropped from the OS; kind is detected from content unless given. */
   importFiles: (files: File[], kind?: AssetKind, folder?: string, audio?: AudioOptions) =>
-    call<{ imported: ImportedAsset[]; errors: string[] }>('assets:importPaths', { paths: files.map((f) => window.nkw.pathForFile(f)).filter(Boolean).slice(0, 32), kind, folder, audio }),
+    call<{ imported: ImportedAsset[]; errors: string[] }>('assets:importPaths', {
+      paths: files
+        .map((f) => window.nkw.pathForFile(f))
+        .filter(Boolean)
+        .slice(0, 32),
+      kind,
+      folder,
+      audio
+    }),
   vanilla: (mc: string, source: ItemSource = 'minecraft') => call<VanillaData | null>('vanilla:get', { mc, source }),
   downloadVanilla: (mc: string, source: ItemSource = 'minecraft') => call<VanillaData | null>('vanilla:download', { mc, source }),
   toolchain: () => call<{ jdks: { major: number; home: string; managed: boolean }[]; toolsDir: string }>('toolchain:status'),
@@ -76,4 +84,5 @@ export const assetUrl = (asset: string) => `nkw-asset://project/${asset}`
 export type ItemSource = 'minecraft' | 'farmersdelight'
 /** The game's Steve / Alex skin, extracted from the downloaded Minecraft files. */
 export const vanillaSkinUrl = (mc: string, slim: boolean) => `nkw-asset://vanilla/${mc}/skins/${slim ? 'alex' : 'steve'}.png`
-export const vanillaIconUrl = (mc: string, id: string, ns: string = 'minecraft') => `nkw-asset://vanilla/${mc}/${ns === 'farmersdelight' ? 'farmersdelight/' : ''}${id}.png`
+export const vanillaIconUrl = (mc: string, id: string, ns: string = 'minecraft') =>
+  `nkw-asset://vanilla/${mc}/${ns === 'farmersdelight' ? 'farmersdelight/' : ''}${id}.png`

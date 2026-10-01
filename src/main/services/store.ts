@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { ProjectSchema, type Project } from '@core/project'
 
 /** Atomic write: temp file + rename, so a crash never leaves a half-written file. */
-export async function writeAtomic(path: string, data: string | Buffer): Promise<void> {
+async function writeAtomic(path: string, data: string | Buffer): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
   const tmp = join(dirname(path), `.${basename(path)}.${process.pid}.${Date.now()}.tmp`)
   await writeFile(tmp, data)
@@ -19,7 +19,10 @@ export const SettingsSchema = z.object({
   language: z.enum(['th', 'en']).default('th'),
   memoryMb: z.number().int().min(1024).max(16384).default(4096),
   allowDownloads: z.boolean().default(false),
-  recent: z.array(z.object({ dir: z.string().max(1024), name: z.string().max(64), modId: z.string().max(64), at: z.number() })).max(20).default([])
+  recent: z
+    .array(z.object({ dir: z.string().max(1024), name: z.string().max(64), modId: z.string().max(64), at: z.number() }))
+    .max(20)
+    .default([])
 })
 export type Settings = z.infer<typeof SettingsSchema>
 
@@ -54,7 +57,7 @@ export class SettingsStore {
 
 // ───────── projects ─────────
 
-export const PROJECT_FILE = 'project.json'
+const PROJECT_FILE = 'project.json'
 const BACKUPS = 10
 
 export async function readProject(dir: string): Promise<Project> {
@@ -77,7 +80,11 @@ export async function saveProject(dir: string, project: Project): Promise<void> 
 }
 
 export async function createProjectDir(parent: string, folderName: string, project: Project): Promise<string> {
-  const safe = folderName.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim().slice(0, 64) || project.meta.modId
+  const safe =
+    folderName
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
+      .trim()
+      .slice(0, 64) || project.meta.modId
   let dir = join(parent, `${safe}.nkw`)
   for (let i = 2; existsSync(dir); i++) dir = join(parent, `${safe} (${i}).nkw`)
   for (const d of ['textures', 'models', 'geo', 'sounds', 'animations']) await mkdir(join(dir, 'assets', d), { recursive: true })

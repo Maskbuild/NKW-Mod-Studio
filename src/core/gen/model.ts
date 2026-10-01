@@ -73,7 +73,9 @@ export function shapeBoxes(model: JavaModel): Box[] {
     .map((e) => {
       const a = e.from.map(clamp)
       const b = e.to.map(clamp)
-      return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.min(a[2], b[2]), Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.max(a[2], b[2])].map(round) as Box
+      return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.min(a[2], b[2]), Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.max(a[2], b[2])].map(
+        round
+      ) as Box
     })
     .filter((b) => b[3] - b[0] > 0.01 && b[4] - b[1] > 0.01 && b[5] - b[2] > 0.01)
   if (!boxes.length) return [[0, 0, 0, 16, 16, 16]]
@@ -89,8 +91,7 @@ export function shapeBoxes(model: JavaModel): Box[] {
 /** Rotates boxes around the block centre (clockwise seen from above), matching blockstate "y". */
 export function rotateBoxes(boxes: Box[], deg: 0 | 90 | 180 | 270): Box[] {
   let out = boxes
-  for (let r = 0; r < deg / 90; r++)
-    out = out.map(([x1, y1, z1, x2, y2, z2]) => [round(16 - z2), y1, x1, round(16 - z1), y2, x2] as Box)
+  for (let r = 0; r < deg / 90; r++) out = out.map(([x1, y1, z1, x2, y2, z2]) => [round(16 - z2), y1, x1, round(16 - z1), y2, x2] as Box)
   return out
 }
 
@@ -158,8 +159,7 @@ export function convertBBModel(text: string): ConvertedModel {
     const axisIdx = rot.findIndex((v) => Math.abs(v) > 0.001)
     if (axisIdx >= 0) {
       const snapped = ANGLES.reduce((best, a) => (Math.abs(a - rot[axisIdx]) < Math.abs(best - rot[axisIdx]) ? a : best), 0)
-      if (snapped !== 0)
-        el.rotation = { angle: snapped, axis: (['x', 'y', 'z'] as const)[axisIdx], origin: (e.origin ?? [8, 8, 8]).map(round) }
+      if (snapped !== 0) el.rotation = { angle: snapped, axis: (['x', 'y', 'z'] as const)[axisIdx], origin: (e.origin ?? [8, 8, 8]).map(round) }
     }
     if (e.shade === false) el.shade = false
     elements.push(el)

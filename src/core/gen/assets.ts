@@ -1,4 +1,4 @@
-import type { BlockIR, ItemIR, ModelRef } from '../ir'
+import type { BlockIR, ModelRef } from '../ir'
 import { armorIconModel, fitAnimation, geoLoopName, javaModelToGeo, prepareArmorGeo, type GeoFile } from './geo'
 import { textureKeys, type JavaModel } from './model'
 import { parseJavaModel, remapTextures } from './model'
@@ -73,7 +73,11 @@ export function genAssets(ctx: GenCtx): void {
     if (geo) {
       let icon: unknown = null
       try {
-        icon = armorIconModel(JSON.parse(ctx.read.readText(geo.asset)) as GeoFile, it.armor!.slot, tex(geo.texture, 'item/armor', ctx.geoNames.get(it.id) ?? it.id))
+        icon = armorIconModel(
+          JSON.parse(ctx.read.readText(geo.asset)) as GeoFile,
+          it.armor!.slot,
+          tex(geo.texture, 'item/armor', ctx.geoNames.get(it.id) ?? it.id)
+        )
       } catch {
         icon = null
       }
@@ -213,7 +217,6 @@ export function genAssets(ctx: GenCtx): void {
   files.push({ path: `${A}/lang/en_us.json`, text: json(en) })
   files.push({ path: `${A}/lang/th_th.json`, text: json(th) })
 }
-
 
 const COPYRIGHT: Record<string, { en: string; th: string } | undefined> = {
   free: { en: 'Copyright-free', th: 'ไม่มีลิขสิทธิ์' },

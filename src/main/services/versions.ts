@@ -86,7 +86,9 @@ export async function resolveDeps(target: Target, cacheDir: string): Promise<Res
         )
         return profile.libraries
           .map((l) => l.name)
-          .filter((n) => /^[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:[A-Za-z0-9_.+-]+$/.test(n) && !/^(org.quiltmc:(quilt-loader|hashed)|net.fabricmc:intermediary):/.test(n))
+          .filter(
+            (n) => /^[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:[A-Za-z0-9_.+-]+$/.test(n) && !/^(org.quiltmc:(quilt-loader|hashed)|net.fabricmc:intermediary):/.test(n)
+          )
           .join(' ')
       })
       deps.quiltLibraries = (libs ?? QUILT_FALLBACK_LIBS).split(' ').filter(Boolean)

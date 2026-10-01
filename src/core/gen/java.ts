@@ -105,12 +105,12 @@ const MC = {
   ItemEntity: 'net.minecraft.world.entity.item.ItemEntity'
 }
 
-/** `new NkwEffect(...)` expression for one effect. */
 /** Duration in ticks; infinite = -1 on 1.19.4+ (MobEffectInstance.INFINITE_DURATION), else max int. */
-export function effectTicks(e: EffectIR, p: VersionProfile): string {
+function effectTicks(e: EffectIR, p: VersionProfile): string {
   if (!e.infinite) return String(e.ticks)
   return p.smithingTransform ? '-1' : 'Integer.MAX_VALUE'
 }
+/** `new NkwEffect(...)` expression for one effect. */
 function effectExpr(e: EffectIR, p: VersionProfile): string {
   return `new NkwEffect(MobEffects.${e.effect}, ${effectTicks(e, p)}, ${e.amplifier}, ${f(e.chance)}, ${e.particles}, ${e.showIcon})`
 }
@@ -178,14 +178,12 @@ export function genJava(ctx: GenCtx): void {
   const legacyForge = loader === 'forge' && p.mc === '1.16.5'
   const out = (cls: string, text: string) => files.push({ path: `${dir}/${cls}.java`, text: legacyForge ? toMcp1165(text) : text })
   const fab = fabricLike(loader)
-  const forge = loader === 'forge'
   const neo = loader === 'neoforge'
   const deferred = !fab
 
   /** How a registered object is read from Java: Fabric stores the value, Forge/Neo a holder. */
   const get = (cls: string, id: string) => (deferred ? `${cls}.${C(id)}.get()` : `${cls}.${C(id)}`)
   const regItems = p.builtInRegistries ? 'BuiltInRegistries.ITEM' : 'Registry.ITEM'
-  const regBlocks = p.builtInRegistries ? 'BuiltInRegistries.BLOCK' : 'Registry.BLOCK'
   const regSounds = p.builtInRegistries ? 'BuiltInRegistries.SOUND_EVENT' : 'Registry.SOUND_EVENT'
   const regImport = p.builtInRegistries ? MC.BuiltIn : MC.Registry
 
@@ -350,13 +348,23 @@ ${wornEffectsMethod()}
 
   if (fab && !p.jukeboxSongs && ir.items.some((i) => i.disc)) {
     const j = new JavaFile(pkg, 'NkwDiscItem').use(MC.RecordItem, MC.SoundEvent, MC.Item)
-    const sig = p.recordLength ? 'int comparator, SoundEvent sound, Item.Properties properties, int seconds' : 'int comparator, SoundEvent sound, Item.Properties properties'
+    const sig = p.recordLength
+      ? 'int comparator, SoundEvent sound, Item.Properties properties, int seconds'
+      : 'int comparator, SoundEvent sound, Item.Properties properties'
     const call = p.recordLength ? 'super(comparator, sound, properties, seconds);' : 'super(comparator, sound, properties);'
     out('NkwDiscItem', j.render(`public class NkwDiscItem extends RecordItem {\n    public NkwDiscItem(${sig}) {\n        ${call}\n    }\n}`))
   }
 
   if (modelBlocks.some((b) => !b.rotatable)) {
-    const j = new JavaFile(pkg, 'NkwModelBlock').use(MC.Block, MC.BlockBehaviour, MC.BlockState, MC.BlockGetter, MC.BlockPos, MC.CollisionContext, MC.VoxelShape)
+    const j = new JavaFile(pkg, 'NkwModelBlock').use(
+      MC.Block,
+      MC.BlockBehaviour,
+      MC.BlockState,
+      MC.BlockGetter,
+      MC.BlockPos,
+      MC.CollisionContext,
+      MC.VoxelShape
+    )
     out(
       'NkwModelBlock',
       j.render(`
@@ -459,7 +467,9 @@ ${ir.sounds.map((s) => `    public static final SoundEvent ${C(s.id)} = register
       j.use(neo ? 'net.neoforged.neoforge.registries.DeferredRegister' : 'net.minecraftforge.registries.DeferredRegister')
       const holder = neo ? 'DeferredHolder<SoundEvent, SoundEvent>' : 'RegistryObject<SoundEvent>'
       j.use(neo ? 'net.neoforged.neoforge.registries.DeferredHolder' : 'net.minecraftforge.registries.RegistryObject')
-      const create = neo ? 'DeferredRegister.create(Registries.SOUND_EVENT, NkwMod.MOD_ID)' : 'DeferredRegister.create(ForgeRegistries.SOUND_EVENTS, NkwMod.MOD_ID)'
+      const create = neo
+        ? 'DeferredRegister.create(Registries.SOUND_EVENT, NkwMod.MOD_ID)'
+        : 'DeferredRegister.create(ForgeRegistries.SOUND_EVENTS, NkwMod.MOD_ID)'
       j.use(neo ? MC.Registries : 'net.minecraftforge.registries.ForgeRegistries')
       body = `
 public final class ModSounds {
@@ -690,7 +700,10 @@ function toolTiers(ctx: GenCtx, mats: ToolMatIR[]): string {
     return j.render(`
 public final class ModToolTiers {
 ${mats
-  .map((m) => `    public static final ToolMaterial ${C(m.id)} = new ToolMaterial(BlockTags.${LEVEL_TAG[m.level]}, ${m.durability}, ${f(m.speed)}, ${f(m.damage)}, ${m.enchantability}, NkwTags.TOOL_${C(m.id)});`)
+  .map(
+    (m) =>
+      `    public static final ToolMaterial ${C(m.id)} = new ToolMaterial(BlockTags.${LEVEL_TAG[m.level]}, ${m.durability}, ${f(m.speed)}, ${f(m.damage)}, ${m.enchantability}, NkwTags.TOOL_${C(m.id)});`
+  )
   .join('\n')}
 
     private ModToolTiers() {}
@@ -924,7 +937,9 @@ ${create}
 public final class ModArmorMaterials {
 ${mats
   .map(
-    (m) => `    public static final ResourceKey<EquipmentAsset> ${C(m.id)}_ASSET = ${m.vanillaLook ? `EquipmentAssets.${m.vanillaLook.toUpperCase()}` : `ResourceKey.create(EquipmentAssets.ROOT_ID, NkwMod.id("${m.id}"))`};
+    (
+      m
+    ) => `    public static final ResourceKey<EquipmentAsset> ${C(m.id)}_ASSET = ${m.vanillaLook ? `EquipmentAssets.${m.vanillaLook.toUpperCase()}` : `ResourceKey.create(EquipmentAssets.ROOT_ID, NkwMod.id("${m.id}"))`};
     public static final ArmorMaterial ${C(m.id)} = new ArmorMaterial(${m.durability}, defense(${P(m).helmet}, ${P(m).chestplate}, ${P(m).leggings}, ${P(m).boots}), ${m.enchantability}, ${snd(m)}, ${f(m.toughness)}, ${f(m.knockback)}, NkwTags.ARMOR_${C(m.id)}, ${C(m.id)}_ASSET);`
   )
   .join('\n')}
@@ -1102,9 +1117,13 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
           const fd = it.food
           let fb = `new FoodProperties.Builder().nutrition(${fd.nutrition})`
           if (p.foodApi === 'legacy') fb += `.saturationMod(${f(fd.saturation)})${fd.alwaysEdible ? '.alwaysEat()' : ''}${fd.fast ? '.fast()' : ''}`
-          else if (p.foodApi === 'modern') fb += `.saturationModifier(${f(fd.saturation)})${fd.alwaysEdible ? '.alwaysEdible()' : ''}${fd.fast ? '.fast()' : ''}`
+          else if (p.foodApi === 'modern')
+            fb += `.saturationModifier(${f(fd.saturation)})${fd.alwaysEdible ? '.alwaysEdible()' : ''}${fd.fast ? '.fast()' : ''}`
           else fb += `.saturationModifier(${f(fd.saturation)})${fd.alwaysEdible ? '.alwaysEdible()' : ''}`
-          const inst = (e: EffectIR) => (j.use(MC.MobEffectInstance, MC.MobEffects), `new MobEffectInstance(MobEffects.${e.effect}, ${effectTicks(e, p)}, ${e.amplifier}, false, ${e.particles}, ${e.showIcon})`)
+          const inst = (e: EffectIR) => (
+            j.use(MC.MobEffectInstance, MC.MobEffects),
+            `new MobEffectInstance(MobEffects.${e.effect}, ${effectTicks(e, p)}, ${e.amplifier}, false, ${e.particles}, ${e.showIcon})`
+          )
           if (p.foodApi !== 'consumable') for (const e of fd.effects) fb += `.effect(${inst(e)}, ${f(e.chance)})`
           fb += '.build()'
           if (p.foodApi === 'consumable' && (fd.fast || fd.effects.length)) {
@@ -1149,7 +1168,8 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
         if (custom) {
           j.use(MC.EquipmentSlot)
           extra = `, EquipmentSlot.${SLOT_OLD[a.slot]}`
-          if (geo) extra += `, "${ctx.geoNames.get(it.id)}", ${geoLoopName(a.geo!.animation, a.geo!.fit) ? JSON.stringify(geoLoopName(a.geo!.animation, a.geo!.fit)) : 'null'}`
+          if (geo)
+            extra += `, "${ctx.geoNames.get(it.id)}", ${geoLoopName(a.geo!.animation, a.geo!.fit) ? JSON.stringify(geoLoopName(a.geo!.animation, a.geo!.fit)) : 'null'}`
           extra += effectArgs(a.effects, p)
         }
         const mat = `ModArmorMaterials.${C(a.material)}`
@@ -1201,15 +1221,16 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
       : `Component.translatable("tooltip.${ctx.ns}.wearable_head")`
     const ctxParam = p.jukeboxSongs ? 'Item.TooltipContext context' : (j.use(MC.Level), 'Level level')
     const ctxArg = p.jukeboxSongs ? 'context' : 'level'
-    const slot = !fab && !p.propertiesId
-      ? (j.use(MC.EquipmentSlot),
-        `
+    const slot =
+      !fab && !p.propertiesId
+        ? (j.use(MC.EquipmentSlot),
+          `
             @Override
             public EquipmentSlot getEquipmentSlot(ItemStack stack) {
                 return EquipmentSlot.HEAD;
             }
 `)
-      : ''
+        : ''
     return `${base} {${slot}
             @Override
             public void appendHoverText(ItemStack stack, ${ctxParam}, List<Component> tooltip, TooltipFlag flag) {
@@ -1266,6 +1287,31 @@ ${icons.map((t) => `    public static final ${holder} ${C(t.id)} = ITEMS.registe
 ${propsHelper}}`)
 }
 
+/**
+ * The Forge / NeoForge game event bus for a target: which bus, the event package, how the player and
+ * level getters are named on that version, and a server level-tick handler that calls tick(level).
+ */
+function forgeEvents(ctx: GenCtx, j: JavaFile) {
+  const neo = ctx.loader === 'neoforge'
+  const old = !neo && (ctx.p.mc === '1.16.5' || ctx.p.mc === '1.18.2')
+  const base = neo ? 'net.neoforged.neoforge' : 'net.minecraftforge'
+  j.use(neo ? 'net.neoforged.neoforge.common.NeoForge' : 'net.minecraftforge.common.MinecraftForge')
+  return {
+    base,
+    bus: neo ? 'NeoForge.EVENT_BUS' : 'MinecraftForge.EVENT_BUS',
+    player: old ? 'getPlayer()' : 'getEntity()',
+    level: old ? 'getWorld()' : 'getLevel()',
+    /** `private static void onTick(…)` running tick(level) after every server level tick */
+    tickHandler(): string {
+      if (neo && ctx.p.jukeboxSongs) {
+        j.use('net.neoforged.neoforge.event.tick.LevelTickEvent')
+        return '    private static void onTick(LevelTickEvent.Post event) {\n        tick(event.getLevel());\n    }'
+      }
+      j.use(`${base}.event.TickEvent`)
+      return `    private static void onTick(TickEvent.${old ? 'WorldTickEvent' : 'LevelTickEvent'} event) {\n        if (event.phase == TickEvent.Phase.END) tick(event.${old ? 'world' : 'level'});\n    }`
+    }
+  }
+}
 
 /**
  * What a jukebox does when one of our discs ends: pop it out, or play it again. Vanilla leaves the disc
@@ -1275,15 +1321,29 @@ ${propsHelper}}`)
 function genJukebox(ctx: GenCtx, discs: ItemIR[], get: (cls: string, id: string) => string, out: (cls: string, text: string) => void): void {
   const { pkg, loader, p } = ctx
   const fab = fabricLike(loader)
-  const neo = loader === 'neoforge'
-  const oldForge = !neo && (p.mc === '1.16.5' || p.mc === '1.18.2')
   // how each era tells that the song ended, starts it again and pops the disc out
   const era = p.jukeboxSongs ? 'song' : p.mc.startsWith('1.20') ? 'record' : p.mc === '1.19.2' ? 'timer19' : 'timer'
   const timer = era === 'timer' || era === 'timer19'
-  const j = new JavaFile(pkg, 'NkwJukebox').use(MC.Item, MC.ItemStack, MC.Level, MC.BlockPos, MC.BlockEntity, MC.JukeboxBlockEntity, 'java.util.Iterator', 'java.util.HashMap', 'java.util.Map', 'java.util.WeakHashMap')
+  const j = new JavaFile(pkg, 'NkwJukebox').use(
+    MC.Item,
+    MC.ItemStack,
+    MC.Level,
+    MC.BlockPos,
+    MC.BlockEntity,
+    MC.JukeboxBlockEntity,
+    'java.util.Iterator',
+    'java.util.HashMap',
+    'java.util.Map',
+    'java.util.WeakHashMap'
+  )
   if (timer) j.use(MC.BlockState, MC.JukeboxBlock, MC.ItemEntity)
   const current = era === 'song' ? 'jukebox.getTheItem()' : era === 'record' ? 'jukebox.getItem(0)' : 'jukebox.getRecord()'
-  const ended = era === 'song' ? '!jukebox.getSongPlayer().isPlaying()' : era === 'record' ? '!jukebox.isRecordPlaying()' : 'level.getGameTime() - entry.getValue() >= ticks'
+  const ended =
+    era === 'song'
+      ? '!jukebox.getSongPlayer().isPlaying()'
+      : era === 'record'
+        ? '!jukebox.isRecordPlaying()'
+        : 'level.getGameTime() - entry.getValue() >= ticks'
   const restart =
     era === 'song'
       ? 'jukebox.tryForcePlaySong();'
@@ -1304,32 +1364,18 @@ function genJukebox(ctx: GenCtx, discs: ItemIR[], get: (cls: string, id: string)
         ServerTickEvents.END_WORLD_TICK.register(level -> tick(level));
     }`
   } else {
-    const base = neo ? 'net.neoforged.neoforge' : 'net.minecraftforge'
-    j.use(`${base}.event.entity.player.PlayerInteractEvent`, neo ? 'net.neoforged.neoforge.common.NeoForge' : 'net.minecraftforge.common.MinecraftForge')
-    const bus = neo ? 'NeoForge.EVENT_BUS' : 'MinecraftForge.EVENT_BUS'
-    let tickSig: string
-    let tickBody: string
-    if (neo && p.jukeboxSongs) {
-      j.use('net.neoforged.neoforge.event.tick.LevelTickEvent')
-      tickSig = 'LevelTickEvent.Post event'
-      tickBody = 'tick(event.getLevel());'
-    } else {
-      j.use(`${base}.event.TickEvent`)
-      tickSig = `TickEvent.${oldForge ? 'WorldTickEvent' : 'LevelTickEvent'} event`
-      tickBody = `if (event.phase == TickEvent.Phase.END) tick(event.${oldForge ? 'world' : 'level'});`
-    }
+    const ev = forgeEvents(ctx, j)
+    j.use(`${ev.base}.event.entity.player.PlayerInteractEvent`)
     hooks = `    public static void init() {
-        ${bus}.addListener(NkwJukebox::onRightClick);
-        ${bus}.addListener(NkwJukebox::onTick);
+        ${ev.bus}.addListener(NkwJukebox::onRightClick);
+        ${ev.bus}.addListener(NkwJukebox::onTick);
     }
 
     private static void onRightClick(PlayerInteractEvent.RightClickBlock event) {
-        onUse(event.${oldForge ? 'getWorld()' : 'getLevel()'}, event.getPos(), event.getItemStack());
+        onUse(event.${ev.level}, event.getPos(), event.getItemStack());
     }
 
-    private static void onTick(${tickSig}) {
-        ${tickBody}
-    }`
+${ev.tickHandler()}`
   }
 
   const ejectFn = timer
@@ -1367,7 +1413,10 @@ ${discs.map((d) => `        if (item == ${get('ModItems', d.id)}) return ${d.dis
     }
 
     private static boolean loops(Item item) {
-${discs.filter((d) => d.disc!.onEnd === 'loop').map((d) => `        if (item == ${get('ModItems', d.id)}) return true;`).join('\n')}
+${discs
+  .filter((d) => d.disc!.onEnd === 'loop')
+  .map((d) => `        if (item == ${get('ModItems', d.id)}) return true;`)
+  .join('\n')}
         return false;
     }
 
@@ -1418,11 +1467,16 @@ ${discs.filter((d) => d.disc!.onEnd === 'loop').map((d) => `        if (item == 
  * with the model's "head" display settings (Blockbench's Display tab → Head).
  */
 function genHeadwear(ctx: GenCtx, items: ItemIR[], get: (cls: string, id: string) => string, out: (cls: string, text: string) => void): void {
-  const { pkg, loader, p } = ctx
+  const { pkg, loader } = ctx
   const fab = fabricLike(loader)
-  const neo = loader === 'neoforge'
-  const oldForge = !neo && (p.mc === '1.16.5' || p.mc === '1.18.2')
-  const j = new JavaFile(pkg, 'NkwHeadwear').use(MC.Item, MC.ItemStack, MC.Level, MC.EquipmentSlot, 'net.minecraft.world.entity.player.Player', 'net.minecraft.world.InteractionHand')
+  const j = new JavaFile(pkg, 'NkwHeadwear').use(
+    MC.Item,
+    MC.ItemStack,
+    MC.Level,
+    MC.EquipmentSlot,
+    'net.minecraft.world.entity.player.Player',
+    'net.minecraft.world.InteractionHand'
+  )
   let hooks: string
   if (fab) {
     j.use('net.fabricmc.fabric.api.event.player.UseItemCallback', 'net.minecraft.world.InteractionResultHolder')
@@ -1433,15 +1487,14 @@ function genHeadwear(ctx: GenCtx, items: ItemIR[], get: (cls: string, id: string
         });
     }`
   } else {
-    const base = neo ? 'net.neoforged.neoforge' : 'net.minecraftforge'
-    j.use(`${base}.event.entity.player.PlayerInteractEvent`, MC.InteractionResult, neo ? 'net.neoforged.neoforge.common.NeoForge' : 'net.minecraftforge.common.MinecraftForge')
-    const bus = neo ? 'NeoForge.EVENT_BUS' : 'MinecraftForge.EVENT_BUS'
+    const ev = forgeEvents(ctx, j)
+    j.use(`${ev.base}.event.entity.player.PlayerInteractEvent`, MC.InteractionResult)
     hooks = `    public static void init() {
-        ${bus}.addListener(NkwHeadwear::onRightClick);
+        ${ev.bus}.addListener(NkwHeadwear::onRightClick);
     }
 
     private static void onRightClick(PlayerInteractEvent.RightClickItem event) {
-        if (wear(event.${oldForge ? 'getPlayer()' : 'getEntity()'}, event.${oldForge ? 'getWorld()' : 'getLevel()'}, event.getHand())) {
+        if (wear(event.${ev.player}, event.${ev.level}, event.getHand())) {
             event.setCancellationResult(InteractionResult.SUCCESS);
             event.setCanceled(true);
         }

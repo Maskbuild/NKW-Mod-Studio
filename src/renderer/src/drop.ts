@@ -33,7 +33,7 @@ export async function importDropped(files: File[], kind?: AssetKind, folder?: st
 }
 
 /** Node data for a freshly imported asset. */
-export function dataFor(a: ImportedAsset): Record<string, unknown> {
+function dataFor(a: ImportedAsset): Record<string, unknown> {
   const d: Record<string, unknown> = { asset: a.asset }
   if (a.textureSlots) d.textureSlots = a.textureSlots
   if (a.animations?.length) d.anim = a.animations[0]

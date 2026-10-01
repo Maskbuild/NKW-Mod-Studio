@@ -15,7 +15,6 @@ const ROOTS: { path: string; kind: AssetKind; icon: string; en: string; th: stri
   { path: 'sounds', kind: 'sound', icon: '🔊', en: 'Sounds', th: 'เสียง' }
 ]
 const KIND_ICON: Record<AssetKind, string> = { texture: '🖼', model: '🧊', geo: '🦾', sound: '🔊', animation: '🎞' }
-const kindOfRoot = (path: string): AssetKind => ROOTS.find((r) => r.path === path.split('/')[0])?.kind ?? 'texture'
 
 interface TreeNode {
   path: string
@@ -148,7 +147,8 @@ export function AssetTree() {
   }
 
   const move = async (from: string, intoFolder: string) => {
-    if (from.split('/')[0] !== intoFolder.split('/')[0]) return fail(new Error(th ? 'ย้ายได้เฉพาะภายในหมวดเดียวกัน' : 'Files can only move within their own section'))
+    if (from.split('/')[0] !== intoFolder.split('/')[0])
+      return fail(new Error(th ? 'ย้ายได้เฉพาะภายในหมวดเดียวกัน' : 'Files can only move within their own section'))
     const name = from.slice(from.lastIndexOf('/') + 1)
     if (dirOf(from) === intoFolder || intoFolder.startsWith(`${from}/`) || intoFolder === from) return
     try {
@@ -271,16 +271,20 @@ export function AssetTree() {
       }}
     >
       <div className="row tree-tools">
-        <button className="btn" title={t('ws.import')} onClick={async () => {
-          try {
-            const r = await api.importAny(selFolder())
-            for (const e of r.errors) useStore.getState().toast(e, true)
-            for (const a of r.imported) if (a.warning) useStore.getState().toast(`${a.name}: ${a.warning}`)
-            await useStore.getState().refreshAssets()
-          } catch (e) {
-            fail(e)
-          }
-        }}>
+        <button
+          className="btn"
+          title={t('ws.import')}
+          onClick={async () => {
+            try {
+              const r = await api.importAny(selFolder())
+              for (const e of r.errors) useStore.getState().toast(e, true)
+              for (const a of r.imported) if (a.warning) useStore.getState().toast(`${a.name}: ${a.warning}`)
+              await useStore.getState().refreshAssets()
+            } catch (e) {
+              fail(e)
+            }
+          }}
+        >
           <IUpload size={13} /> {t('ws.import')}
         </button>
         <button className="btn" onClick={() => void newFolder()} title={t('ws.newFolder')}>
@@ -295,7 +299,11 @@ export function AssetTree() {
 
       {menu && (
         <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onMouseDown={() => setMenu(null)} onContextMenu={(e) => (e.preventDefault(), setMenu(null))} />
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+            onMouseDown={() => setMenu(null)}
+            onContextMenu={(e) => (e.preventDefault(), setMenu(null))}
+          />
           <div className="qa ctx" style={{ left: Math.min(menu.x, window.innerWidth - 210), top: Math.min(menu.y, window.innerHeight - 170) }} role="menu">
             {!menu.node.folder && (
               <div className="qa-item" onMouseDown={() => (addNode(menu.node.entry), setMenu(null))}>

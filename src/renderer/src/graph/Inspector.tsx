@@ -8,7 +8,7 @@ import { L } from '../i18n'
 import { api, assetUrl, vanillaIconUrl, type AssetKind, type ImportedAsset } from '../api'
 import { hasFiles, importDropped } from '../drop'
 import { useActiveMc, useItemInfo, useVanilla } from './VanillaPanel'
-import { newId, useStore, edgeStyle, type FlowNode } from '../store'
+import { newId, useStore, edgeStyle, inputSource, type FlowNode } from '../store'
 import { TargetPicker } from '../components/TargetPicker'
 import { IAlert, IUpload, Logo } from '../components/Icons'
 
@@ -20,15 +20,94 @@ import { ScriptEditor, ScriptTargets } from './ScriptEditor'
 const ModelPreview = lazy(() => import('./ModelPreview'))
 
 const VANILLA_ITEMS = [
-  'diamond', 'emerald', 'iron_ingot', 'gold_ingot', 'copper_ingot', 'netherite_ingot', 'coal', 'redstone', 'lapis_lazuli', 'quartz', 'amethyst_shard',
-  'stick', 'string', 'leather', 'feather', 'bone', 'gunpowder', 'blaze_rod', 'ender_pearl', 'slime_ball', 'glowstone_dust', 'paper', 'book',
-  'oak_planks', 'oak_log', 'cobblestone', 'stone', 'glass', 'sand', 'gravel', 'dirt', 'obsidian', 'iron_block', 'gold_block', 'diamond_block',
-  'wheat', 'carrot', 'potato', 'beetroot', 'apple', 'bread', 'egg', 'milk_bucket', 'sugar', 'cocoa_beans', 'honey_bottle', 'sweet_berries',
-  'beef', 'porkchop', 'chicken', 'mutton', 'cod', 'salmon', 'kelp', 'brown_mushroom', 'red_mushroom', 'pumpkin', 'melon_slice',
-  'bowl', 'bucket', 'water_bucket', 'glass_bottle', 'shears', 'flint', 'clay_ball', 'brick', 'nether_star', 'dragon_breath',
-  'netherite_upgrade_smithing_template', 'iron_sword', 'diamond_sword', 'iron_pickaxe', 'diamond_pickaxe', 'music_disc_13'
+  'diamond',
+  'emerald',
+  'iron_ingot',
+  'gold_ingot',
+  'copper_ingot',
+  'netherite_ingot',
+  'coal',
+  'redstone',
+  'lapis_lazuli',
+  'quartz',
+  'amethyst_shard',
+  'stick',
+  'string',
+  'leather',
+  'feather',
+  'bone',
+  'gunpowder',
+  'blaze_rod',
+  'ender_pearl',
+  'slime_ball',
+  'glowstone_dust',
+  'paper',
+  'book',
+  'oak_planks',
+  'oak_log',
+  'cobblestone',
+  'stone',
+  'glass',
+  'sand',
+  'gravel',
+  'dirt',
+  'obsidian',
+  'iron_block',
+  'gold_block',
+  'diamond_block',
+  'wheat',
+  'carrot',
+  'potato',
+  'beetroot',
+  'apple',
+  'bread',
+  'egg',
+  'milk_bucket',
+  'sugar',
+  'cocoa_beans',
+  'honey_bottle',
+  'sweet_berries',
+  'beef',
+  'porkchop',
+  'chicken',
+  'mutton',
+  'cod',
+  'salmon',
+  'kelp',
+  'brown_mushroom',
+  'red_mushroom',
+  'pumpkin',
+  'melon_slice',
+  'bowl',
+  'bucket',
+  'water_bucket',
+  'glass_bottle',
+  'shears',
+  'flint',
+  'clay_ball',
+  'brick',
+  'nether_star',
+  'dragon_breath',
+  'netherite_upgrade_smithing_template',
+  'iron_sword',
+  'diamond_sword',
+  'iron_pickaxe',
+  'diamond_pickaxe',
+  'music_disc_13'
 ].map((i) => `minecraft:${i}`)
-const COMMON_TAGS = ['minecraft:planks', 'minecraft:logs', 'minecraft:wool', 'minecraft:stone_crafting_materials', 'minecraft:coals', 'minecraft:fishes', 'c:ingots/iron', 'c:gems/diamond', 'c:crops', 'c:vegetables', 'forge:ingots/iron']
+const COMMON_TAGS = [
+  'minecraft:planks',
+  'minecraft:logs',
+  'minecraft:wool',
+  'minecraft:stone_crafting_materials',
+  'minecraft:coals',
+  'minecraft:fishes',
+  'c:ingots/iron',
+  'c:gems/diamond',
+  'c:crops',
+  'c:vegetables',
+  'forge:ingots/iron'
+]
 
 function NumberField({ p, value, onChange }: { p: PropDef; value: number; onChange: (v: number) => void }) {
   const [text, setText] = useState<string | null>(null)
@@ -45,7 +124,9 @@ function NumberField({ p, value, onChange }: { p: PropDef; value: number; onChan
   const slider = p.min !== undefined && p.max !== undefined && p.max - p.min <= 100
   return (
     <div className="num-row">
-      {slider && <input type="range" min={p.min} max={p.max} step={p.step ?? (int ? 1 : 0.1)} value={value} onChange={(e) => onChange(Number(e.target.value))} />}
+      {slider && (
+        <input type="range" min={p.min} max={p.max} step={p.step ?? (int ? 1 : 0.1)} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      )}
       <input
         className="input mono"
         style={slider ? undefined : { width: '100%' }}
@@ -169,7 +250,11 @@ function AnimNameField({ node, p }: { node: FlowNode; p: PropDef }) {
   return (
     <div className="field">
       <label>{L(p.label)}</label>
-      <select className={`input mono${value ? '' : ' invalid'}`} value={value} onChange={(e) => useStore.getState().updateData(node.id, { [p.key]: e.target.value })}>
+      <select
+        className={`input mono${value ? '' : ' invalid'}`}
+        value={value}
+        onChange={(e) => useStore.getState().updateData(node.id, { [p.key]: e.target.value })}
+      >
         <option value="">—</option>
         {names.map((n) => (
           <option key={n} value={n}>
@@ -217,7 +302,11 @@ function NsidField({ node, p }: { node: FlowNode; p: PropDef }) {
         </div>
       )}
       {tag && <span className="hint">{tag.values.map((v) => v.replace('minecraft:', '')).join(', ')}</span>}
-      {!data && <span className="hint">{i18n.language === 'th' ? 'โหลดรายการไอเทมทั้งหมดได้ที่แท็บ "ไอเทมเกม"' : 'Load the full item list in the "Game items" tab'}</span>}
+      {!data && (
+        <span className="hint">
+          {i18n.language === 'th' ? 'โหลดรายการไอเทมทั้งหมดได้ที่แท็บ "ไอเทมเกม"' : 'Load the full item list in the "Game items" tab'}
+        </span>
+      )}
     </div>
   )
 }
@@ -305,11 +394,10 @@ function TextureSlots({ node, def }: { node: FlowNode; def: NodeDef }) {
     useCallback(
       (s) =>
         pins.map((p) => {
-          const e = s.edges.find((x) => x.target === node.id && x.targetHandle === p.id)
-          const src = e && s.nodes.find((n) => n.id === e.source)
+          const src = inputSource(s.nodes, s.edges, node.id, p.id)
           return src?.type === 'texture' && typeof src.data.asset === 'string' ? src.data.asset : ''
         }),
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+      // pins only depend on the node type
       [node.id, def.type]
     ),
     shallow
@@ -332,7 +420,10 @@ function TextureSlots({ node, def }: { node: FlowNode; def: NodeDef }) {
       const id = newId()
       const i = pins.findIndex((p) => p.id === pin)
       nodes = [...nodes, { id, type: 'texture', position: { x: node.position.x - 260, y: node.position.y + i * 100 }, data: { asset } }]
-      edges = [...edges.filter((x) => x !== edge), { id: newId('e'), source: id, sourceHandle: 'out', target: node.id, targetHandle: pin, style: edgeStyle('texture', 'out') }]
+      edges = [
+        ...edges.filter((x) => x !== edge),
+        { id: newId('e'), source: id, sourceHandle: 'out', target: node.id, targetHandle: pin, style: edgeStyle('texture', 'out') }
+      ]
     }
     s.setGraph(nodes, edges)
   }
@@ -387,7 +478,8 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
     // keep the registry id in sync with the display name until the user edits it
     if (p.key === 'name' && typeof v === 'string') {
       const idKey = def.props.some((x) => x.key === 'id') ? 'id' : def.props.some((x) => x.key === 'baseId') ? 'baseId' : null
-      if (idKey && (node.data[idKey] === toId(String(node.data.name ?? '')) || node.data[idKey] === def.props.find((x) => x.key === idKey)?.default)) patch[idKey] = toId(v)
+      if (idKey && (node.data[idKey] === toId(String(node.data.name ?? '')) || node.data[idKey] === def.props.find((x) => x.key === idKey)?.default))
+        patch[idKey] = toId(v)
     }
     useStore.getState().updateData(node.id, patch)
   }
@@ -399,7 +491,11 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
         <div className="bool-row">
           <span>{L(p.label)}</span>
           <button className={`switch${on ? ' on' : ''}`} role="switch" aria-checked={on} onClick={() => set(!on)} />
-          {p.hint && <span className="hint" style={{ flexBasis: '100%' }}>{L(p.hint)}</span>}
+          {p.hint && (
+            <span className="hint" style={{ flexBasis: '100%' }}>
+              {L(p.hint)}
+            </span>
+          )}
         </div>
       )
     }
@@ -453,7 +549,12 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
         <div className="field">
           <label>{L(p.label)}</label>
           <div className="row">
-            <input className={`input mono grow${ID_RE.test(v) ? '' : ' invalid'}`} value={v} maxLength={63} onChange={(e) => set(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} />
+            <input
+              className={`input mono grow${ID_RE.test(v) ? '' : ' invalid'}`}
+              value={v}
+              maxLength={63}
+              onChange={(e) => set(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+            />
             {typeof node.data.name === 'string' && (
               <button className="btn" title={t('ws.idFromName')} onClick={() => set(toId(String(node.data.name)))}>
                 ↻
@@ -525,9 +626,7 @@ function ModLogo() {
         }
       }}
     >
-      <div className="tex-thumb logo-thumb">
-        {meta.icon ? <img className="pixel frame0" src={assetUrl(meta.icon)} alt="" /> : <Logo size={40} />}
-      </div>
+      <div className="tex-thumb logo-thumb">{meta.icon ? <img className="pixel frame0" src={assetUrl(meta.icon)} alt="" /> : <Logo size={40} />}</div>
       <div className="grow">
         <label className="faint">{t('ws.modLogo')}</label>
         <div className="row">
@@ -584,7 +683,12 @@ function ProjectSettings() {
       </div>
       <div className="field">
         <label>{t('wizard.modId')}</label>
-        <input className={`input mono${bad('modId') ? ' invalid' : ''}`} value={meta.modId} maxLength={63} onChange={(e) => set({ modId: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })} />
+        <input
+          className={`input mono${bad('modId') ? ' invalid' : ''}`}
+          value={meta.modId}
+          maxLength={63}
+          onChange={(e) => set({ modId: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })}
+        />
         <span className="hint">{t('wizard.modIdHint')}</span>
       </div>
       <div className="row">
@@ -594,7 +698,12 @@ function ProjectSettings() {
         </div>
         <div className="field" style={{ width: 90 }}>
           <label>{t('wizard.version')}</label>
-          <input className={`input mono${bad('version') ? ' invalid' : ''}`} value={meta.version} maxLength={32} onChange={(e) => set({ version: e.target.value })} />
+          <input
+            className={`input mono${bad('version') ? ' invalid' : ''}`}
+            value={meta.version}
+            maxLength={32}
+            onChange={(e) => set({ version: e.target.value })}
+          />
         </div>
       </div>
       <div className="field">
@@ -654,7 +763,13 @@ export function Inspector() {
       {node.type !== 'comment' && (
         <div className={`bool-row node-enable${node.data.disabled ? ' off' : ''}`}>
           <span>{node.data.disabled ? t('ws.disabledHint') : t('ws.enabledLabel')}</span>
-          <button className={`switch${node.data.disabled ? '' : ' on'}`} role="switch" aria-checked={!node.data.disabled} title="Ctrl+E" onClick={() => useStore.getState().toggleDisabled([node.id])} />
+          <button
+            className={`switch${node.data.disabled ? '' : ' on'}`}
+            role="switch"
+            aria-checked={!node.data.disabled}
+            title="Ctrl+E"
+            onClick={() => useStore.getState().toggleDisabled([node.id])}
+          />
         </div>
       )}
       {diags.length > 0 && (

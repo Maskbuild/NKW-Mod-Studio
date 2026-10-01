@@ -44,11 +44,6 @@ export function useItemInfo(id: string): { item: VanillaItem; mc: string; ns: st
   return item ? { item, mc, ns } : undefined
 }
 
-/** Game item names are always shown in English (matching item ids and wikis). */
-export function itemName(it: VanillaItem): string {
-  return it.en
-}
-
 const Tile = memo(function Tile({ it, mc, ns, onAdd }: { it: VanillaItem; mc: string; ns: string; onAdd: (id: string) => void }) {
   return (
     <div
@@ -103,12 +98,17 @@ export function VanillaPanel() {
     }
   }
 
-  const needle = q.trim().toLowerCase().replace(/^[a-z0-9_]+:/, '')
+  const needle = q
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z0-9_]+:/, '')
   const grouped = source === 'minecraft'
   const items = useMemo(() => {
     if (!data) return []
     return data.items.filter(
-      (it) => (!grouped || group === 'all' || groupOf(it.id) === group) && (!needle || it.id.includes(needle) || it.en.toLowerCase().includes(needle) || it.th.includes(needle))
+      (it) =>
+        (!grouped || group === 'all' || groupOf(it.id) === group) &&
+        (!needle || it.id.includes(needle) || it.en.toLowerCase().includes(needle) || it.th.includes(needle))
     )
   }, [data, group, needle, grouped])
   const tags = useMemo(() => (data ? data.tags.filter((tg) => !needle || tg.id.includes(needle)) : []), [data, needle])

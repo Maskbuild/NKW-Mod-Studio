@@ -10,11 +10,82 @@ import type { Loader, Target } from './project'
 
 const t = (en: string, th: string): L10n => ({ en, th })
 
+/** Java keywords and built-in types (completion in the editor, colours in the canvas preview). */
+export const JAVA_KEYWORDS = [
+  'public',
+  'private',
+  'protected',
+  'static',
+  'final',
+  'abstract',
+  'class',
+  'interface',
+  'enum',
+  'record',
+  'extends',
+  'implements',
+  'void',
+  'int',
+  'long',
+  'float',
+  'double',
+  'boolean',
+  'char',
+  'byte',
+  'short',
+  'var',
+  'return',
+  'new',
+  'if',
+  'else',
+  'for',
+  'while',
+  'do',
+  'switch',
+  'case',
+  'default',
+  'break',
+  'continue',
+  'try',
+  'catch',
+  'finally',
+  'throw',
+  'throws',
+  'this',
+  'super',
+  'null',
+  'true',
+  'false',
+  'instanceof',
+  'import',
+  'package'
+]
+
 /** Classes the generator writes itself; a script may not use these names. */
 export const RESERVED_CLASSES = new Set([
-  'NkwMod', 'NkwClient', 'NkwTags', 'ModItems', 'ModBlocks', 'ModSounds', 'ModTabs', 'ModArmorMaterials', 'ModToolTiers', 'NkwEffect', 'NkwFoilItem',
-  'NkwArmorItem', 'NkwGeoArmorItem', 'NkwDiscItem', 'NkwModelBlock', 'NkwRotatableBlock', 'NkwJukebox', 'NkwHeadwear',
-  'NkwSwordItem', 'NkwPickaxeItem', 'NkwAxeItem', 'NkwShovelItem', 'NkwHoeItem'
+  'NkwMod',
+  'NkwClient',
+  'NkwTags',
+  'ModItems',
+  'ModBlocks',
+  'ModSounds',
+  'ModTabs',
+  'ModArmorMaterials',
+  'ModToolTiers',
+  'NkwEffect',
+  'NkwFoilItem',
+  'NkwArmorItem',
+  'NkwGeoArmorItem',
+  'NkwDiscItem',
+  'NkwModelBlock',
+  'NkwFacingModelBlock',
+  'NkwJukebox',
+  'NkwHeadwear',
+  'NkwSwordItem',
+  'NkwPickaxeItem',
+  'NkwAxeItem',
+  'NkwShovelItem',
+  'NkwHoeItem'
 ])
 
 export const targetKey = (t: Pick<Target, 'loader' | 'mc'>) => `${t.loader}-${t.mc}`
@@ -25,17 +96,19 @@ export const scriptAppliesTo = (targets: string[], t: Pick<Target, 'loader' | 'm
 /** Name of the file's first top-level public class / interface / enum / record (= the .java file name). */
 export function scriptClassName(code: string): string | null {
   const clean = stripCommentsAndStrings(code)
-  const m = /(?:^|[\s;}])public\s+(?:(?:final|abstract|sealed|non-sealed|static)\s+)*(?:class|interface|enum|record|@interface)\s+([A-Za-z_$][\w$]*)/.exec(clean)
+  const m = /(?:^|[\s;}])public\s+(?:(?:final|abstract|sealed|non-sealed|static)\s+)*(?:class|interface|enum|record|@interface)\s+([A-Za-z_$][\w$]*)/.exec(
+    clean
+  )
   return m ? m[1] : null
 }
 
 /** Code with comments and string/char literals blanked out (same length, so positions still match). */
-export function stripCommentsAndStrings(code: string): string {
+function stripCommentsAndStrings(code: string): string {
   let out = ''
   for (let i = 0; i < code.length; i++) {
     const c = code[i]
     if (c === '/' && code[i + 1] === '/') {
-      while (i < code.length && code[i] !== '\n') (out += ' '), i++
+      while (i < code.length && code[i] !== '\n') ((out += ' '), i++)
       if (i < code.length) out += '\n'
       continue
     }
@@ -50,7 +123,7 @@ export function stripCommentsAndStrings(code: string): string {
       out += c
       let j = i + 1
       for (; j < code.length && code[j] !== c && code[j] !== '\n'; j++) {
-        if (code[j] === '\\') (out += ' '), j++
+        if (code[j] === '\\') ((out += ' '), j++)
         out += ' '
       }
       if (j < code.length && code[j] === c) out += c
@@ -94,14 +167,25 @@ export interface JavaClassInfo {
   doc: L10n
 }
 
-type Era = { loader: Loader; mc: string; old: boolean; fabric: boolean; neo: boolean; neo21: boolean; v: number }
+type Era = { loader: Loader; old: boolean; fabric: boolean; neo: boolean; neo21: boolean; v: number }
 const eraOf = (t: Pick<Target, 'loader' | 'mc'>): Era => {
   const [, minor, patch] = t.mc.split('.').map(Number)
   const v = minor * 100 + (patch || 0)
-  return { loader: t.loader, mc: t.mc, old: v <= 1802, fabric: t.loader === 'fabric' || t.loader === 'quilt', neo: t.loader === 'neoforge', neo21: t.loader === 'neoforge' && v >= 2100, v }
+  return {
+    loader: t.loader,
+    old: v <= 1802,
+    fabric: t.loader === 'fabric' || t.loader === 'quilt',
+    neo: t.loader === 'neoforge',
+    neo21: t.loader === 'neoforge' && v >= 2100,
+    v
+  }
 }
 
-const mc = (name: string, pkg: string, en: string, th: string): JavaClassInfo => ({ name, fqcn: `net.minecraft.${pkg}.${name}`, doc: t(en, th) })
+const mc = (name: string, pkg: string, en: string, th: string): JavaClassInfo => ({
+  name,
+  fqcn: `net.minecraft.${pkg ? `${pkg}.` : ''}${name}`,
+  doc: t(en, th)
+})
 
 /** Classes worth suggesting for a target, with the right package for its version. */
 export function javaClassCatalog(target: Pick<Target, 'loader' | 'mc'>): JavaClassInfo[] {
@@ -122,7 +206,12 @@ export function javaClassCatalog(target: Pick<Target, 'loader' | 'mc'>): JavaCla
     mc('ChatFormatting', '', 'Colours and styles for text.', 'สีและรูปแบบข้อความ'),
     mc('InteractionHand', 'world', 'MAIN_HAND / OFF_HAND.', 'มือหลัก / มือรอง'),
     mc('InteractionResult', 'world', 'SUCCESS / PASS / FAIL.', 'ผลลัพธ์การกระทำ'),
-    mc('MobEffectInstance', 'world.effect', 'An effect with duration and level: new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 200, 1).', 'เอฟเฟกต์พร้อมเวลาและระดับ'),
+    mc(
+      'MobEffectInstance',
+      'world.effect',
+      'An effect with duration and level: new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 200, 1).',
+      'เอฟเฟกต์พร้อมเวลาและระดับ'
+    ),
     mc('MobEffects', 'world.effect', 'All vanilla effects.', 'เอฟเฟกต์ทั้งหมดของเกม'),
     mc('SoundEvents', 'sounds', 'All vanilla sounds.', 'เสียงทั้งหมดของเกม'),
     mc('SoundSource', 'sounds', 'Sound category (PLAYERS, BLOCKS …).', 'หมวดเสียง'),
@@ -136,30 +225,87 @@ export function javaClassCatalog(target: Pick<Target, 'loader' | 'mc'>): JavaCla
   ]
   if (e.old) list.push(mc('TextComponent', 'network.chat', 'Plain chat text: new TextComponent("…").', 'ข้อความแชทธรรมดา'))
   if (!(e.v >= 2102)) list.push(mc('InteractionResultHolder', 'world', 'Result + item stack (use / UseItemCallback).', 'ผลลัพธ์พร้อมไอเทม'))
-  for (const c of list) if (c.fqcn.startsWith('net.minecraft..')) c.fqcn = c.fqcn.replace('net.minecraft..', 'net.minecraft.')
   const add = (name: string, fqcn: string, en: string, th: string) => list.push({ name, fqcn, doc: t(en, th) })
   if (e.fabric) {
-    add('ModInitializer', 'net.fabricmc.api.ModInitializer', 'Implement it and put your setup in onInitialize() — the app registers the class as an entrypoint.', 'implements แล้วเขียนการตั้งค่าใน onInitialize() — แอปลงทะเบียน entrypoint ให้')
-    add('ClientModInitializer', 'net.fabricmc.api.ClientModInitializer', 'Client-only setup in onInitializeClient().', 'ตั้งค่าฝั่ง client ใน onInitializeClient()')
+    add(
+      'ModInitializer',
+      'net.fabricmc.api.ModInitializer',
+      'Implement it and put your setup in onInitialize() — the app registers the class as an entrypoint.',
+      'implements แล้วเขียนการตั้งค่าใน onInitialize() — แอปลงทะเบียน entrypoint ให้'
+    )
+    add(
+      'ClientModInitializer',
+      'net.fabricmc.api.ClientModInitializer',
+      'Client-only setup in onInitializeClient().',
+      'ตั้งค่าฝั่ง client ใน onInitializeClient()'
+    )
     add('UseItemCallback', 'net.fabricmc.fabric.api.event.player.UseItemCallback', 'A player right-clicks with an item.', 'ผู้เล่นคลิกขวาด้วยไอเทม')
     add('UseBlockCallback', 'net.fabricmc.fabric.api.event.player.UseBlockCallback', 'A player right-clicks a block.', 'ผู้เล่นคลิกขวาที่บล็อก')
     add('AttackEntityCallback', 'net.fabricmc.fabric.api.event.player.AttackEntityCallback', 'A player hits an entity.', 'ผู้เล่นตีสิ่งมีชีวิต')
-    add('PlayerBlockBreakEvents', 'net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents', 'Before / after a player breaks a block.', 'ก่อน/หลังผู้เล่นทุบบล็อก')
-    add('ServerPlayConnectionEvents', 'net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents', 'Players joining / leaving (JOIN, DISCONNECT).', 'ผู้เล่นเข้า/ออก')
+    add(
+      'PlayerBlockBreakEvents',
+      'net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents',
+      'Before / after a player breaks a block.',
+      'ก่อน/หลังผู้เล่นทุบบล็อก'
+    )
+    add(
+      'ServerPlayConnectionEvents',
+      'net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents',
+      'Players joining / leaving (JOIN, DISCONNECT).',
+      'ผู้เล่นเข้า/ออก'
+    )
     add('ServerTickEvents', 'net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents', 'Every server / world tick.', 'ทุก tick ของเซิร์ฟเวอร์/โลก')
     add('ServerLifecycleEvents', 'net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents', 'Server starting / stopping.', 'เซิร์ฟเวอร์เริ่ม/หยุด')
-    add('CommandRegistrationCallback', e.old ? 'net.fabricmc.fabric.api.command.v1.CommandRegistrationCallback' : 'net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback', 'Register commands.', 'ลงทะเบียนคำสั่ง')
+    add(
+      'CommandRegistrationCallback',
+      e.old ? 'net.fabricmc.fabric.api.command.v1.CommandRegistrationCallback' : 'net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback',
+      'Register commands.',
+      'ลงทะเบียนคำสั่ง'
+    )
   } else {
     const base = e.neo ? 'net.neoforged.neoforge' : 'net.minecraftforge'
-    add('SubscribeEvent', e.neo ? 'net.neoforged.bus.api.SubscribeEvent' : 'net.minecraftforge.eventbus.api.SubscribeEvent', 'Marks a static method as an event handler.', 'บอกว่าเมธอดนี้รับเหตุการณ์')
-    if (e.neo21) add('EventBusSubscriber', 'net.neoforged.fml.common.EventBusSubscriber', '@EventBusSubscriber(modid = NkwMod.MOD_ID): the class\'s @SubscribeEvent methods are registered automatically.', 'class นี้ถูกลงทะเบียนรับเหตุการณ์อัตโนมัติ')
-    else add('Mod', e.neo ? 'net.neoforged.fml.common.Mod' : 'net.minecraftforge.fml.common.Mod', '@Mod.EventBusSubscriber(modid = NkwMod.MOD_ID): the class\'s @SubscribeEvent methods are registered automatically.', 'class นี้ถูกลงทะเบียนรับเหตุการณ์อัตโนมัติ')
-    add('PlayerEvent', `${base}.event.entity.player.PlayerEvent`, 'PlayerEvent.PlayerLoggedInEvent, PlayerRespawnEvent … ' + (e.old && !e.neo ? '(getPlayer())' : '(getEntity())'), 'เหตุการณ์ของผู้เล่น')
+    add(
+      'SubscribeEvent',
+      e.neo ? 'net.neoforged.bus.api.SubscribeEvent' : 'net.minecraftforge.eventbus.api.SubscribeEvent',
+      'Marks a static method as an event handler.',
+      'บอกว่าเมธอดนี้รับเหตุการณ์'
+    )
+    if (e.neo21)
+      add(
+        'EventBusSubscriber',
+        'net.neoforged.fml.common.EventBusSubscriber',
+        "@EventBusSubscriber(modid = NkwMod.MOD_ID): the class's @SubscribeEvent methods are registered automatically.",
+        'class นี้ถูกลงทะเบียนรับเหตุการณ์อัตโนมัติ'
+      )
+    else
+      add(
+        'Mod',
+        e.neo ? 'net.neoforged.fml.common.Mod' : 'net.minecraftforge.fml.common.Mod',
+        "@Mod.EventBusSubscriber(modid = NkwMod.MOD_ID): the class's @SubscribeEvent methods are registered automatically.",
+        'class นี้ถูกลงทะเบียนรับเหตุการณ์อัตโนมัติ'
+      )
+    add(
+      'PlayerEvent',
+      `${base}.event.entity.player.PlayerEvent`,
+      'PlayerEvent.PlayerLoggedInEvent, PlayerRespawnEvent … ' + (e.old && !e.neo ? '(getPlayer())' : '(getEntity())'),
+      'เหตุการณ์ของผู้เล่น'
+    )
     add('PlayerInteractEvent', `${base}.event.entity.player.PlayerInteractEvent`, 'RightClickItem, RightClickBlock, LeftClickBlock …', 'ผู้เล่นคลิกไอเทม/บล็อก')
     add('LivingDeathEvent', `${base}.event.entity.living.LivingDeathEvent`, 'A mob or player dies.', 'มอบหรือผู้เล่นตาย')
-    add('BlockEvent', e.old && !e.neo ? 'net.minecraftforge.event.world.BlockEvent' : `${base}.event.level.BlockEvent`, 'BlockEvent.BreakEvent, EntityPlaceEvent …', 'เหตุการณ์ของบล็อก')
+    add(
+      'BlockEvent',
+      e.old && !e.neo ? 'net.minecraftforge.event.world.BlockEvent' : `${base}.event.level.BlockEvent`,
+      'BlockEvent.BreakEvent, EntityPlaceEvent …',
+      'เหตุการณ์ของบล็อก'
+    )
     add('RegisterCommandsEvent', `${base}.event.RegisterCommandsEvent`, 'Register commands (event.getDispatcher()).', 'ลงทะเบียนคำสั่ง')
-    if (e.neo && e.v >= 2100) add('ServerTickEvent', 'net.neoforged.neoforge.event.tick.ServerTickEvent', 'ServerTickEvent.Post: after every server tick.', 'หลังทุก tick ของเซิร์ฟเวอร์')
+    if (e.neo && e.v >= 2100)
+      add(
+        'ServerTickEvent',
+        'net.neoforged.neoforge.event.tick.ServerTickEvent',
+        'ServerTickEvent.Post: after every server tick.',
+        'หลังทุก tick ของเซิร์ฟเวอร์'
+      )
     else add('TickEvent', `${base}.event.TickEvent`, 'TickEvent.ServerTickEvent / PlayerTickEvent (check event.phase).', 'เหตุการณ์ทุก tick')
   }
   return list
@@ -169,7 +315,8 @@ export function javaClassCatalog(target: Pick<Target, 'loader' | 'mc'>): JavaCla
 export function importInsertPos(code: string, fqcn: string): { pos: number; text: string } | null {
   const clean = stripCommentsAndStrings(code)
   const simple = fqcn.slice(fqcn.lastIndexOf('.') + 1)
-  if (new RegExp(`^\\s*import\\s+(?:${fqcn.replace(/\./g, '\\.')}|${fqcn.slice(0, fqcn.lastIndexOf('.')).replace(/\./g, '\\.')}\\.\\*)\\s*;`, 'm').test(clean)) return null
+  if (new RegExp(`^\\s*import\\s+(?:${fqcn.replace(/\./g, '\\.')}|${fqcn.slice(0, fqcn.lastIndexOf('.')).replace(/\./g, '\\.')}\\.\\*)\\s*;`, 'm').test(clean))
+    return null
   if (new RegExp(`^\\s*import\\s+[\\w.]+\\.${simple}\\s*;`, 'm').test(clean)) return null
   const imports = [...clean.matchAll(/^\s*import\s+[\w.*]+\s*;[^\n]*$/gm)]
   if (imports.length) {
@@ -195,7 +342,11 @@ const textImport = (e: Era) => (e.old ? 'import net.minecraft.network.chat.TextC
 
 function forgeHeader(e: Era, imports: string[]): { imports: string; annotation: string } {
   const sub = e.neo ? 'import net.neoforged.bus.api.SubscribeEvent;' : 'import net.minecraftforge.eventbus.api.SubscribeEvent;'
-  const ann = e.neo21 ? 'import net.neoforged.fml.common.EventBusSubscriber;' : e.neo ? 'import net.neoforged.fml.common.Mod;' : 'import net.minecraftforge.fml.common.Mod;'
+  const ann = e.neo21
+    ? 'import net.neoforged.fml.common.EventBusSubscriber;'
+    : e.neo
+      ? 'import net.neoforged.fml.common.Mod;'
+      : 'import net.minecraftforge.fml.common.Mod;'
   return {
     imports: [...imports, sub, ann].sort().join('\n'),
     annotation: e.neo21 ? '@EventBusSubscriber(modid = NkwMod.MOD_ID)' : '@Mod.EventBusSubscriber(modid = NkwMod.MOD_ID)'

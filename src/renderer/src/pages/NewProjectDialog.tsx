@@ -16,7 +16,9 @@ export function NewProjectDialog({ template, onClose, onCreated }: { template: T
   const [description, setDescription] = useState('')
   const [version, setVersion] = useState('1.0.0')
   const [tpl, setTpl] = useState<TemplateId>(template)
-  const [targets, setTargets] = useState<Target[]>(template === 'farmersDelight' ? [{ loader: 'neoforge', mc: '1.21.1' }] : [{ loader: 'fabric', mc: '1.21.1' }])
+  const [targets, setTargets] = useState<Target[]>(
+    template === 'farmersDelight' ? [{ loader: 'neoforge', mc: '1.21.1' }] : [{ loader: 'fabric', mc: '1.21.1' }]
+  )
   const [busy, setBusy] = useState(false)
 
   const meta = { name: name.trim(), modId, version, authors, description }

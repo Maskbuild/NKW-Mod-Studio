@@ -72,6 +72,7 @@ npm run dev
 | `npm run build` | Build the app |
 | `npm run dist` | Create the Windows installer in `dist/` |
 | `npm test` | Unit tests |
+| `npm run format` | Format the code with Prettier (`format:check` only checks) |
 | `npm run typecheck` | TypeScript check |
 | `npx tsx scripts/verify-matrix.ts build [fabric-1.21.1 …]` | Build a sample mod that uses every node with real Gradle, for every loader × version |
 | `npx tsx scripts/smoke-client.ts fabric-1.21.1` | Launch real Minecraft to check that the sample mod loads |
@@ -94,7 +95,7 @@ tests         unit tests (vitest)
 
 What the AI-generated code was checked with:
 
-- 49 unit tests (compiler, generators for every loader × version, Blockbench conversion, path-traversal protection, audio import)
+- 50 unit tests (compiler, generators for every loader × version, Blockbench conversion, path-traversal protection, audio import)
 - **Real Gradle builds of a sample mod using every node: 23/23 loader × version targets pass** (compile + `.jar`)
 - **Minecraft actually launched** with the sample mod on Fabric, Quilt, Forge and NeoForge across 1.16.5–1.21.4 — mod registered, no model/texture errors
 - Recipe, loot table, tag, jukebox song and equipment JSON checked against the real vanilla and Farmer's Delight files

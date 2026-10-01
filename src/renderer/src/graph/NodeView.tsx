@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, type CSSProperties } from 'react'
+import { JAVA_KEYWORDS } from '@core/scriptApi'
 import { Handle, NodeResizer, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
 import { useTranslation } from 'react-i18next'
 import { EFFECTS, NODE_DEF_MAP, PIN_COLORS, visibleInputs, type Category, type PinDef } from '@core/nodes/defs'
@@ -47,7 +48,11 @@ function Pin({ nodeId, pin, dir, on }: { nodeId: string; pin: PinDef; dir: 'in' 
         e.preventDefault()
         e.stopPropagation()
         const s = useStore.getState()
-        s.disconnect(s.edges.filter((x) => (dir === 'in' ? x.target === nodeId && x.targetHandle === pin.id : x.source === nodeId && x.sourceHandle === pin.id)).map((x) => x.id))
+        s.disconnect(
+          s.edges
+            .filter((x) => (dir === 'in' ? x.target === nodeId && x.targetHandle === pin.id : x.source === nodeId && x.sourceHandle === pin.id))
+            .map((x) => x.id)
+        )
       }}
     >
       <Handle
@@ -81,7 +86,8 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
       const e = EFFECTS.find((x) => x.value === data.effect)
       return (
         <span>
-          {e ? L(e.label) : '?'} {romanLevel(Number(data.level ?? 1))} · {String(data.seconds ?? 10)}s{Number(data.chance ?? 1) < 1 ? ` · ${Math.round(Number(data.chance) * 100)}%` : ''}
+          {e ? L(e.label) : '?'} {romanLevel(Number(data.level ?? 1))} · {String(data.seconds ?? 10)}s
+          {Number(data.chance ?? 1) < 1 ? ` · ${Math.round(Number(data.chance) * 100)}%` : ''}
         </span>
       )
     }
@@ -126,7 +132,7 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
   }
 }
 
-const JAVA_KEYWORDS = new Set(['public', 'private', 'protected', 'static', 'final', 'abstract', 'class', 'interface', 'enum', 'record', 'extends', 'implements', 'void', 'int', 'long', 'float', 'double', 'boolean', 'char', 'byte', 'short', 'return', 'new', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default', 'break', 'continue', 'try', 'catch', 'finally', 'throw', 'throws', 'this', 'super', 'null', 'true', 'false', 'instanceof', 'var'])
+const KEYWORDS = new Set(JAVA_KEYWORDS)
 
 /** One line of Java with simple VS Code-like colours (keywords, types, strings, comments, annotations). */
 function JavaLine({ text }: { text: string }) {
@@ -137,14 +143,35 @@ function JavaLine({ text }: { text: string }) {
   while ((m = re.exec(text))) {
     if (m.index > last) parts.push({ t: text.slice(last, m.index) })
     const tok = m[0]
-    const c = tok.startsWith('//') || tok.startsWith('/*') ? 'cm' : tok[0] === '"' || tok[0] === "'" ? 'st' : tok[0] === '@' ? 'an' : /^\d/.test(tok) ? 'nu' : JAVA_KEYWORDS.has(tok) ? 'kw' : /^[A-Z]/.test(tok) ? 'ty' : undefined
+    const c =
+      tok.startsWith('//') || tok.startsWith('/*')
+        ? 'cm'
+        : tok[0] === '"' || tok[0] === "'"
+          ? 'st'
+          : tok[0] === '@'
+            ? 'an'
+            : /^\d/.test(tok)
+              ? 'nu'
+              : KEYWORDS.has(tok)
+                ? 'kw'
+                : /^[A-Z]/.test(tok)
+                  ? 'ty'
+                  : undefined
     parts.push({ t: tok, c })
     last = m.index + tok.length
   }
   if (last < text.length) parts.push({ t: text.slice(last) })
   return (
     <div className="code-line">
-      {parts.map((p, i) => (p.c ? <span key={i} className={`ck-${p.c}`}>{p.t}</span> : p.t))}
+      {parts.map((p, i) =>
+        p.c ? (
+          <span key={i} className={`ck-${p.c}`}>
+            {p.t}
+          </span>
+        ) : (
+          p.t
+        )
+      )}
       {'\u200b'}
     </div>
   )
@@ -204,7 +231,10 @@ export const NodeView = memo(function NodeView({ id, type, data, selected }: Nod
   useEffect(() => updateInternals(id), [id, shownKey, updateInternals])
   if (!def || !shown) return <div className="nk error">?</div>
   const vis = shown
-  const rightPins: { pin: PinDef; dir: 'in' | 'out' }[] = [...vis.right.map((pin) => ({ pin, dir: 'in' as const })), ...def.outputs.map((pin) => ({ pin, dir: 'out' as const }))]
+  const rightPins: { pin: PinDef; dir: 'in' | 'out' }[] = [
+    ...vis.right.map((pin) => ({ pin, dir: 'in' as const })),
+    ...def.outputs.map((pin) => ({ pin, dir: 'out' as const }))
+  ]
   const rows = Math.max(vis.left.length, rightPins.length)
   const sub = <Summary type={type} data={data} connected={connected} />
   const title = typeof data.name === 'string' && data.name && def.registers ? `${L(def.title)} · ${data.name}` : L(def.title)
@@ -223,7 +253,14 @@ export const NodeView = memo(function NodeView({ id, type, data, selected }: Nod
         {Array.from({ length: rows }, (_, i) => (
           <div className="nk-row" key={i}>
             {vis.left[i] ? <Pin nodeId={id} pin={vis.left[i]} dir="in" on={connected.has(`i:${vis.left[i].id}`)} /> : <span />}
-            {rightPins[i] && <Pin nodeId={id} pin={rightPins[i].pin} dir={rightPins[i].dir} on={connected.has(`${rightPins[i].dir === 'in' ? 'i' : 'o'}:${rightPins[i].pin.id}`)} />}
+            {rightPins[i] && (
+              <Pin
+                nodeId={id}
+                pin={rightPins[i].pin}
+                dir={rightPins[i].dir}
+                on={connected.has(`${rightPins[i].dir === 'in' ? 'i' : 'o'}:${rightPins[i].pin.id}`)}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -234,7 +271,13 @@ export const NodeView = memo(function NodeView({ id, type, data, selected }: Nod
 export const CommentView = memo(function CommentView({ data, selected }: NodeProps<FlowNode>) {
   return (
     <>
-      <NodeResizer isVisible={!!selected} minWidth={160} minHeight={80} lineStyle={{ borderColor: 'transparent' }} handleStyle={{ width: 9, height: 9, borderRadius: 3 }} />
+      <NodeResizer
+        isVisible={!!selected}
+        minWidth={160}
+        minHeight={80}
+        lineStyle={{ borderColor: 'transparent' }}
+        handleStyle={{ width: 9, height: 9, borderRadius: 3 }}
+      />
       <div className={`nk-comment${selected ? ' sel' : ''}`} style={{ '--c': String(data.color ?? '#6b7280') } as CSSProperties}>
         {String(data.text ?? '')}
       </div>

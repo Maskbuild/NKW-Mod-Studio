@@ -23,7 +23,9 @@ export function Library() {
   const addCentered = useAddCentered()
   const groups = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    const defs = NODE_DEFS.filter((d) => !d.hidden).filter((d) => !needle || [d.title.en, d.title.th, d.description.en, d.description.th].some((s) => s.toLowerCase().includes(needle)))
+    const defs = NODE_DEFS.filter((d) => !d.hidden).filter(
+      (d) => !needle || [d.title.en, d.title.th, d.description.en, d.description.th].some((s) => s.toLowerCase().includes(needle))
+    )
     return ORDER.map((c) => ({ c, defs: defs.filter((d) => d.category === c) })).filter((g) => g.defs.length)
   }, [q])
 
@@ -60,4 +62,3 @@ export function Library() {
     </>
   )
 }
-

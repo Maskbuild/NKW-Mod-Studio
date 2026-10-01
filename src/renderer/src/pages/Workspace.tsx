@@ -231,7 +231,8 @@ function Shortcuts({ quickAdd }: { quickAdd: React.MutableRefObject<((x: number,
       else if (ctrl && e.key.toLowerCase() === 'e') (e.preventDefault(), s.toggleDisabled())
       else if (ctrl && e.key.toLowerCase() === 'a') (e.preventDefault(), useStore.setState({ nodes: s.nodes.map((n) => ({ ...n, selected: true })) }))
       else if (e.key === ' ' && !ctrl) (e.preventDefault(), quickAdd.current?.(mouse.current.x, mouse.current.y))
-      else if (e.key.toLowerCase() === 'f' && !ctrl) void rf.fitView({ padding: 0.2, duration: 300, nodes: s.nodes.some((n) => n.selected) ? s.nodes.filter((n) => n.selected) : undefined })
+      else if (e.key.toLowerCase() === 'f' && !ctrl)
+        void rf.fitView({ padding: 0.2, duration: 300, nodes: s.nodes.some((n) => n.selected) ? s.nodes.filter((n) => n.selected) : undefined })
     }
     window.addEventListener('mousemove', move)
     window.addEventListener('keydown', key)
@@ -288,7 +289,9 @@ function WorkspaceInner() {
         <Resizer dir="x" value={layout.left} onChange={(v) => setLayout('left', v)} onReset={() => setLayout('left', DEFAULT_LAYOUT.left)} />
         <main className="center">
           <Canvas quickAddRef={quickAdd} />
-          {dockOpen && <Resizer dir="y" sign={-1} value={layout.dock} onChange={(v) => setLayout('dock', v)} onReset={() => setLayout('dock', DEFAULT_LAYOUT.dock)} />}
+          {dockOpen && (
+            <Resizer dir="y" sign={-1} value={layout.dock} onChange={(v) => setLayout('dock', v)} onReset={() => setLayout('dock', DEFAULT_LAYOUT.dock)} />
+          )}
           <Dock tab={dockTab} setTab={setDockTab} open={dockOpen} setOpen={setDockOpen} height={layout.dock} />
         </main>
         <Resizer dir="x" sign={-1} value={layout.right} onChange={(v) => setLayout('right', v)} onReset={() => setLayout('right', DEFAULT_LAYOUT.right)} />

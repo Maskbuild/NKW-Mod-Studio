@@ -48,7 +48,12 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="set-row">
           <span>{t('settings.downloads')}</span>
-          <button className={`switch${settings.allowDownloads ? ' on' : ''}`} role="switch" aria-checked={settings.allowDownloads} onClick={() => update({ allowDownloads: !settings.allowDownloads })} />
+          <button
+            className={`switch${settings.allowDownloads ? ' on' : ''}`}
+            role="switch"
+            aria-checked={settings.allowDownloads}
+            onClick={() => update({ allowDownloads: !settings.allowDownloads })}
+          />
         </div>
         <div className="field" style={{ marginTop: 14 }}>
           <label>{t('settings.java')}</label>

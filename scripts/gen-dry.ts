@@ -14,7 +14,6 @@ const project = writeFixture(projectDir)
 const { ir, diagnostics } = compile(project, { loader, mc })
 for (const d of diagnostics) console.log(d.severity, d.nodeId ?? '', d.message.en)
 const deps = {
-
   ...TOOL_VERSIONS,
   ...FALLBACK_DEPS[mc],
   farmersDelight: 'maven.modrinth:farmers-delight:x',

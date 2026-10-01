@@ -4,7 +4,7 @@ import { shallow } from 'zustand/shallow'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
 import { NO_FIT, parseFit, type ArmorFit, type V3 } from '@core/gen/geo'
 import type { ArmorSlot } from '@core/ir'
-import { useStore, type FlowNode } from '../store'
+import { inputSource, useStore, type FlowNode } from '../store'
 import { vanillaSkinUrl } from '../api'
 import { useActiveMc } from './VanillaPanel'
 
@@ -30,15 +30,7 @@ function useWiredGeo(nodeId: string): { asset: string | null; texture: string | 
   return useStoreWithEqualityFn(
     useStore,
     (s) => {
-      const follow = (target: string, handle: string): FlowNode | undefined => {
-        let e = s.edges.find((x) => x.target === target && x.targetHandle === handle)
-        for (let i = 0; e && i < 64; i++) {
-          const n = s.nodes.find((x) => x.id === e!.source)
-          if (n?.type !== 'reroute') return n
-          e = s.edges.find((x) => x.target === n.id && x.targetHandle === 'in')
-        }
-        return undefined
-      }
+      const follow = (target: string, handle: string) => inputSource(s.nodes, s.edges, target, handle)
       const geo = follow(nodeId, 'geo')
       const assetOf = (n: FlowNode | undefined) => (n?.type === 'texture' && typeof n.data.asset === 'string' && n.data.asset ? n.data.asset : null)
       const asset = geo && typeof geo.data.asset === 'string' && geo.data.asset ? geo.data.asset : null
@@ -55,7 +47,23 @@ function useWiredGeo(nodeId: string): { asset: string | null; texture: string | 
   )
 }
 
-function Axis({ label, value, min, max, step, onChange, onStart }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; onStart: () => void }) {
+function Axis({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  onStart
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  step: number
+  onChange: (v: number) => void
+  onStart: () => void
+}) {
   return (
     <div className="fit-axis">
       <span className="fit-label">{label}</span>
@@ -130,7 +138,16 @@ export function ArmorFitField({ node }: { node: FlowNode }) {
         </select>
       </div>
       <Suspense fallback={<div className="preview3d armor-preview" />}>
-        <ArmorPreview geoAsset={asset} texture={texture} javaTextures={javaTextures} slot={slot} fit={fit} slim={slim} skin={skinValid ? skin : null} gameSkin={mc ? vanillaSkinUrl(mc, slim) : null} />
+        <ArmorPreview
+          geoAsset={asset}
+          texture={texture}
+          javaTextures={javaTextures}
+          slot={slot}
+          fit={fit}
+          slim={slim}
+          skin={skinValid ? skin : null}
+          gameSkin={mc ? vanillaSkinUrl(mc, slim) : null}
+        />
       </Suspense>
       {!asset ? (
         <span className="hint">{t('fit.noModel')}</span>

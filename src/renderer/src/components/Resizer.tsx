@@ -17,7 +17,11 @@ export function useLayout(): [Layout, (k: keyof Layout, v: number) => void] {
   const [layout, setLayout] = useState<Layout>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Layout>
-      return { left: clamp('left', saved.left ?? DEFAULT.left), right: clamp('right', saved.right ?? DEFAULT.right), dock: clamp('dock', saved.dock ?? DEFAULT.dock) }
+      return {
+        left: clamp('left', saved.left ?? DEFAULT.left),
+        right: clamp('right', saved.right ?? DEFAULT.right),
+        dock: clamp('dock', saved.dock ?? DEFAULT.dock)
+      }
     } catch {
       return DEFAULT
     }
@@ -36,7 +40,19 @@ export function useLayout(): [Layout, (k: keyof Layout, v: number) => void] {
  * Drag handle. `dir` is the axis; `sign` flips the delta (e.g. the right panel grows when dragged left).
  * Double-click resets to the default size.
  */
-export function Resizer({ dir, value, sign = 1, onChange, onReset }: { dir: 'x' | 'y'; value: number; sign?: 1 | -1; onChange: (v: number) => void; onReset: () => void }) {
+export function Resizer({
+  dir,
+  value,
+  sign = 1,
+  onChange,
+  onReset
+}: {
+  dir: 'x' | 'y'
+  value: number
+  sign?: 1 | -1
+  onChange: (v: number) => void
+  onReset: () => void
+}) {
   const [active, setActive] = useState(false)
   const down = (e: RPointerEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -54,7 +70,15 @@ export function Resizer({ dir, value, sign = 1, onChange, onReset }: { dir: 'x' 
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }
-  return <div className={`resizer ${dir}${active ? ' active' : ''}`} onPointerDown={down} onDoubleClick={onReset} role="separator" aria-orientation={dir === 'x' ? 'vertical' : 'horizontal'} />
+  return (
+    <div
+      className={`resizer ${dir}${active ? ' active' : ''}`}
+      onPointerDown={down}
+      onDoubleClick={onReset}
+      role="separator"
+      aria-orientation={dir === 'x' ? 'vertical' : 'horizontal'}
+    />
+  )
 }
 
 export const DEFAULT_LAYOUT = DEFAULT

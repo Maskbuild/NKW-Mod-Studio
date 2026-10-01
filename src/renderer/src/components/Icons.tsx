@@ -45,7 +45,6 @@ export const IChevron = icon('M9 6l6 6-6 6')
 export const ITerminal = icon(['M4 6l6 6-6 6', 'M12 19h8'])
 export const IFit = icon(['M4 9V4h5', 'M20 9V4h-5', 'M4 15v5h5', 'M20 15v5h-5'])
 export const IUpload = icon(['M12 20V9', 'M7 14l5-5 5 5', 'M5 4h14'])
-export const IGlobe = icon(['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M3 12h18', 'M12 3a14 14 0 0 1 0 18', 'M12 3a14 14 0 0 0 0 18'])
 
 /** NKW logo: a stylised block with the group initials. */
 export function Logo({ size = 22 }: { size?: number }) {

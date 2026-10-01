@@ -105,8 +105,10 @@ export async function ensureVanilla(toolsDir: string, mc: string, progress: Prog
   return data
 }
 
-/** Items, English (and optional Thai) names, icons and item tags of one namespace inside a jar. */
-/** `parents` supplies vanilla block models for mods whose models inherit from them. */
+/**
+ * Items, English (and optional Thai) names, icons and item tags of one namespace inside a jar.
+ * `parents` supplies vanilla block models for mods whose models inherit from them.
+ */
 async function extractItems(
   jar: string,
   ns: string,

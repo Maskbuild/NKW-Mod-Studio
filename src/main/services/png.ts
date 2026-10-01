@@ -25,12 +25,7 @@ export function encodePng(w: number, h: number, pixel: (x: number, y: number) =>
   ihdr.writeUInt32BE(h, 4)
   ihdr[8] = 8
   ihdr[9] = 6
-  return Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(raw)),
-    chunk('IEND', Buffer.alloc(0))
-  ])
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
 }
 
 /** Deterministic pixel-art placeholder: a shaded gem/cube pattern in the given colour. */

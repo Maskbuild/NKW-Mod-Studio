@@ -14,8 +14,7 @@ export const LOADER_LABEL: Record<Loader, string> = {
 export const ID_RE = /^[a-z][a-z0-9_]{0,62}$/
 /** Namespaced ids such as minecraft:diamond or c:ingots/iron. */
 export const NSID_RE = /^[a-z0-9_.-]{1,64}:[a-z0-9_./-]{1,128}$/
-/** Project-relative asset paths created by the asset importer. */
-/** Project-relative asset paths: a top-level folder, up to 4 sub-folders, then the file. */
+/** Project-relative asset paths created by the importer: a top-level folder, up to 4 sub-folders, then the file. */
 export const ASSET_RE = /^(textures|models|geo|sounds|animations)(\/[a-z0-9_]{1,64}){0,4}\/[a-z0-9_]{1,64}\.(png|json|bbmodel|ogg)$/
 
 export const TargetSchema = z.object({

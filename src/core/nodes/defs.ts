@@ -5,19 +5,7 @@ import { SCRIPT_STARTER } from '../scriptApi'
  */
 
 export type PinType =
-  | 'item'
-  | 'ingredient'
-  | 'texture'
-  | 'model'
-  | 'geo'
-  | 'sound'
-  | 'soundEvent'
-  | 'toolMat'
-  | 'armorMat'
-  | 'effect'
-  | 'animation'
-  | 'block'
-  | 'any'
+  'item' | 'ingredient' | 'texture' | 'model' | 'geo' | 'sound' | 'soundEvent' | 'toolMat' | 'armorMat' | 'effect' | 'animation' | 'block' | 'any'
 
 export interface L10n {
   en: string
@@ -63,7 +51,23 @@ export interface PinDef {
   legacy?: boolean
 }
 
-export type PropKind = 'id' | 'text' | 'int' | 'float' | 'bool' | 'select' | 'asset' | 'nsid' | 'textarea' | 'color' | 'animName' | 'craftGrid' | 'armorFit' | 'tabOrder' | 'code' | 'scriptTargets'
+export type PropKind =
+  | 'id'
+  | 'text'
+  | 'int'
+  | 'float'
+  | 'bool'
+  | 'select'
+  | 'asset'
+  | 'nsid'
+  | 'textarea'
+  | 'color'
+  | 'animName'
+  | 'craftGrid'
+  | 'armorFit'
+  | 'tabOrder'
+  | 'code'
+  | 'scriptTargets'
 
 export interface PropDef {
   key: string
@@ -132,15 +136,19 @@ const itemCommon: PropDef[] = [
     label: t('Rarity', 'ความหายาก'),
     kind: 'select',
     default: 'common',
-    options: [
-      opt('common', 'Common', 'ธรรมดา'),
-      opt('uncommon', 'Uncommon', 'ไม่ธรรมดา'),
-      opt('rare', 'Rare', 'หายาก'),
-      opt('epic', 'Epic', 'มหากาพย์')
-    ]
+    options: [opt('common', 'Common', 'ธรรมดา'), opt('uncommon', 'Uncommon', 'ไม่ธรรมดา'), opt('rare', 'Rare', 'หายาก'), opt('epic', 'Epic', 'มหากาพย์')]
   },
   { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false },
-  { key: 'wearOnHead', label: t('Can be worn on the head', 'ใส่บนหัวได้'), kind: 'bool', default: false, hint: t('Right-click it, or drag / shift-click it into the helmet slot. Its tooltip says it can be worn. It is shown with the model\'s "Head" display settings (Blockbench → Display → Head).', 'คลิกขวา หรือลาก/Shift+คลิกใส่ช่องหมวกได้ ในคำอธิบายไอเทมจะมีข้อความบอกว่าสวมได้ — แสดงตามค่าการแสดงผลแบบ "Head" ของโมเดล (Blockbench → Display → Head)') },
+  {
+    key: 'wearOnHead',
+    label: t('Can be worn on the head', 'ใส่บนหัวได้'),
+    kind: 'bool',
+    default: false,
+    hint: t(
+      'Right-click it, or drag / shift-click it into the helmet slot. Its tooltip says it can be worn. It is shown with the model\'s "Head" display settings (Blockbench → Display → Head).',
+      'คลิกขวา หรือลาก/Shift+คลิกใส่ช่องหมวกได้ ในคำอธิบายไอเทมจะมีข้อความบอกว่าสวมได้ — แสดงตามค่าการแสดงผลแบบ "Head" ของโมเดล (Blockbench → Display → Head)'
+    )
+  },
   {
     key: 'wearRightClick',
     label: t('Right-click to put on', 'คลิกขวาเพื่อสวมได้'),
@@ -196,12 +204,7 @@ const blockCommon: PropDef[] = [
     label: t('Tool level', 'ระดับเครื่องมือ'),
     kind: 'select',
     default: 'wood',
-    options: [
-      opt('wood', 'Wood / Gold', 'ไม้ / ทอง'),
-      opt('stone', 'Stone', 'หิน'),
-      opt('iron', 'Iron', 'เหล็ก'),
-      opt('diamond', 'Diamond', 'เพชร')
-    ],
+    options: [opt('wood', 'Wood / Gold', 'ไม้ / ทอง'), opt('stone', 'Stone', 'หิน'), opt('iron', 'Iron', 'เหล็ก'), opt('diamond', 'Diamond', 'เพชร')],
     showIf: (d) => d.tool !== 'none'
   },
   { key: 'requiresTool', label: t('Requires tool to drop', 'ต้องใช้เครื่องมือถึงจะดรอป'), kind: 'bool', default: true, showIf: (d) => d.tool !== 'none' },
@@ -293,7 +296,15 @@ export const NODE_DEFS: NodeDef[] = [
         default: false,
         hint: t('A 16×64 image = 4 frames of 16×16', 'รูปขนาด 16×64 = 4 เฟรม ขนาด 16×16')
       },
-      { key: 'frameTime', label: t('Ticks per frame (20 = 1 s)', 'tick ต่อเฟรม (20 = 1 วินาที)'), kind: 'int', default: 2, min: 1, max: 200, showIf: (d) => !!d.animated },
+      {
+        key: 'frameTime',
+        label: t('Ticks per frame (20 = 1 s)', 'tick ต่อเฟรม (20 = 1 วินาที)'),
+        kind: 'int',
+        default: 2,
+        min: 1,
+        max: 200,
+        showIf: (d) => !!d.animated
+      },
       { key: 'interpolate', label: t('Smooth blend between frames', 'เฟดระหว่างเฟรม'), kind: 'bool', default: false, showIf: (d) => !!d.animated }
     ]
   },
@@ -369,7 +380,11 @@ export const NODE_DEFS: NodeDef[] = [
       { id: 'places', label: t('Places block', 'วางเป็นบล็อก'), type: 'block', optional: true }
     ],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],
-    props: [...nameProps('my_item', 'My Item'), ...itemCommon, { key: 'handheld', label: t('Held like a tool', 'ถือแบบเครื่องมือ'), kind: 'bool', default: false }]
+    props: [
+      ...nameProps('my_item', 'My Item'),
+      ...itemCommon,
+      { key: 'handheld', label: t('Held like a tool', 'ถือแบบเครื่องมือ'), kind: 'bool', default: false }
+    ]
   },
   {
     type: 'food',
@@ -456,7 +471,16 @@ export const NODE_DEFS: NodeDef[] = [
       { key: 'attackDamage', label: t('Extra attack damage', 'ดาเมจเพิ่มเติม'), kind: 'float', default: 3, min: -10, max: 1000, step: 0.5 },
       { key: 'attackSpeed', label: t('Attack speed modifier', 'ค่าความเร็วโจมตี'), kind: 'float', default: -2.4, min: -4, max: 10, step: 0.1 },
       { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false },
-      { key: 'wearOnHead', label: t('Can be worn on the head', 'ใส่บนหัวได้'), kind: 'bool', default: false, hint: t('Right-click it, or drag / shift-click it into the helmet slot. Its tooltip says it can be worn. It is shown with the model\'s "Head" display settings (Blockbench → Display → Head).', 'คลิกขวา หรือลาก/Shift+คลิกใส่ช่องหมวกได้ ในคำอธิบายไอเทมจะมีข้อความบอกว่าสวมได้ — แสดงตามค่าการแสดงผลแบบ "Head" ของโมเดล (Blockbench → Display → Head)') },
+      {
+        key: 'wearOnHead',
+        label: t('Can be worn on the head', 'ใส่บนหัวได้'),
+        kind: 'bool',
+        default: false,
+        hint: t(
+          'Right-click it, or drag / shift-click it into the helmet slot. Its tooltip says it can be worn. It is shown with the model\'s "Head" display settings (Blockbench → Display → Head).',
+          'คลิกขวา หรือลาก/Shift+คลิกใส่ช่องหมวกได้ ในคำอธิบายไอเทมจะมีข้อความบอกว่าสวมได้ — แสดงตามค่าการแสดงผลแบบ "Head" ของโมเดล (Blockbench → Display → Head)'
+        )
+      },
       {
         key: 'wearRightClick',
         label: t('Right-click to put on', 'คลิกขวาเพื่อสวมได้'),
@@ -644,7 +668,10 @@ export const NODE_DEFS: NodeDef[] = [
         kind: 'select',
         default: 'texture',
         options: [opt('texture', 'Icon texture (2D)', 'รูปไอคอน (2D)'), opt('model', 'The 3D model (.bbmodel / .json)', 'โมเดล 3D (.bbmodel / .json)')],
-        hint: t('"The 3D model" shows the connected 3D model as the item, like a block in the inventory.', '"โมเดล 3D" จะแสดงโมเดลที่ต่อไว้เป็นตัวไอเทม แบบเดียวกับบล็อกในช่องเก็บของ')
+        hint: t(
+          '"The 3D model" shows the connected 3D model as the item, like a block in the inventory.',
+          '"โมเดล 3D" จะแสดงโมเดลที่ต่อไว้เป็นตัวไอเทม แบบเดียวกับบล็อกในช่องเก็บของ'
+        )
       },
       { key: 'fit', label: t('Fit on the player', 'การสวมบนตัวผู้เล่น'), kind: 'armorFit', default: null }
     ]
@@ -722,10 +749,7 @@ export const NODE_DEFS: NodeDef[] = [
     description: t('A disc playable in a jukebox', 'แผ่นเพลงที่เปิดในเครื่องเล่นแผ่นเสียงได้'),
     icon: '💿',
     registers: true,
-    inputs: [
-      { id: 'sound', label: t('Song (sound event)', 'เพลง (เสียงในเกม)'), type: 'soundEvent' },
-      texIn()
-    ],
+    inputs: [{ id: 'sound', label: t('Song (sound event)', 'เพลง (เสียงในเกม)'), type: 'soundEvent' }, texIn()],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],
     props: [
       ...nameProps('music_disc_my_song', 'Music Disc'),
@@ -774,7 +798,10 @@ export const NODE_DEFS: NodeDef[] = [
           { value: 'loop', label: t('Loop (play again)', 'เล่นวนซ้ำ (ลูป)') },
           { value: 'stay', label: t('Stay in the jukebox (vanilla)', 'ค้างอยู่ในเครื่องเล่น (แบบปกติ)') }
         ],
-        hint: t('Pop out / loop work when a player puts the disc in by hand (not via hoppers).', 'ดีดออก/ลูป ใช้ได้เมื่อผู้เล่นใส่แผ่นด้วยมือ (ไม่รวมใส่ผ่าน Hopper)')
+        hint: t(
+          'Pop out / loop work when a player puts the disc in by hand (not via hoppers).',
+          'ดีดออก/ลูป ใช้ได้เมื่อผู้เล่นใส่แผ่นด้วยมือ (ไม่รวมใส่ผ่าน Hopper)'
+        )
       }
     ]
   },
@@ -813,10 +840,7 @@ export const NODE_DEFS: NodeDef[] = [
     title: t('Furnace / Smelting', 'เตาเผา / หลอม'),
     description: t('Furnace, blast furnace, smoker or campfire', 'เตาเผา เตาถลุง เตารมควัน หรือกองไฟ'),
     icon: '🔥',
-    inputs: [
-      { id: 'input', label: t('Input', 'วัตถุดิบ'), type: 'ingredient' },
-      resultPin()
-    ],
+    inputs: [{ id: 'input', label: t('Input', 'วัตถุดิบ'), type: 'ingredient' }, resultPin()],
     outputs: [],
     props: [
       {
@@ -841,10 +865,7 @@ export const NODE_DEFS: NodeDef[] = [
     title: t('Stonecutter', 'เครื่องตัดหิน'),
     description: t('Stonecutter recipe', 'สูตรเครื่องตัดหิน'),
     icon: '🪚',
-    inputs: [
-      { id: 'input', label: t('Input', 'วัตถุดิบ'), type: 'ingredient' },
-      resultPin()
-    ],
+    inputs: [{ id: 'input', label: t('Input', 'วัตถุดิบ'), type: 'ingredient' }, resultPin()],
     outputs: [],
     props: [countProp()]
   },
@@ -885,7 +906,13 @@ export const NODE_DEFS: NodeDef[] = [
         label: t('Tool', 'เครื่องมือ'),
         kind: 'select',
         default: 'knife',
-        options: [opt('knife', 'Knife', 'มีด'), opt('axe', 'Axe', 'ขวาน'), opt('pickaxe', 'Pickaxe', 'อีเต้อ'), opt('shovel', 'Shovel', 'พลั่ว'), opt('shears', 'Shears', 'กรรไกร')]
+        options: [
+          opt('knife', 'Knife', 'มีด'),
+          opt('axe', 'Axe', 'ขวาน'),
+          opt('pickaxe', 'Pickaxe', 'อีเต้อ'),
+          opt('shovel', 'Shovel', 'พลั่ว'),
+          opt('shears', 'Shears', 'กรรไกร')
+        ]
       },
       { key: 'count1', label: t('Result 1 count', 'จำนวนผลลัพธ์ 1'), kind: 'int', default: 2, min: 1, max: 64 },
       { key: 'count2', label: t('Result 2 count', 'จำนวนผลลัพธ์ 2'), kind: 'int', default: 1, min: 1, max: 64 },
@@ -928,7 +955,7 @@ export const NODE_DEFS: NodeDef[] = [
     category: 'script',
     title: t('Java Class (Script)', 'คลาส Java (สคริปต์)'),
     description: t(
-      'A Java source file of your mod, written like in any Minecraft mod: imports, classes, events. Forge/NeoForge: annotate the class with @EventBusSubscriber. Fabric/Quilt: implement ModInitializer — it is registered as an entrypoint. Your mod\'s classes (NkwMod, ModItems, ModBlocks, ModSounds) can be used directly.',
+      "A Java source file of your mod, written like in any Minecraft mod: imports, classes, events. Forge/NeoForge: annotate the class with @EventBusSubscriber. Fabric/Quilt: implement ModInitializer — it is registered as an entrypoint. Your mod's classes (NkwMod, ModItems, ModBlocks, ModSounds) can be used directly.",
       'ไฟล์ Java ของม็อด เขียนแบบม็อด Minecraft ทั่วไป (import, class, event) — Forge/NeoForge: ใส่ @EventBusSubscriber ที่ class / Fabric/Quilt: implements ModInitializer แล้วแอปลงทะเบียน entrypoint ให้ ใช้ class ของม็อดเรา (NkwMod, ModItems, ModBlocks, ModSounds) ได้เลย'
     ),
     icon: '☕',
@@ -940,7 +967,10 @@ export const NODE_DEFS: NodeDef[] = [
         label: t('Use for', 'ใช้กับ'),
         kind: 'scriptTargets',
         default: [],
-        hint: t('Java APIs differ between loaders and versions: pick the targets this file is written for (none = all).', 'API ของ Java ต่างกันในแต่ละ loader/เวอร์ชัน เลือกเป้าหมายที่ไฟล์นี้เขียนไว้ (ไม่เลือก = ทั้งหมด)')
+        hint: t(
+          'Java APIs differ between loaders and versions: pick the targets this file is written for (none = all).',
+          'API ของ Java ต่างกันในแต่ละ loader/เวอร์ชัน เลือกเป้าหมายที่ไฟล์นี้เขียนไว้ (ไม่เลือก = ทั้งหมด)'
+        )
       },
       { key: 'code', label: t('Code', 'โค้ด'), kind: 'code', default: SCRIPT_STARTER }
     ]

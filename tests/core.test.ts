@@ -8,7 +8,7 @@ import { convertBBModel, rotateBoxes, shapeBoxes } from '../src/core/gen/model'
 import { PROFILES } from '../src/core/gen/profiles'
 import { NODE_DEF_MAP, visibleInputs } from '../src/core/nodes/defs'
 import { bbmodelToGeo } from '../src/core/gen/geo'
-import { importInsertPos, parseJavacError, scriptClassName, scriptEntrypoints, scriptSource } from '../src/core/scriptApi'
+import { RESERVED_CLASSES, importInsertPos, parseJavacError, scriptClassName, scriptEntrypoints, scriptSource } from '../src/core/scriptApi'
 import { ASSET_RE, ProjectSchema, toId, type Project } from '../src/core/project'
 import { safeJoin } from '../src/main/services/builder'
 import { HAT_BBMODEL, writeFixture } from '../scripts/fixture'
@@ -16,7 +16,12 @@ import { HAT_BBMODEL, writeFixture } from '../scripts/fixture'
 const dir = mkdtempSync(join(tmpdir(), 'nkw-test-'))
 const project = writeFixture(dir)
 const read = { readText: (a: string) => readFileSync(join(dir, 'assets', a), 'utf8') }
-const deps = { ...TOOL_VERSIONS, farmersDelight: 'maven.modrinth:farmers-delight:x', geckolib: 'maven.modrinth:geckolib:x', modMenu: 'maven.modrinth:modmenu:x' }
+const deps = {
+  ...TOOL_VERSIONS,
+  farmersDelight: 'maven.modrinth:farmers-delight:x',
+  geckolib: 'maven.modrinth:geckolib:x',
+  modMenu: 'maven.modrinth:modmenu:x'
+}
 
 describe('project schema', () => {
   it('accepts the fixture', () => {
@@ -94,7 +99,13 @@ describe('compiler', () => {
     expect(hat.armor!.geo!.fit).toEqual({ offset: [0, 1, 0], rotation: [0, 0, -8], scale: [1.25, 1.25, 1.25] })
     const files = generate(ir, { loader: 'fabric', mc: '1.21.1' }, { ...FALLBACK_DEPS['1.21.1'], ...deps } as never, read)
     const geo = JSON.parse(files.find((f) => f.path.endsWith('/geo/item/armor/top_hat.geo.json'))!.text!)
-    const bones = geo['minecraft:geometry'][0].bones as { name: string; parent?: string; pivot: number[]; rotation?: number[]; cubes?: { origin: number[] }[] }[]
+    const bones = geo['minecraft:geometry'][0].bones as {
+      name: string
+      parent?: string
+      pivot: number[]
+      rotation?: number[]
+      cubes?: { origin: number[] }[]
+    }[]
     expect(bones.map((b) => b.name)).toEqual(['armorHead', 'nkw_fit_armorHead', 'hat'])
     const fitBone = bones[1]
     expect(fitBone.parent).toBe('armorHead')
@@ -106,7 +117,9 @@ describe('compiler', () => {
     const anim = JSON.parse(files.find((f) => f.path.endsWith('/animations/item/armor/top_hat.animation.json'))!.text!)
     expect(anim.animations['animation.nkw.fit'].bones.nkw_fit_armorHead.scale).toEqual([1.25, 1.25, 1.25])
     // the looping animation of the boots keeps its own bones and gains the fit scale
-    const boots = JSON.parse(files.find((f) => f.path.includes('/animations/item/armor/') && f.text?.includes('animation.ruby_armor.idle') && f.text.includes('nkw_fit_'))!.text!)
+    const boots = JSON.parse(
+      files.find((f) => f.path.includes('/animations/item/armor/') && f.text?.includes('animation.ruby_armor.idle') && f.text.includes('nkw_fit_'))!.text!
+    )
     expect(boots.animations['animation.ruby_armor.idle'].bones.armorHead).toBeTruthy()
     expect(boots.animations['animation.ruby_armor.idle'].bones.nkw_fit_armorRightBoot.scale).toEqual([1.1, 1.1, 1.1])
     const java = files.find((f) => f.path.endsWith('/ModItems.java'))!.text!
@@ -230,12 +243,29 @@ describe('compiler', () => {
     // a file for another target is left out
     expect(ff.filter((f) => f.path.endsWith('/Welcome.java')).length).toBe(1)
   })
+  it('reserves every class name the generator writes', () => {
+    for (const p of PROFILES)
+      for (const loader of p.loaders) {
+        const target = { loader, mc: p.mc }
+        const { ir } = compile(project, target)
+        const scripts = new Set(ir.scripts.map((s) => s.className))
+        for (const f of generate(ir, target, { ...FALLBACK_DEPS[p.mc], ...deps } as never, read)) {
+          const m = /\/([A-Za-z]+)\.java$/.exec(f.path)
+          if (m && !scripts.has(m[1])) expect(RESERVED_CLASSES.has(m[1]), `${m[1]} (${loader} ${p.mc})`).toBe(true)
+        }
+      }
+  })
   it('keeps Java line numbers when setting the package, and parses javac errors', () => {
     expect(scriptSource('package x.y;\nclass A {}', 'com.m')).toBe('package com.m;\nclass A {}')
     expect(scriptSource('// hi\npublic class A {}', 'com.m')).toBe('package com.m; // hi\npublic class A {}')
     expect(scriptClassName('// public class Wrong\nimport a.b;\n@Foo\npublic final class Right implements X {}')).toBe('Right')
     expect(scriptEntrypoints('public class A implements ClientModInitializer {')).toEqual({ main: false, client: true })
-    expect(parseJavacError('I:\\x\\src\\main\\java\\com\\nkw\\m\\Welcome.java:12: error: cannot find symbol')).toEqual({ cls: 'Welcome', line: 12, message: 'cannot find symbol', severity: 'error' })
+    expect(parseJavacError('I:\\x\\src\\main\\java\\com\\nkw\\m\\Welcome.java:12: error: cannot find symbol')).toEqual({
+      cls: 'Welcome',
+      line: 12,
+      message: 'cannot find symbol',
+      severity: 'error'
+    })
     expect(importInsertPos('package a;\nimport b.C;\n\nclass X {}', 'd.E')).toEqual({ pos: 22, text: '\nimport d.E;' })
     expect(importInsertPos('package a;\nimport d.E;\nclass X {}', 'd.E')).toBeNull()
   })
@@ -250,7 +280,11 @@ describe('compiler', () => {
     const p = structuredClone(project)
     p.graph.nodes = p.graph.nodes.filter((n) => n.type !== 'food')
     const { ir } = compile(p)
-    for (const [loader, mc] of [['fabric', '1.21.1'], ['forge', '1.20.1'], ['neoforge', '1.21.4']] as const) {
+    for (const [loader, mc] of [
+      ['fabric', '1.21.1'],
+      ['forge', '1.20.1'],
+      ['neoforge', '1.21.4']
+    ] as const) {
       const items = generate(ir, { loader, mc }, { ...FALLBACK_DEPS[mc], ...deps } as never, read).find((f) => f.path.endsWith('/ModItems.java'))!.text!
       expect(items).toContain('MobEffects.')
       expect(items).toContain('import net.minecraft.world.effect.MobEffects;')
@@ -267,7 +301,7 @@ describe('compiler', () => {
     expect(diagnostics.some((d) => d.nodeId === 'dup' && /Duplicate/.test(d.message.en))).toBe(true)
     expect(diagnostics.some((d) => d.nodeId === 'dup' && /texture/.test(d.message.en))).toBe(true)
   })
-  it('warns when Farmer\'s Delight is unavailable', () => {
+  it("warns when Farmer's Delight is unavailable", () => {
     const { diagnostics } = compile(project, { loader: 'fabric', mc: '1.16.5' })
     expect(diagnostics.some((d) => /Farmer's Delight/.test(d.message.en))).toBe(true)
   })
@@ -298,8 +332,15 @@ describe('generators', () => {
         if (p.jukeboxSongs) expect(paths).toContain('src/main/resources/data/nkwtest/jukebox_song/music_disc_nkw.json')
         if (p.itemDefinitions) expect(paths).toContain('src/main/resources/assets/nkwtest/items/ruby.json')
         // placeable items, tabs, copyright label
-        const javaAll = files.filter((x) => x.path.endsWith('.java')).map((x) => x.text).join('\n')
-        expect(javaAll).toMatch(p.propertiesId ? /new BlockItem\(ModBlocks\.RUBY_CROP(\.get\(\))?, props\("ruby_seeds"\)[^)]*\.useItemDescriptionPrefix\(\)/ : /new (ItemNameBlockItem|BlockNamedItem)\(ModBlocks\.RUBY_CROP/)
+        const javaAll = files
+          .filter((x) => x.path.endsWith('.java'))
+          .map((x) => x.text)
+          .join('\n')
+        expect(javaAll).toMatch(
+          p.propertiesId
+            ? /new BlockItem\(ModBlocks\.RUBY_CROP(\.get\(\))?, props\("ruby_seeds"\)[^)]*\.useItemDescriptionPrefix\(\)/
+            : /new (ItemNameBlockItem|BlockNamedItem)\(ModBlocks\.RUBY_CROP/
+        )
         expect(javaAll).not.toMatch(/"ruby_crop", (\(\) -> )?new BlockItem/)
         expect(javaAll).toMatch(/\bGEAR\b/)
         expect(javaAll).toContain('MAIN_TAB_ICON')
@@ -307,7 +348,10 @@ describe('generators', () => {
         expect(Object.values(en)).toContain('NKW - Theme (Copyright-free)')
         expect(en['itemGroup.nkwtest.gear']).toBe('NKW Gear')
         // effects, animated textures and GeckoLib animations
-        const java = files.filter((x) => x.path.endsWith('.java')).map((x) => x.text).join('\n')
+        const java = files
+          .filter((x) => x.path.endsWith('.java'))
+          .map((x) => x.text)
+          .join('\n')
         expect(java).toMatch(/\b(Mob)?Effects\.POISON\b/)
         expect(java).toContain('hurtEnemy')
         expect(java).toContain('inventoryTick')
@@ -337,7 +381,15 @@ describe('models', () => {
     const bb = {
       resolution: { width: 32, height: 32 },
       textures: [{ name: 'a.png', source: 'data:image/png;base64,AAAA' }],
-      elements: [{ from: [0, 0, 0], to: [8, 8, 8], rotation: [0, 30, 0], origin: [4, 4, 4], faces: { north: { uv: [0, 0, 16, 16], texture: 0 }, up: { uv: [0, 0, 8, 8], texture: null } } }]
+      elements: [
+        {
+          from: [0, 0, 0],
+          to: [8, 8, 8],
+          rotation: [0, 30, 0],
+          origin: [4, 4, 4],
+          faces: { north: { uv: [0, 0, 16, 16], texture: 0 }, up: { uv: [0, 0, 8, 8], texture: null } }
+        }
+      ]
     }
     const c = convertBBModel(JSON.stringify(bb))
     expect(c.textures[0].base64).toBe('AAAA')

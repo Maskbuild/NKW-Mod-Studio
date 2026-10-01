@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { NODE_DEF_MAP, defaultData } from '@core/nodes/defs'
 import type { GraphEdge, GraphNode, Project } from '@core/project'
-import { encodePng, placeholder } from './services/png'
+import { placeholder } from './services/png'
 
 export const TEMPLATE_IDS = ['empty', 'starter', 'armor', 'music', 'farmersDelight'] as const
 export type TemplateId = (typeof TEMPLATE_IDS)[number]
@@ -163,9 +163,3 @@ export async function applyTemplate(dir: string, project: Project, id: TemplateI
   for (const f of b.files) await writeFile(join(dir, 'assets', f.asset), f.data)
   return { ...project, graph: { nodes: b.nodes, edges: b.edges } }
 }
-
-export const NKW_ICON = () =>
-  encodePng(64, 64, (x, y) => {
-    const inside = x > 6 && x < 57 && y > 6 && y < 57
-    return inside ? ((x >> 3) + (y >> 3)) % 2 ? [20, 20, 20, 255] : [245, 245, 245, 255] : [0, 0, 0, 0]
-  })

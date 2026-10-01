@@ -2,7 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { textureKeys, type JavaModel } from '@core/gen/model'
-import { CORNERS, FIT_PREFIX, SLOT_BONES, faceRects, geoBones, javaModelToGeo, prepareArmorGeo, type ArmorFit, type Face, type GeoBone, type GeoCube, type GeoFile, type V3 } from '@core/gen/geo'
+import {
+  CORNERS,
+  FIT_PREFIX,
+  SLOT_BONES,
+  faceRects,
+  geoBones,
+  javaModelToGeo,
+  prepareArmorGeo,
+  type ArmorFit,
+  type Face,
+  type GeoBone,
+  type GeoCube,
+  type GeoFile,
+  type V3
+} from '@core/gen/geo'
 import type { ArmorSlot } from '@core/ir'
 import { api, assetUrl } from '../api'
 
@@ -330,19 +344,25 @@ export default function ArmorPreview({ geoAsset, texture, javaTextures, slot, fi
     const tex = sheet
       ? null
       : texture
-      ? new THREE.TextureLoader().load(assetUrl(texture), (t) => {
-          // animated textures (frames stacked vertically): show the first frame
-          const img = t.image as { width: number; height: number }
-          const frame = (th / tw) * img.width
-          if (img.height > frame) {
-            t.repeat.set(1, frame / img.height)
-            t.offset.set(0, 1 - frame / img.height)
-          }
-          c.render()
-        })
-      : null
+        ? new THREE.TextureLoader().load(assetUrl(texture), (t) => {
+            // animated textures (frames stacked vertically): show the first frame
+            const img = t.image as { width: number; height: number }
+            const frame = (th / tw) * img.width
+            if (img.height > frame) {
+              t.repeat.set(1, frame / img.height)
+              t.offset.set(0, 1 - frame / img.height)
+            }
+            c.render()
+          })
+        : null
     if (tex) pixelTexture(tex)
-    const mat = new THREE.MeshLambertMaterial({ map: tex, color: tex || sheet ? 0xffffff : 0x9aa4b2, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide })
+    const mat = new THREE.MeshLambertMaterial({
+      map: tex,
+      color: tex || sheet ? 0xffffff : 0x9aa4b2,
+      transparent: true,
+      alphaTest: 0.1,
+      side: THREE.DoubleSide
+    })
     let sheetTex: THREE.Texture | null = null
     let live = true
     if (sheet)
@@ -354,9 +374,7 @@ export default function ArmorPreview({ geoAsset, texture, javaTextures, slot, fi
         c.render()
       })
     const scale = fit?.scale ?? null
-    const armor = buildGeo(geoBones(prepared), tw, th, mat, new Set(SLOT_BONES[slot]), (n) =>
-      n.startsWith(FIT_PREFIX) ? scale : null
-    )
+    const armor = buildGeo(geoBones(prepared), tw, th, mat, new Set(SLOT_BONES[slot]), (n) => (n.startsWith(FIT_PREFIX) ? scale : null))
     c.scene.add(armor)
     c.render()
     return () => {
