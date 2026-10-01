@@ -22,7 +22,7 @@ by **Nam Kueap Wan (NKW)**
 
 | Area | What you can make |
 |---|---|
-| 💎 Items | Items, food, tools & weapons (sword, pickaxe, axe, shovel, hoe), tool materials (optional: tools default to iron), 3D items (3D in hand with an optional 2D inventory icon), items that can be **worn on the head** (shown with the model's Blockbench "Head" display), items that place blocks (e.g. seeds → crop) |
+| 💎 Items | Items, food, tools & weapons (sword, pickaxe, axe, shovel, hoe), tool materials (optional: tools default to iron), 3D items (3D in hand with an optional 2D inventory icon), items that can be **worn on the head** (right-click — can be turned off — or drag into the helmet slot, pink tooltip line, shown with the model's Blockbench "Head" display), items that place blocks (e.g. seeds → crop) |
 | 🧱 Blocks | Cube blocks (all sides / top-side-bottom / pillar), **3D blocks** from Blockbench (hitbox computed from the model, faces the player), custom drops |
 | 🛡 Armor | Armor materials (optional: pieces default to iron) + **individual armor pieces** (helmet / chestplate / leggings / boots), 2D or **3D from Blockbench** (`.bbmodel`, GeckoLib `.geo.json` or a Java block/item `.json` — any model can be worn) with animations; adjust **position, rotation and size** on a Steve / Alex preview; the inventory icon can be the 3D model itself |
 | ✨ Effects | 30 status effects, level 1–1000, infinite duration, toggle particles and status icon — on food (when eaten), weapons (on hit) and armor (while worn) |
@@ -30,10 +30,11 @@ by **Nam Kueap Wan (NKW)**
 | 🎵 Sound | Sound files, sound events, **music discs** (length taken from the audio file, copyright label, hearing range, pop out / loop / stay when the song ends), built-in **MP3 / WAV / MP4 / … → OGG converter** |
 | 🍳 Recipes | Shaped crafting with a drag & drop 3×3 grid, shapeless crafting, furnace / blast furnace / smoker / campfire, stonecutter, smithing table |
 | 🍲 Farmer's Delight | Cutting board and cooking pot recipes (the skillet uses campfire recipes); Farmer's Delight is added automatically when testing |
-| 🗂 Creative tabs | Multiple tabs with a logo icon; wire any items into a tab (items not in a tab can be obtained with `/give`) |
+| 🗂 Creative tabs | Multiple tabs with a logo icon; wire any items into a tab, drag to reorder or sort A→Z / Z→A (items not in a tab can be obtained with `/give`) |
+| ☕ Scripts | Java classes of your mod written like in any Minecraft mod (imports, `@EventBusSubscriber` on Forge/NeoForge, `ModInitializer` entrypoints on Fabric/Quilt), per loader/version; the mod's own classes (`NkwMod`, `ModItems` …) are available; editor with highlighting, class completion with auto-import, hover docs, live checks, examples for each loader, and **Check code** that compiles with Gradle and marks javac errors on their lines |
 | 📦 Game items | Every Minecraft and Farmer's Delight item of each version with icons (blocks drawn in 3D) and tags, grouped by what they are used for — drag them in as ingredients |
 
-**Easy to use:** drag & drop files anywhere · VS Code–style asset tree (folders, file extensions, rename, move, delete to Recycle Bin) · box selection · undo/redo · autosave · live problem checking · light/dark theme following the system · Thai and English UI · custom mod logo
+**Easy to use:** drag & drop files anywhere · disable nodes without deleting them (Ctrl+E) · remove single wires (click a wire → ×, right-click a wire, or Alt+click a pin) · VS Code–style asset tree (folders, file extensions, rename, move, delete to Recycle Bin) · box selection · undo/redo · autosave · live problem checking · light/dark theme following the system · Thai and English UI · custom mod logo
 
 **Test in game with one click:** press ▶ and the app generates a Gradle project, downloads the Java/Gradle it needs (asks first, checksum-verified) and launches Minecraft with your mod (Fabric/Quilt also get Fabric API + Mod Menu). Or press ⬇ to export a `.jar`.
 
@@ -93,7 +94,7 @@ tests         unit tests (vitest)
 
 What the AI-generated code was checked with:
 
-- 44 unit tests (compiler, generators for every loader × version, Blockbench conversion, path-traversal protection, audio import)
+- 49 unit tests (compiler, generators for every loader × version, Blockbench conversion, path-traversal protection, audio import)
 - **Real Gradle builds of a sample mod using every node: 23/23 loader × version targets pass** (compile + `.jar`)
 - **Minecraft actually launched** with the sample mod on Fabric, Quilt, Forge and NeoForge across 1.16.5–1.21.4 — mod registered, no model/texture errors
 - Recipe, loot table, tag, jukebox song and equipment JSON checked against the real vanilla and Farmer's Delight files

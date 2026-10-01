@@ -22,8 +22,10 @@ import { useTranslation } from 'react-i18next'
 import { NODE_DEF_MAP, canConnect, pinOf } from '@core/nodes/defs'
 import { edgeStyle, newId, useStore, type FlowNode } from '../store'
 import { NODE_TYPES, CATEGORY_COLOR } from './NodeView'
+import { EDGE_TYPES } from './WireEdge'
+import { L } from '../i18n'
 import { QuickAdd, matchPin, type Pending } from './QuickAdd'
-import { ICopy, IFit, ITrash, IX } from '../components/Icons'
+import { IBan, ICopy, IFit, ITrash, IX } from '../components/Icons'
 import { NODE_FOR_KIND, addImportedNodes, hasFiles, importDropped } from '../drop'
 import type { AssetKind } from '../api'
 
@@ -155,12 +157,31 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
   }
 
   const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null)
-  const nodeAction = (action: 'duplicate' | 'delete' | 'disconnect') => {
+  const [edgeMenu, setEdgeMenu] = useState<{ x: number; y: number; id: string } | null>(null)
+  /** "Pin ← other node" labels for the wires of the node the menu was opened on. */
+  const wiresOf = (nodeId: string) => {
+    const node = nodes.find((n) => n.id === nodeId)
+    const def = node && NODE_DEF_MAP[node.type ?? '']
+    if (!def) return []
+    return edges
+      .filter((e) => e.source === nodeId || e.target === nodeId)
+      .map((e) => {
+        const incoming = e.target === nodeId
+        const pin = pinOf(def, (incoming ? e.targetHandle : e.sourceHandle) ?? '', incoming ? 'in' : 'out')
+        const other = nodes.find((n) => n.id === (incoming ? e.source : e.target))
+        const odef = other && NODE_DEF_MAP[other.type ?? '']
+        const oname = other ? (typeof other.data.name === 'string' && other.data.name ? other.data.name : odef ? L(odef.title) : '?') : '?'
+        const opin = odef && pinOf(odef, (incoming ? e.sourceHandle : e.targetHandle) ?? '', incoming ? 'out' : 'in')
+        return { id: e.id, label: `${pin ? L(pin.label) : '?'} ${incoming ? '←' : '→'} ${oname}${opin ? ` · ${L(opin.label)}` : ''}` }
+      })
+  }
+  const nodeAction = (action: 'duplicate' | 'delete' | 'disconnect' | 'disable') => {
     if (!menu) return
     const s = useStore.getState()
     useStore.setState({ nodes: s.nodes.map((n) => ({ ...n, selected: n.id === menu.id || (n.selected && s.nodes.find((x) => x.id === menu.id)?.selected) || false })) })
     const ids = new Set(useStore.getState().nodes.filter((n) => n.selected).map((n) => n.id))
     if (action === 'duplicate') s.duplicate()
+    else if (action === 'disable') s.toggleDisabled([...ids])
     else {
       s.checkpoint()
       const st = useStore.getState()
@@ -176,6 +197,7 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
@@ -189,7 +211,13 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
           setQa(null)
           setMenu({ x: e.clientX, y: e.clientY, id: n.id })
         }}
-        onPaneClick={() => setMenu(null)}
+        onEdgeContextMenu={(e, edge) => {
+          e.preventDefault()
+          setQa(null)
+          setMenu(null)
+          setEdgeMenu({ x: e.clientX, y: e.clientY, id: edge.id })
+        }}
+        onPaneClick={() => (setMenu(null), setEdgeMenu(null))}
         onlyRenderVisibleElements
         snapToGrid
         snapGrid={[16, 16]}
@@ -221,15 +249,56 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
       {menu && (
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onMouseDown={() => setMenu(null)} onContextMenu={(e) => (e.preventDefault(), setMenu(null))} />
-          <div className="qa ctx" style={{ left: Math.min(menu.x, window.innerWidth - 210), top: Math.min(menu.y, window.innerHeight - 140) }} role="menu">
+          <div className="qa ctx" style={{ left: Math.min(menu.x, window.innerWidth - 210), top: Math.min(menu.y, window.innerHeight - 180 - Math.min(8, wiresOf(menu.id).length) * 30) }} role="menu">
             <div className="qa-item" role="menuitem" onMouseDown={() => nodeAction('duplicate')}>
               <ICopy size={14} /> {t('ws.duplicate')} <small>Ctrl+D</small>
             </div>
-            <div className="qa-item" role="menuitem" onMouseDown={() => nodeAction('disconnect')}>
-              <IX size={14} /> {t('ws.disconnect')}
+            <div className="qa-item" role="menuitem" onMouseDown={() => nodeAction('disable')}>
+              <IBan size={14} /> {nodes.find((n) => n.id === menu.id)?.data.disabled ? t('ws.enable') : t('ws.disable')} <small>Ctrl+E</small>
             </div>
+            {wiresOf(menu.id).length > 0 && (
+              <>
+                <div className="qa-sep">{t('ws.wires')}</div>
+                <div className="qa-wires">
+                  {wiresOf(menu.id).map((w) => (
+                    <div
+                      key={w.id}
+                      className="qa-item wire-item"
+                      role="menuitem"
+                      title={t('ws.disconnectOne')}
+                      onMouseDown={() => {
+                        useStore.getState().disconnect([w.id])
+                        setMenu(null)
+                      }}
+                    >
+                      <IX size={12} /> <span className="ellipsis">{w.label}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="qa-item" role="menuitem" onMouseDown={() => nodeAction('disconnect')}>
+                  <IX size={14} /> {t('ws.disconnect')}
+                </div>
+              </>
+            )}
             <div className="qa-item danger" role="menuitem" onMouseDown={() => nodeAction('delete')}>
               <ITrash size={14} /> {t('ws.delete')} <small>Del</small>
+            </div>
+          </div>
+        </>
+      )}
+      {edgeMenu && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onMouseDown={() => setEdgeMenu(null)} onContextMenu={(e) => (e.preventDefault(), setEdgeMenu(null))} />
+          <div className="qa ctx" style={{ left: Math.min(edgeMenu.x, window.innerWidth - 210), top: Math.min(edgeMenu.y, window.innerHeight - 60) }} role="menu">
+            <div
+              className="qa-item danger"
+              role="menuitem"
+              onMouseDown={() => {
+                useStore.getState().disconnect([edgeMenu.id])
+                setEdgeMenu(null)
+              }}
+            >
+              <IX size={14} /> {t('ws.disconnectOne')} <small>Del</small>
             </div>
           </div>
         </>

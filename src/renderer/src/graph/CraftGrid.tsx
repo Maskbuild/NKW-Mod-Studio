@@ -13,29 +13,44 @@ const EMPTY = ['', '', '', '', '', '', '', '', '']
 const TEX_PINS = ['icon', 'texture', 'all', 'side', 'top', 'layer']
 
 type Wired = { kind: 'ref'; id: string } | { kind: 'tag'; id: string } | { kind: 'node'; name: string; tex: string } | null
+type State = ReturnType<typeof useStore.getState>
+type GraphEdge = State['edges'][number]
 
-/** What is plugged into `handle` of node `nodeId` (reroutes followed), in a form the UI can draw. */
-function useWired(nodeId: string, handle: string): Wired {
+/** What comes in through edge `e` (reroutes followed), in a form the UI can draw. */
+function resolve(s: State, e: GraphEdge | undefined): Wired {
+  for (let g = 0; e && g < 64; g++) {
+    const n = s.nodes.find((x) => x.id === e!.source)
+    if (!n) return null
+    if (n.type === 'reroute') {
+      e = s.edges.find((x) => x.target === n.id && x.targetHandle === 'in')
+      continue
+    }
+    const d = n.data
+    if (n.type === 'itemRef') return { kind: 'ref', id: String(d.item ?? '') }
+    if (n.type === 'tagRef') return { kind: 'tag', id: String(d.tag ?? '') }
+    return { kind: 'node', name: String(d.name || d.id || L(NODE_DEF_MAP[n.type ?? '']?.title ?? '')), tex: textureOf(s.nodes, s.edges, n) }
+  }
+  return null
+}
+
+/** What is plugged into `handle` of node `nodeId` — or comes through edge `edgeId` — in a form the UI can draw. */
+function useWired(nodeId: string, handle: string, edgeId?: string): Wired {
   return useStoreWithEqualityFn(
     useStore,
-    (s): Wired => {
-      let e = s.edges.find((x) => x.target === nodeId && x.targetHandle === handle)
-      for (let g = 0; e && g < 64; g++) {
-        const n = s.nodes.find((x) => x.id === e!.source)
-        if (!n) return null
-        if (n.type === 'reroute') {
-          e = s.edges.find((x) => x.target === n.id && x.targetHandle === 'in')
-          continue
-        }
-        const d = n.data
-        if (n.type === 'itemRef') return { kind: 'ref', id: String(d.item ?? '') }
-        if (n.type === 'tagRef') return { kind: 'tag', id: String(d.tag ?? '') }
-        return { kind: 'node', name: String(d.name ?? d.id ?? L(NODE_DEF_MAP[n.type ?? '']?.title ?? '')), tex: textureOf(s.nodes, s.edges, n) }
-      }
-      return null
-    },
+    (s): Wired => resolve(s, edgeId ? s.edges.find((x) => x.id === edgeId) : s.edges.find((x) => x.target === nodeId && x.targetHandle === handle)),
     shallow
   )
+}
+
+/** English display name of what comes through an edge (game items by their in-game name), for sorting. */
+export function wiredName(s: State, edgeId: string): string {
+  const w = resolve(s, s.edges.find((x) => x.id === edgeId))
+  if (!w) return ''
+  if (w.kind === 'tag') return `#${w.id}`
+  if (w.kind === 'node') return w.name
+  const [ns, path] = w.id.includes(':') ? w.id.split(':') : ['minecraft', w.id]
+  const mc = s.targets[s.activeTarget]?.mc ?? ''
+  return s.vanilla[`${ns}@${mc}`]?.items.find((i) => i.id === path)?.en ?? pretty(w.id)
 }
 
 function textureOf(nodes: FlowNode[], edges: { source: string; target: string; targetHandle?: string | null }[], n: FlowNode): string {
@@ -61,9 +76,9 @@ function RefName({ id }: { id: string }) {
   return <>{info?.item.en ?? pretty(id)}</>
 }
 
-/** Icon (+ optional name) of whatever is wired into a pin. */
-function Thing({ nodeId, pin, named }: { nodeId: string; pin: string; named?: boolean }) {
-  const w = useWired(nodeId, pin)
+/** Icon (+ optional name) of whatever is wired into a pin (or comes through one edge). */
+export function Thing({ nodeId, pin, edgeId, named }: { nodeId: string; pin: string; edgeId?: string; named?: boolean }) {
+  const w = useWired(nodeId, pin, edgeId)
   if (!w) return null
   const icon =
     w.kind === 'ref' ? (

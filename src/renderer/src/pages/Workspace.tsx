@@ -228,6 +228,7 @@ function Shortcuts({ quickAdd }: { quickAdd: React.MutableRefObject<((x: number,
       else if (ctrl && e.key.toLowerCase() === 'c') s.copy()
       else if (ctrl && e.key.toLowerCase() === 'v') s.paste(rf.screenToFlowPosition(mouse.current))
       else if (ctrl && e.key.toLowerCase() === 'd') (e.preventDefault(), s.duplicate())
+      else if (ctrl && e.key.toLowerCase() === 'e') (e.preventDefault(), s.toggleDisabled())
       else if (ctrl && e.key.toLowerCase() === 'a') (e.preventDefault(), useStore.setState({ nodes: s.nodes.map((n) => ({ ...n, selected: true })) }))
       else if (e.key === ' ' && !ctrl) (e.preventDefault(), quickAdd.current?.(mouse.current.x, mouse.current.y))
       else if (e.key.toLowerCase() === 'f' && !ctrl) void rf.fitView({ padding: 0.2, duration: 300, nodes: s.nodes.some((n) => n.selected) ? s.nodes.filter((n) => n.selected) : undefined })

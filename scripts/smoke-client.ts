@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path'
 import { startBuild } from '../src/main/services/builder'
 import type { Loader } from '../src/core/project'
 import { writeFixture } from './fixture'
+import { scriptAppliesTo } from '../src/core/scriptApi'
 
 const root = resolve(process.env.NKW_VERIFY_DIR ?? '.verify')
 const toolsDir = resolve(process.env.NKW_TOOLS_DIR ?? join(root, 'tools'))
@@ -24,6 +25,7 @@ async function smoke(name: string): Promise<boolean> {
   const problems: string[] = []
   let registered = false
   let ready = false
+  let scripts = !project.graph.nodes.some((n) => n.type === 'script' && scriptAppliesTo((n.data.targets as string[]) ?? [], target))
   const run = await startBuild({
     projectDir,
     project: { ...project, targets: [target] },
@@ -35,6 +37,7 @@ async function smoke(name: string): Promise<boolean> {
     log: (l) => {
       if (process.env.VERBOSE) console.log(l)
       if (/\[NKW\] nkwtest registered/.test(l)) registered = true
+      if (/\[NKW\] script loaded: \w+/.test(l)) scripts = true
       if (BAD.test(l) && !/Unable to load model: 'minecraft:/.test(l)) problems.push(l.slice(0, 300))
       if (READY.test(l)) ready = true
     },
@@ -48,8 +51,8 @@ async function smoke(name: string): Promise<boolean> {
   if (ready) await new Promise((r) => setTimeout(r, 15000)) // let resource reload finish and log any model errors
   run.stop()
   await run.done
-  const ok = registered && ready && problems.length === 0
-  console.log(`${ok ? '✔' : '✘'} ${name}  registered=${registered} ready=${ready}`)
+  const ok = registered && ready && scripts && problems.length === 0
+  console.log(`${ok ? '✔' : '✘'} ${name}  registered=${registered} ready=${ready} scripts=${scripts}`)
   for (const p of problems.slice(0, 25)) console.log('    ' + p)
   return ok
 }

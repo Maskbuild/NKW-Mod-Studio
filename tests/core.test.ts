@@ -2,12 +2,13 @@ import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { compile } from '../src/core/compile/compile'
+import { compile, scriptBracketProblem } from '../src/core/compile/compile'
 import { FALLBACK_DEPS, TOOL_VERSIONS, generate } from '../src/core/gen/index'
 import { convertBBModel, rotateBoxes, shapeBoxes } from '../src/core/gen/model'
 import { PROFILES } from '../src/core/gen/profiles'
 import { NODE_DEF_MAP, visibleInputs } from '../src/core/nodes/defs'
 import { bbmodelToGeo } from '../src/core/gen/geo'
+import { importInsertPos, parseJavacError, scriptClassName, scriptEntrypoints, scriptSource } from '../src/core/scriptApi'
 import { ASSET_RE, ProjectSchema, toId, type Project } from '../src/core/project'
 import { safeJoin } from '../src/main/services/builder'
 import { HAT_BBMODEL, writeFixture } from '../scripts/fixture'
@@ -183,14 +184,77 @@ describe('compiler', () => {
     const old = generate(ir, { loader: 'forge', mc: '1.20.1' }, { ...FALLBACK_DEPS['1.20.1'], ...deps } as never, read)
     const head = old.find((f) => f.path.endsWith('/NkwHeadwear.java'))!.text!
     expect(head).toContain('ModItems.LAMP_STATUE.get()')
-    expect(head).toContain('ModItems.PLAIN_KNIFE.get()')
+    // the knife is set to slot-only: no right-click equip
+    expect(head).not.toContain('ModItems.PLAIN_KNIFE.get()')
     expect(old.find((f) => f.path.endsWith('/NkwMod.java'))!.text).toContain('NkwHeadwear.init();')
+    // drag into the helmet slot + coloured tooltip line
+    const items = old.find((f) => f.path.endsWith('/ModItems.java'))!.text!
+    expect(items).toContain('public EquipmentSlot getEquipmentSlot(ItemStack stack)')
+    expect(items).toContain('Component.translatable("tooltip.nkwtest.wearable_head").withStyle(ChatFormatting.LIGHT_PURPLE)')
+    const fab = generate(ir, { loader: 'fabric', mc: '1.20.1' }, { ...FALLBACK_DEPS['1.20.1'], ...deps } as never, read)
+    expect(fab.find((f) => f.path.endsWith('/ModItems.java'))!.text).toContain('new FabricItemSettings().equipmentSlot(stack -> EquipmentSlot.HEAD)')
+    const fab21 = generate(ir, { loader: 'fabric', mc: '1.21.1' }, { ...FALLBACK_DEPS['1.21.1'], ...deps } as never, read)
+    expect(fab21.find((f) => f.path.endsWith('/ModItems.java'))!.text).toContain('.equipmentSlot((entity, stack) -> EquipmentSlot.HEAD)')
+    expect(JSON.parse(fab21.find((f) => f.path.endsWith('/lang/th_th.json'))!.text!)['tooltip.nkwtest.wearable_head']).toBe('สวมบนหัวได้')
     const modern = generate(ir, { loader: 'neoforge', mc: '1.21.4' }, { ...FALLBACK_DEPS['1.21.4'], ...deps } as never, read)
     expect(modern.some((f) => f.path.endsWith('/NkwHeadwear.java'))).toBe(false)
     expect(modern.find((f) => f.path.endsWith('/ModItems.java'))!.text).toContain('.equippable(EquipmentSlot.HEAD)')
+    expect(modern.find((f) => f.path.endsWith('/ModItems.java'))!.text).toContain('.equippableUnswappable(EquipmentSlot.HEAD)')
     // the .json model (with its Blockbench display settings) is the hand model; the icon stays 2D
     const def = JSON.parse(modern.find((f) => f.path.endsWith('/items/block_crown_flat.json'))!.text!)
     expect(def.model.type).toBe('minecraft:select')
+  })
+  it('leaves disabled nodes (and their wires) out of the mod', () => {
+    const p = structuredClone(project)
+    p.graph.nodes.find((n) => n.id === 'glow_item')!.data.disabled = true
+    p.graph.nodes.find((n) => n.id === 'r3')!.data.disabled = true
+    const { ir, diagnostics } = compile(p)
+    expect(ir.items.some((i) => i.id === 'glow_shard')).toBe(false)
+    expect(ir.recipes.length).toBe(compile(project).ir.recipes.length - 1)
+    expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
+  })
+  it('writes Script nodes as Java files of the mod (package set, per target, Fabric entrypoints)', () => {
+    const fab = compile(project, { loader: 'fabric', mc: '1.20.1' })
+    expect(fab.diagnostics.filter((d) => d.severity === 'error')).toEqual([])
+    expect(fab.ir.scripts.map((s) => s.className).sort()).toEqual(['MagicWand', 'Welcome'])
+    const files = generate(fab.ir, { loader: 'fabric', mc: '1.20.1' }, { ...FALLBACK_DEPS['1.20.1'], ...deps } as never, read)
+    const wand = files.find((f) => f.path.endsWith('/nkwtest/MagicWand.java'))!.text!
+    expect(wand.startsWith('package com.nkw.nkwtest;')).toBe(true)
+    const meta = JSON.parse(files.find((f) => f.path.endsWith('fabric.mod.json'))!.text!)
+    expect(meta.entrypoints.main[0]).toBe('com.nkw.nkwtest.NkwMod')
+    expect([...meta.entrypoints.main].sort()).toEqual(['com.nkw.nkwtest.MagicWand', 'com.nkw.nkwtest.NkwMod', 'com.nkw.nkwtest.Welcome'])
+    // Forge finds @EventBusSubscriber classes itself: no entrypoints, the file is just there
+    const forge = compile(project, { loader: 'forge', mc: '1.20.1' })
+    const ff = generate(forge.ir, { loader: 'forge', mc: '1.20.1' }, { ...FALLBACK_DEPS['1.20.1'], ...deps } as never, read)
+    expect(ff.find((f) => f.path.endsWith('/Welcome.java'))!.text).toContain('@Mod.EventBusSubscriber(modid = NkwMod.MOD_ID)')
+    // a file for another target is left out
+    expect(ff.filter((f) => f.path.endsWith('/Welcome.java')).length).toBe(1)
+  })
+  it('keeps Java line numbers when setting the package, and parses javac errors', () => {
+    expect(scriptSource('package x.y;\nclass A {}', 'com.m')).toBe('package com.m;\nclass A {}')
+    expect(scriptSource('// hi\npublic class A {}', 'com.m')).toBe('package com.m; // hi\npublic class A {}')
+    expect(scriptClassName('// public class Wrong\nimport a.b;\n@Foo\npublic final class Right implements X {}')).toBe('Right')
+    expect(scriptEntrypoints('public class A implements ClientModInitializer {')).toEqual({ main: false, client: true })
+    expect(parseJavacError('I:\\x\\src\\main\\java\\com\\nkw\\m\\Welcome.java:12: error: cannot find symbol')).toEqual({ cls: 'Welcome', line: 12, message: 'cannot find symbol', severity: 'error' })
+    expect(importInsertPos('package a;\nimport b.C;\n\nclass X {}', 'd.E')).toEqual({ pos: 22, text: '\nimport d.E;' })
+    expect(importInsertPos('package a;\nimport d.E;\nclass X {}', 'd.E')).toBeNull()
+  })
+  it('catches unbalanced brackets and quotes in scripts', () => {
+    expect(scriptBracketProblem('if (a) { b(); }')).toBeNull()
+    expect(scriptBracketProblem('// )))\nx("}");')).toBeNull()
+    expect(scriptBracketProblem('if (a) {\n  b();')?.line).toBe(1)
+    expect(scriptBracketProblem('x("abc);')?.en).toContain('unclosed string')
+    expect(scriptBracketProblem('a());')?.en).toContain('unexpected ")"')
+  })
+  it('imports MobEffects for weapon effects even when no food uses effects', () => {
+    const p = structuredClone(project)
+    p.graph.nodes = p.graph.nodes.filter((n) => n.type !== 'food')
+    const { ir } = compile(p)
+    for (const [loader, mc] of [['fabric', '1.21.1'], ['forge', '1.20.1'], ['neoforge', '1.21.4']] as const) {
+      const items = generate(ir, { loader, mc }, { ...FALLBACK_DEPS[mc], ...deps } as never, read).find((f) => f.path.endsWith('/ModItems.java'))!.text!
+      expect(items).toContain('MobEffects.')
+      expect(items).toContain('import net.minecraft.world.effect.MobEffects;')
+    }
   })
   it('follows reroute nodes', () => {
     const { ir } = compile(project)

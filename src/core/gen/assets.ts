@@ -203,6 +203,7 @@ export function genAssets(ctx: GenCtx): void {
     put(`block.${ns}.${b.id}`, b.name, b.nameTh)
     put(`item.${ns}.${b.id}`, b.name, b.nameTh)
   }
+  if (ir.items.some((i) => i.headwear)) put(`tooltip.${ns}.wearable_head`, 'Can be worn on the head', 'สวมบนหัวได้')
   for (const s of ir.sounds) if (s.subtitle || s.subtitleTh) put(`subtitles.${ns}.${s.id}`, s.subtitle || s.id, s.subtitleTh)
   for (const t of ir.tabs) {
     put(`itemGroup.${ns}.${t.id}`, t.title, t.titleTh)

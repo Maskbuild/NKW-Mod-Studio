@@ -1,4 +1,13 @@
 :root {
+  /* code editor (VS Code Light+) */
+  --cm-keyword: #af00db;
+  --cm-type: #267f99;
+  --cm-string: #a31515;
+  --cm-number: #098658;
+  --cm-comment: #008000;
+  --cm-function: #795e26;
+  --cm-variable: #001080;
+  --cm-punct: #383a42;
   --bg: #fafafa;
   --panel: #ffffff;
   --panel-2: #f4f4f5;
@@ -31,6 +40,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    /* code editor (VS Code Dark+) */
+    --cm-keyword: #c586c0;
+    --cm-type: #4ec9b0;
+    --cm-string: #ce9178;
+    --cm-number: #b5cea8;
+    --cm-comment: #6a9955;
+    --cm-function: #dcdcaa;
+    --cm-variable: #9cdcfe;
+    --cm-punct: #d4d4d4;
     --bg: #0e0e10;
     --panel: #141417;
     --panel-2: #1b1b1f;

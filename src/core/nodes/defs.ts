@@ -1,3 +1,4 @@
+import { SCRIPT_STARTER } from '../scriptApi'
 /**
  * Node catalogue shared by the editor (rendering, inspector) and the compiler.
  * Every pin has a type; the editor refuses connections whose types don't match.
@@ -62,7 +63,7 @@ export interface PinDef {
   legacy?: boolean
 }
 
-export type PropKind = 'id' | 'text' | 'int' | 'float' | 'bool' | 'select' | 'asset' | 'nsid' | 'textarea' | 'color' | 'animName' | 'craftGrid' | 'armorFit'
+export type PropKind = 'id' | 'text' | 'int' | 'float' | 'bool' | 'select' | 'asset' | 'nsid' | 'textarea' | 'color' | 'animName' | 'craftGrid' | 'armorFit' | 'tabOrder' | 'code' | 'scriptTargets'
 
 export interface PropDef {
   key: string
@@ -79,7 +80,7 @@ export interface PropDef {
   showIf?: (data: Record<string, unknown>) => boolean
 }
 
-export type Category = 'asset' | 'item' | 'block' | 'armor' | 'effect' | 'sound' | 'recipe' | 'fd' | 'util'
+export type Category = 'asset' | 'item' | 'block' | 'armor' | 'effect' | 'sound' | 'recipe' | 'fd' | 'script' | 'util'
 
 export interface NodeDef {
   type: string
@@ -108,6 +109,7 @@ export const CATEGORY_LABEL: Record<Category, L10n> = {
   sound: t('Sound & Music', 'เสียงและเพลง'),
   recipe: t('Recipes', 'สูตรคราฟ'),
   fd: t("Farmer's Delight", "Farmer's Delight"),
+  script: t('Scripts', 'สคริปต์'),
   util: t('Utility', 'เครื่องมือ')
 }
 
@@ -138,7 +140,15 @@ const itemCommon: PropDef[] = [
     ]
   },
   { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false },
-  { key: 'wearOnHead', label: t('Can be worn on the head', 'ใส่บนหัวได้'), kind: 'bool', default: false, hint: t('Right-click to put it on. It is shown with the model\'s "Head" display settings (Blockbench → Display → Head).', 'คลิกขวาเพื่อสวม — จะแสดงตามค่าการแสดงผลแบบ "Head" ของโมเดล (Blockbench → Display → Head)') },
+  { key: 'wearOnHead', label: t('Can be worn on the head', 'ใส่บนหัวได้'), kind: 'bool', default: false, hint: t('Right-click it, or drag / shift-click it into the helmet slot. Its tooltip says it can be worn. It is shown with the model\'s "Head" display settings (Blockbench → Display → Head).', 'คลิกขวา หรือลาก/Shift+คลิกใส่ช่องหมวกได้ ในคำอธิบายไอเทมจะมีข้อความบอกว่าสวมได้ — แสดงตามค่าการแสดงผลแบบ "Head" ของโมเดล (Blockbench → Display → Head)') },
+  {
+    key: 'wearRightClick',
+    label: t('Right-click to put on', 'คลิกขวาเพื่อสวมได้'),
+    kind: 'bool',
+    default: true,
+    showIf: (data) => data.wearOnHead === true,
+    hint: t('Off: it can only be dragged / shift-clicked into the helmet slot.', 'ปิด: ใส่ได้เฉพาะลาก/Shift+คลิกเข้าช่องหมวกเท่านั้น')
+  },
   { key: 'glint', label: t('Enchant glint', 'มีประกายเอนชานต์'), kind: 'bool', default: false }
 ]
 
@@ -446,7 +456,15 @@ export const NODE_DEFS: NodeDef[] = [
       { key: 'attackDamage', label: t('Extra attack damage', 'ดาเมจเพิ่มเติม'), kind: 'float', default: 3, min: -10, max: 1000, step: 0.5 },
       { key: 'attackSpeed', label: t('Attack speed modifier', 'ค่าความเร็วโจมตี'), kind: 'float', default: -2.4, min: -4, max: 10, step: 0.1 },
       { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false },
-      { key: 'wearOnHead', label: t('Can be worn on the head', 'ใส่บนหัวได้'), kind: 'bool', default: false, hint: t('Right-click to put it on. It is shown with the model\'s "Head" display settings (Blockbench → Display → Head).', 'คลิกขวาเพื่อสวม — จะแสดงตามค่าการแสดงผลแบบ "Head" ของโมเดล (Blockbench → Display → Head)') },
+      { key: 'wearOnHead', label: t('Can be worn on the head', 'ใส่บนหัวได้'), kind: 'bool', default: false, hint: t('Right-click it, or drag / shift-click it into the helmet slot. Its tooltip says it can be worn. It is shown with the model\'s "Head" display settings (Blockbench → Display → Head).', 'คลิกขวา หรือลาก/Shift+คลิกใส่ช่องหมวกได้ ในคำอธิบายไอเทมจะมีข้อความบอกว่าสวมได้ — แสดงตามค่าการแสดงผลแบบ "Head" ของโมเดล (Blockbench → Display → Head)') },
+      {
+        key: 'wearRightClick',
+        label: t('Right-click to put on', 'คลิกขวาเพื่อสวมได้'),
+        kind: 'bool',
+        default: true,
+        showIf: (data) => data.wearOnHead === true,
+        hint: t('Off: it can only be dragged / shift-clicked into the helmet slot.', 'ปิด: ใส่ได้เฉพาะลาก/Shift+คลิกเข้าช่องหมวกเท่านั้น')
+      },
       { key: 'rarity', label: t('Rarity', 'ความหายาก'), kind: 'select', default: 'common', options: itemCommon[1].options }
     ]
   },
@@ -904,6 +922,30 @@ export const NODE_DEFS: NodeDef[] = [
     ]
   },
 
+  // ───────────── Scripts ─────────────
+  {
+    type: 'script',
+    category: 'script',
+    title: t('Java Class (Script)', 'คลาส Java (สคริปต์)'),
+    description: t(
+      'A Java source file of your mod, written like in any Minecraft mod: imports, classes, events. Forge/NeoForge: annotate the class with @EventBusSubscriber. Fabric/Quilt: implement ModInitializer — it is registered as an entrypoint. Your mod\'s classes (NkwMod, ModItems, ModBlocks, ModSounds) can be used directly.',
+      'ไฟล์ Java ของม็อด เขียนแบบม็อด Minecraft ทั่วไป (import, class, event) — Forge/NeoForge: ใส่ @EventBusSubscriber ที่ class / Fabric/Quilt: implements ModInitializer แล้วแอปลงทะเบียน entrypoint ให้ ใช้ class ของม็อดเรา (NkwMod, ModItems, ModBlocks, ModSounds) ได้เลย'
+    ),
+    icon: '☕',
+    inputs: [],
+    outputs: [],
+    props: [
+      {
+        key: 'targets',
+        label: t('Use for', 'ใช้กับ'),
+        kind: 'scriptTargets',
+        default: [],
+        hint: t('Java APIs differ between loaders and versions: pick the targets this file is written for (none = all).', 'API ของ Java ต่างกันในแต่ละ loader/เวอร์ชัน เลือกเป้าหมายที่ไฟล์นี้เขียนไว้ (ไม่เลือก = ทั้งหมด)')
+      },
+      { key: 'code', label: t('Code', 'โค้ด'), kind: 'code', default: SCRIPT_STARTER }
+    ]
+  },
+
   // ───────────── Utility ─────────────
   {
     type: 'itemRef',
@@ -945,7 +987,8 @@ export const NODE_DEFS: NodeDef[] = [
     props: [
       { key: 'id', label: t('Tab ID', 'ID แท็บ'), kind: 'id', default: 'main' },
       { key: 'title', label: t('Title (EN)', 'ชื่อแท็บ (EN)'), kind: 'text', default: 'My Mod' },
-      { key: 'titleTh', label: t('Title (TH)', 'ชื่อแท็บ (ไทย)'), kind: 'text', default: '' }
+      { key: 'titleTh', label: t('Title (TH)', 'ชื่อแท็บ (ไทย)'), kind: 'text', default: '' },
+      { key: 'order', label: t('Item order', 'ลำดับไอเทม'), kind: 'tabOrder', default: null }
     ]
   },
   {

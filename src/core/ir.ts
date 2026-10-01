@@ -69,6 +69,8 @@ export interface ItemIR extends Named {
   separateIcon?: boolean
   /** can be worn on the head (drawn with the model's "head" display) */
   headwear?: boolean
+  /** right-click puts it on (default); off: only the helmet slot */
+  headwearRightClick?: boolean
   /** armor piece shown in the inventory / hand as its 3D (GeckoLib) model */
   geoIcon?: boolean
 }
@@ -163,6 +165,18 @@ export interface TabIR {
   items: string[]
 }
 
+/** A Java source file written by the user (Script node). */
+export interface ScriptIR {
+  nodeId: string
+  /** the public class = file name */
+  className: string
+  /** targets it applies to, as "loader-mc"; empty = all */
+  targets: string[]
+  code: string
+  /** Fabric/Quilt entrypoints the class implements */
+  entry: { main: boolean; client: boolean }
+}
+
 export interface ModIR {
   meta: ProjectMeta
   items: ItemIR[]
@@ -172,6 +186,7 @@ export interface ModIR {
   sounds: SoundIR[]
   recipes: RecipeIR[]
   tabs: TabIR[]
+  scripts: ScriptIR[]
   /** animated textures (asset path → .mcmeta animation settings) */
   textureAnims: Record<string, { frametime: number; interpolate: boolean }>
 }

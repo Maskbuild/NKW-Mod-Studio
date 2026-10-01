@@ -64,7 +64,7 @@ export const api = {
   vanilla: (mc: string, source: ItemSource = 'minecraft') => call<VanillaData | null>('vanilla:get', { mc, source }),
   downloadVanilla: (mc: string, source: ItemSource = 'minecraft') => call<VanillaData | null>('vanilla:download', { mc, source }),
   toolchain: () => call<{ jdks: { major: number; home: string; managed: boolean }[]; toolsDir: string }>('toolchain:status'),
-  startBuild: (project: Project, target: Target, task: 'runClient' | 'build') => call<boolean>('build:start', { project, target, task }),
+  startBuild: (project: Project, target: Target, task: 'runClient' | 'build' | 'compileJava') => call<boolean>('build:start', { project, target, task }),
   stopBuild: () => call<boolean>('build:stop'),
   openBuildFolder: (t: Target) => call<boolean>('build:openFolder', t),
   cleanBuild: (t: Target) => call<boolean>('build:clean', t),

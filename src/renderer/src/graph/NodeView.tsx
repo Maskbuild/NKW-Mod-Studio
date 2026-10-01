@@ -15,6 +15,7 @@ export const CATEGORY_COLOR: Record<Category, string> = {
   sound: '#10b981',
   recipe: '#e11d48',
   fd: '#84cc16',
+  script: '#a855f7',
   effect: '#ec4899',
   util: '#71717a'
 }
@@ -35,10 +36,20 @@ function useConnected(id: string): Set<string> {
   return new Set(key ? key.split('|') : [])
 }
 
-function Pin({ pin, dir, on }: { pin: PinDef; dir: 'in' | 'out'; on: boolean }) {
+function Pin({ nodeId, pin, dir, on }: { nodeId: string; pin: PinDef; dir: 'in' | 'out'; on: boolean }) {
   const right = dir === 'out' || !!pin.right
   return (
-    <div className={`nk-pin ${right ? 'out' : 'in'}${dir === 'in' && right ? ' in-right' : ''}${pin.optional ? ' opt' : ''}`}>
+    <div
+      className={`nk-pin ${right ? 'out' : 'in'}${dir === 'in' && right ? ' in-right' : ''}${pin.optional ? ' opt' : ''}`}
+      onMouseDownCapture={(e) => {
+        // Alt+click a pin: remove its wires (like Unreal) instead of starting a new one
+        if (!e.altKey || !(e.target as HTMLElement).classList.contains('react-flow__handle')) return
+        e.preventDefault()
+        e.stopPropagation()
+        const s = useStore.getState()
+        s.disconnect(s.edges.filter((x) => (dir === 'in' ? x.target === nodeId && x.targetHandle === pin.id : x.source === nodeId && x.sourceHandle === pin.id)).map((x) => x.id))
+      }}
+    >
       <Handle
         type={dir === 'in' ? 'target' : 'source'}
         position={right ? Position.Right : Position.Left}
@@ -100,6 +111,8 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
         </div>
       )
     }
+    case 'script':
+      return <CodePreview code={String(data.code ?? '')} targets={Array.isArray(data.targets) ? (data.targets as string[]) : []} />
     case 'armorSet':
       return <span className="mono">{String(data.baseId ?? '')}_*</span>
     default:
@@ -111,6 +124,55 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
         )
       return null
   }
+}
+
+const JAVA_KEYWORDS = new Set(['public', 'private', 'protected', 'static', 'final', 'abstract', 'class', 'interface', 'enum', 'record', 'extends', 'implements', 'void', 'int', 'long', 'float', 'double', 'boolean', 'char', 'byte', 'short', 'return', 'new', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default', 'break', 'continue', 'try', 'catch', 'finally', 'throw', 'throws', 'this', 'super', 'null', 'true', 'false', 'instanceof', 'var'])
+
+/** One line of Java with simple VS Code-like colours (keywords, types, strings, comments, annotations). */
+function JavaLine({ text }: { text: string }) {
+  const parts: { t: string; c?: string }[] = []
+  const re = /(\/\/.*$|\/\*.*?(?:\*\/|$)|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|@\w+|\b\d[\w.]*\b|\b[A-Za-z_$][\w$]*\b)/g
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text))) {
+    if (m.index > last) parts.push({ t: text.slice(last, m.index) })
+    const tok = m[0]
+    const c = tok.startsWith('//') || tok.startsWith('/*') ? 'cm' : tok[0] === '"' || tok[0] === "'" ? 'st' : tok[0] === '@' ? 'an' : /^\d/.test(tok) ? 'nu' : JAVA_KEYWORDS.has(tok) ? 'kw' : /^[A-Z]/.test(tok) ? 'ty' : undefined
+    parts.push({ t: tok, c })
+    last = m.index + tok.length
+  }
+  if (last < text.length) parts.push({ t: text.slice(last) })
+  return (
+    <div className="code-line">
+      {parts.map((p, i) => (p.c ? <span key={i} className={`ck-${p.c}`}>{p.t}</span> : p.t))}
+      {'\u200b'}
+    </div>
+  )
+}
+
+/** Canvas preview of a Script node: file name, targets and the start of the class (package/imports skipped). */
+function CodePreview({ code, targets }: { code: string; targets: string[] }) {
+  const { t } = useTranslation()
+  const all = code.replace(/\r\n?/g, '\n').split('\n')
+  const body = all.filter((l) => !/^\s*(package|import)\s[^;]*;\s*$/.test(l))
+  while (body.length && !body[0].trim()) body.shift()
+  const shown = body.slice(0, 12)
+  const indent = Math.min(...shown.filter((l) => l.trim()).map((l) => /^\s*/.exec(l)![0].replace(/\t/g, '    ').length), 99)
+  const cls = /(?:^|[\s;}])public\s+(?:(?:final|abstract|static)\s+)*(?:class|interface|enum|record)\s+([A-Za-z_$][\w$]*)/.exec(code)?.[1]
+  return (
+    <div className="code-preview">
+      <div className="code-head">
+        <span className="mono">{cls ? `${cls}.java` : '—'}</span>
+        <span className="code-targets">{targets.length ? targets.map((x) => x.replace('-', ' ')).join(', ') : t('script.allTargets')}</span>
+      </div>
+      <div className="code-body">
+        {shown.map((l, i) => (
+          <JavaLine key={i} text={l.replace(/\t/g, '    ').slice(indent === 99 ? 0 : indent)} />
+        ))}
+        {body.length > shown.length && <div className="code-more">{t('ws.moreLines', { count: body.length - shown.length })}</div>}
+      </div>
+    </div>
+  )
 }
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
@@ -131,7 +193,7 @@ function VanillaRef({ id }: { id: string }) {
 }
 
 export const NodeView = memo(function NodeView({ id, type, data, selected }: NodeProps<FlowNode>) {
-  useTranslation() // re-render when the UI language changes
+  const { t } = useTranslation() // also re-renders when the UI language changes
   const def = NODE_DEF_MAP[type]
   const issue = useStore(useCallback((s) => s.issues[id], [id]))
   const connected = useConnected(id)
@@ -147,20 +209,21 @@ export const NodeView = memo(function NodeView({ id, type, data, selected }: Nod
   const sub = <Summary type={type} data={data} connected={connected} />
   const title = typeof data.name === 'string' && data.name && def.registers ? `${L(def.title)} · ${data.name}` : L(def.title)
   return (
-    <div className={`nk${selected ? ' sel' : ''}${issue ? ` ${issue}` : ''}`}>
+    <div className={`nk${selected ? ' sel' : ''}${data.disabled ? ' off' : issue ? ` ${issue}` : ''}`}>
       <div className="nk-head">
         <span className="dot" style={{ background: CATEGORY_COLOR[def.category] }} />
         <span aria-hidden>{def.icon}</span>
         <span className="nk-title" title={title}>
           {title}
         </span>
+        {data.disabled ? <span className="nk-off">{t('ws.disabledBadge')}</span> : null}
       </div>
       {sub && <div className="nk-sub">{sub}</div>}
       <div className="nk-pins">
         {Array.from({ length: rows }, (_, i) => (
           <div className="nk-row" key={i}>
-            {vis.left[i] ? <Pin pin={vis.left[i]} dir="in" on={connected.has(`i:${vis.left[i].id}`)} /> : <span />}
-            {rightPins[i] && <Pin pin={rightPins[i].pin} dir={rightPins[i].dir} on={connected.has(`${rightPins[i].dir === 'in' ? 'i' : 'o'}:${rightPins[i].pin.id}`)} />}
+            {vis.left[i] ? <Pin nodeId={id} pin={vis.left[i]} dir="in" on={connected.has(`i:${vis.left[i].id}`)} /> : <span />}
+            {rightPins[i] && <Pin nodeId={id} pin={rightPins[i].pin} dir={rightPins[i].dir} on={connected.has(`${rightPins[i].dir === 'in' ? 'i' : 'o'}:${rightPins[i].pin.id}`)} />}
           </div>
         ))}
       </div>

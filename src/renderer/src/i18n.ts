@@ -34,6 +34,32 @@ const en = {
     create: 'Create project',
     cancel: 'Cancel'
   },
+  script: {
+    code: 'Java code',
+    preset: 'Insert an example for {{target}}…',
+    presetHint: 'Replace the code with a ready-made class written for this loader and version',
+    replace: 'Replace your code with this example?',
+    check: 'Check code',
+    checkHint: 'Compile the mod for {{target}} with Gradle and show Java errors in the editor',
+    checking: 'Compiling Java…',
+    expand: 'Open the big editor',
+    shrink: 'Back to the panel',
+    close: 'Done',
+    targets: 'Written for',
+    allTargets: 'All targets',
+    targetsHint: 'Java APIs differ between loaders and versions — choose the targets this file is written for.',
+    notActive: 'This file is not used for the selected target (top bar), so it is left out of that build.',
+    hint: 'Like an IDE: suggestions while typing (classes are imported for you), hover a class for its package, Ctrl+Space suggests, Ctrl+F searches. "Check code" compiles with Gradle and marks Java errors on their lines.'
+  },
+  tabOrder: {
+    title: 'Items in the tab (in order)',
+    empty: 'Wire items into the Item pins — they show up here in tab order.',
+    hint: 'Drag rows to move items',
+    azHint: 'Sort by name, A to Z',
+    zaHint: 'Sort by name, Z to A',
+    up: 'Move up',
+    down: 'Move down'
+  },
   fit: {
     title: 'Fit on the player (3D preview)',
     defaultSkin: '— Steve / Alex —',
@@ -84,7 +110,16 @@ const en = {
     redo: 'Redo',
     delete: 'Delete',
     duplicate: 'Duplicate',
-    disconnect: 'Disconnect wires',
+    disconnect: 'Disconnect all wires',
+    disconnectOne: 'Disconnect this wire',
+    moreLines_one: '… 1 more line',
+    moreLines_other: '… {{count}} more lines',
+    wires: 'Wires (click to disconnect)',
+    disable: 'Disable node',
+    enable: 'Enable node',
+    disabledBadge: 'OFF',
+    enabledLabel: 'Node is on (part of the mod)',
+    disabledHint: 'Node is off: kept on the canvas but left out of the mod',
     inputs: 'Inputs',
     outputs: 'Outputs',
     idFromName: 'Generate from name',
@@ -135,7 +170,7 @@ const en = {
     saveTo: 'Save into',
     pickAndConvert: 'Choose files & convert',
     converted: 'Converted {{count}} file(s)',
-    selTip: 'Left-drag on empty space to select several nodes · right/middle-drag or Space+drag to pan'
+    selTip: 'Left-drag on empty space to select several nodes · right/middle-drag or Space+drag to pan · click a wire then × (or Alt+click a pin) to disconnect'
   },
   targets: { title: 'Loaders & versions', done: 'Done', atLeastOne: 'Select at least one target' },
   settings: {
@@ -186,6 +221,32 @@ const th: Dict = {
     template: 'เทมเพลต',
     create: 'สร้างโปรเจกต์',
     cancel: 'ยกเลิก'
+  },
+  script: {
+    code: 'โค้ด Java',
+    preset: 'ใส่โค้ดตัวอย่างสำหรับ {{target}}…',
+    presetHint: 'แทนที่โค้ดด้วยคลาสสำเร็จรูปที่เขียนสำหรับ loader และเวอร์ชันนี้',
+    replace: 'แทนที่โค้ดของคุณด้วยตัวอย่างนี้?',
+    check: 'ตรวจโค้ด',
+    checkHint: 'คอมไพล์ม็อดสำหรับ {{target}} ด้วย Gradle แล้วแสดง error ของ Java ในตัวแก้ไข',
+    checking: 'กำลังคอมไพล์ Java…',
+    expand: 'เปิดหน้าต่างเขียนโค้ดขนาดใหญ่',
+    shrink: 'กลับไปที่แผง',
+    close: 'เสร็จ',
+    targets: 'เขียนสำหรับ',
+    allTargets: 'ทุกเป้าหมาย',
+    targetsHint: 'API ของ Java ต่างกันในแต่ละ loader/เวอร์ชัน เลือกเป้าหมายที่ไฟล์นี้เขียนไว้',
+    notActive: 'ไฟล์นี้ไม่ได้ใช้กับเป้าหมายที่เลือกอยู่ (แถบบน) จึงไม่ถูกใส่ใน build นั้น',
+    hint: 'แบบ IDE: มีคำแนะนำระหว่างพิมพ์ (import คลาสให้อัตโนมัติ) ชี้ที่คลาสเพื่อดู package, Ctrl+Space ขอคำแนะนำ, Ctrl+F ค้นหา — "ตรวจโค้ด" คอมไพล์ด้วย Gradle แล้วขีดเส้นใต้บรรทัดที่ Java error'
+  },
+  tabOrder: {
+    title: 'ไอเทมในแท็บ (ตามลำดับ)',
+    empty: 'ต่อสายไอเทมเข้าช่อง "ไอเทม" ของโหนด แล้วจะแสดงตรงนี้ตามลำดับในแท็บ',
+    hint: 'ลากแถวเพื่อย้ายตำแหน่ง',
+    azHint: 'เรียงตามชื่อ A ถึง Z',
+    zaHint: 'เรียงตามชื่อ Z ถึง A',
+    up: 'เลื่อนขึ้น',
+    down: 'เลื่อนลง'
   },
   fit: {
     title: 'การสวมบนตัวผู้เล่น (ดูตัวอย่าง 3D)',
@@ -238,6 +299,15 @@ const th: Dict = {
     delete: 'ลบ',
     duplicate: 'ทำสำเนา',
     disconnect: 'ถอดสายทั้งหมด',
+    disconnectOne: 'ถอดสายเส้นนี้',
+    moreLines_one: '… อีก {{count}} บรรทัด',
+    moreLines_other: '… อีก {{count}} บรรทัด',
+    wires: 'สายที่ต่ออยู่ (คลิกเพื่อถอด)',
+    disable: 'ปิดใช้งานโหนด',
+    enable: 'เปิดใช้งานโหนด',
+    disabledBadge: 'ปิด',
+    enabledLabel: 'โหนดเปิดอยู่ (รวมอยู่ในม็อด)',
+    disabledHint: 'โหนดถูกปิด: ยังอยู่บนแคนวาสแต่ไม่ถูกใส่ในม็อด',
     inputs: 'ขาเข้า',
     outputs: 'ขาออก',
     idFromName: 'สร้างจากชื่อ',
@@ -288,7 +358,7 @@ const th: Dict = {
     saveTo: 'บันทึกไว้ที่',
     pickAndConvert: 'เลือกไฟล์และแปลง',
     converted: 'แปลงแล้ว {{count}} ไฟล์',
-    selTip: 'ลากเมาส์ซ้ายบนที่ว่างเพื่อเลือกหลายโหนด · ลากคลิกขวา/ปุ่มกลาง หรือกด Space ค้างแล้วลาก เพื่อเลื่อนผืนงาน'
+    selTip: 'ลากเมาส์ซ้ายบนที่ว่างเพื่อเลือกหลายโหนด · ลากคลิกขวา/ปุ่มกลาง หรือกด Space ค้างแล้วลาก เพื่อเลื่อนผืนงาน · คลิกสายแล้วกด × (หรือ Alt+คลิกที่ขา) เพื่อถอดสาย'
   },
   targets: { title: 'Mod loader และเวอร์ชัน', done: 'เสร็จ', atLeastOne: 'เลือกอย่างน้อย 1 เป้าหมาย' },
   settings: {

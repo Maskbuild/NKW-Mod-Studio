@@ -1,4 +1,5 @@
 import type { ArmorMatIR, ArmorSlot, BlockIR, EffectIR, ItemIR, ToolMatIR, ToolType } from '../ir'
+import { scriptAppliesTo, scriptSource } from '../scriptApi'
 import { geoLoopName } from './geo'
 import { geckoArmorSource } from './gecko'
 import { toMcp1165 } from './mcp'
@@ -590,8 +591,11 @@ ${accept(tb, '            ')}
   // ───────── main class ─────────
   const endDiscs = ir.items.filter((i) => i.disc && i.disc.onEnd !== 'stay')
   if (endDiscs.length) genJukebox(ctx, endDiscs, get, out)
-  const headItems = p.propertiesId ? [] : ir.items.filter((i) => i.headwear)
+  const headItems = p.propertiesId ? [] : ir.items.filter((i) => i.headwear && i.headwearRightClick !== false)
   if (headItems.length) genHeadwear(ctx, headItems, get, out)
+  // Script nodes: the user's own Java files, in the mod's package (Forge/NeoForge find @EventBusSubscriber
+  // classes themselves; Fabric/Quilt entrypoints are added to the mod metadata)
+  for (const s of ir.scripts) if (scriptAppliesTo(s.targets, ctx.target)) out(s.className, scriptSource(s.code, pkg))
 
   const count = `${ir.items.length + ir.blocks.length} items, ${ir.blocks.length} blocks, ${ir.sounds.length} sounds, ${ir.recipes.length} recipes`
   const idFn = p.rlFactory
@@ -1046,8 +1050,17 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
   // legacy versions: an item lives in exactly one tab (the first tab that lists it)
   const tabOf = new Map<string, string>()
   for (const tb of ir.tabs) for (const id of tb.items) if (id.startsWith(`${ns}:`) && !tabOf.has(id.split(':')[1])) tabOf.set(id.split(':')[1], C(tb.id))
-  const baseProps = (id: string) => {
+  const baseProps = (id: string, headwear = false) => {
     let s = p.propertiesId ? `props("${id}")` : 'new Item.Properties()'
+    // worn on the head: Fabric/Quilt (≤1.21.1) let it go into the helmet slot via Fabric API
+    if (headwear && fab && !p.propertiesId) {
+      j.use(MC.EquipmentSlot)
+      if (p.jukeboxSongs) s += '.equipmentSlot((entity, stack) -> EquipmentSlot.HEAD)'
+      else {
+        j.use('net.fabricmc.fabric.api.item.v1.FabricItemSettings')
+        s = 'new FabricItemSettings().equipmentSlot(stack -> EquipmentSlot.HEAD)'
+      }
+    }
     const tab = tabOf.get(id)
     if (!p.tabRegistry && tab) s += `.tab(ModTabs.${tab})`
     return s
@@ -1062,12 +1075,12 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
     j.use('net.minecraft.world.item.ItemNameBlockItem')
     return `new ItemNameBlockItem(${block}, ${P})`
   }
-  const common = (it: { rarity: string; fireResistant: boolean; headwear?: boolean }) => {
+  const common = (it: { rarity: string; fireResistant: boolean; headwear?: boolean; headwearRightClick?: boolean }) => {
     let s = ''
     // 1.21.2+: vanilla equippable property (right-click / armor slot); older versions use NkwHeadwear
     if (it.headwear && p.propertiesId) {
       j.use(MC.EquipmentSlot)
-      s += '.equippable(EquipmentSlot.HEAD)'
+      s += it.headwearRightClick === false ? '.equippableUnswappable(EquipmentSlot.HEAD)' : '.equippable(EquipmentSlot.HEAD)'
     }
     if (it.rarity !== 'common') {
       j.use(MC.Rarity)
@@ -1077,8 +1090,8 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
     return s
   }
 
-  const ctorFor = (it: ItemIR): string => {
-    let P = baseProps(it.id)
+  const rawCtor = (it: ItemIR): string => {
+    let P = baseProps(it.id, !!it.headwear)
     switch (it.kind) {
       case 'basic':
       case 'food': {
@@ -1172,6 +1185,38 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
       }
     }
     return `new Item(${P})`
+  }
+  /**
+   * Items worn on the head get a coloured "Can be worn on the head" tooltip line and, on Forge/NeoForge,
+   * report the head as their slot so they can be dragged / shift-clicked into the helmet slot.
+   */
+  const ctorFor = (it: ItemIR): string => {
+    const base = rawCtor(it)
+    // tool / armor effects refer to MobEffects.X
+    if (base.includes('MobEffects.')) j.use(MC.MobEffects)
+    if (!it.headwear || !base.startsWith('new ')) return base
+    j.use(MC.ItemStack, MC.List, MC.Component, 'net.minecraft.world.item.TooltipFlag', 'net.minecraft.ChatFormatting')
+    const line = ['1.16.5', '1.18.2'].includes(p.mc)
+      ? (j.use('net.minecraft.network.chat.TranslatableComponent'), `new TranslatableComponent("tooltip.${ctx.ns}.wearable_head")`)
+      : `Component.translatable("tooltip.${ctx.ns}.wearable_head")`
+    const ctxParam = p.jukeboxSongs ? 'Item.TooltipContext context' : (j.use(MC.Level), 'Level level')
+    const ctxArg = p.jukeboxSongs ? 'context' : 'level'
+    const slot = !fab && !p.propertiesId
+      ? (j.use(MC.EquipmentSlot),
+        `
+            @Override
+            public EquipmentSlot getEquipmentSlot(ItemStack stack) {
+                return EquipmentSlot.HEAD;
+            }
+`)
+      : ''
+    return `${base} {${slot}
+            @Override
+            public void appendHoverText(ItemStack stack, ${ctxParam}, List<Component> tooltip, TooltipFlag flag) {
+                super.appendHoverText(stack, ${ctxArg}, tooltip, flag);
+                tooltip.add(${line}.withStyle(ChatFormatting.LIGHT_PURPLE));
+            }
+        }`
   }
   const blockItem = (id: string) => {
     j.use(MC.BlockItem)

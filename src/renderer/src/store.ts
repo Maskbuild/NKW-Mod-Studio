@@ -1,4 +1,5 @@
 import type { Edge, Node, XYPosition } from '@xyflow/react'
+import { parseJavacError } from '@core/scriptApi'
 import { create } from 'zustand'
 import { NODE_DEF_MAP, PIN_COLORS, defaultData, pinOf } from '@core/nodes/defs'
 import type { Diagnostic } from '@core/ir'
@@ -58,10 +59,12 @@ const strip = (nodes: FlowNode[]): FlowNode[] => nodes.map(({ selected: _s, drag
 
 export interface BuildState {
   running: boolean
-  task: 'runClient' | 'build' | null
+  task: 'runClient' | 'build' | 'compileJava' | null
   progress: { msg: string; done?: number; total?: number } | null
   logs: string[]
   lastCode: number | null
+  /** javac errors of Script classes from the last build (file class, line, message) */
+  javaErrors: { cls: string; line: number; message: string; severity: 'error' | 'warning' }[]
 }
 
 interface State {
@@ -110,6 +113,10 @@ interface State {
   copy(): void
   paste(at?: XYPosition): void
   duplicate(): void
+  /** disables the selected nodes (or the given ones), or enables them when all are already disabled */
+  toggleDisabled(ids?: string[]): void
+  /** removes these wires (undoable) */
+  disconnect(edgeIds: string[]): void
   appendLogs(lines: string[]): void
   setBuild(p: Partial<BuildState>): void
 }
@@ -133,7 +140,7 @@ export const useStore = create<State>((set, get) => ({
   issues: {},
   assets: [],
   clipboard: null,
-  build: { running: false, task: null, progress: null, logs: [], lastCode: null },
+  build: { running: false, task: null, progress: null, logs: [], lastCode: null, javaErrors: [] },
   toasts: [],
   vanilla: {},
 
@@ -160,7 +167,7 @@ export const useStore = create<State>((set, get) => ({
       dirty: false,
       diagnostics: [],
       issues: {},
-      build: { running: false, task: null, progress: null, logs: [], lastCode: null }
+      build: { running: false, task: null, progress: null, logs: [], lastCode: null, javaErrors: [] }
     })
     void get().refreshAssets()
   },
@@ -301,6 +308,25 @@ export const useStore = create<State>((set, get) => ({
     ]
     set({ nodes: all, edges, dirty: true })
   },
+  disconnect(edgeIds) {
+    const s = get()
+    const drop = new Set(edgeIds)
+    if (!s.edges.some((e) => drop.has(e.id))) return
+    s.checkpoint()
+    s.setGraph(s.nodes, s.edges.filter((e) => !drop.has(e.id)))
+  },
+  toggleDisabled(ids) {
+    const s = get()
+    const pick = new Set(ids ?? s.nodes.filter((n) => n.selected).map((n) => n.id))
+    const targets = s.nodes.filter((n) => pick.has(n.id) && n.type !== 'comment')
+    if (!targets.length) return
+    const disable = targets.some((n) => !n.data.disabled)
+    s.checkpoint()
+    s.setGraph(
+      s.nodes.map((n) => (pick.has(n.id) && n.type !== 'comment' ? { ...n, data: { ...n.data, disabled: disable || undefined } } : n)),
+      s.edges
+    )
+  },
   duplicate() {
     get().copy()
     get().paste()
@@ -308,11 +334,15 @@ export const useStore = create<State>((set, get) => ({
   appendLogs(lines) {
     set((s) => {
       const logs = s.build.logs.length + lines.length > 6000 ? [...s.build.logs.slice(-(6000 - lines.length)), ...lines] : [...s.build.logs, ...lines]
-      return { build: { ...s.build, logs } }
+      // javac errors of Script files are shown in their editor
+      const found = lines.map(parseJavacError).filter((e): e is NonNullable<typeof e> => !!e)
+        .filter((e) => !s.build.javaErrors.some((x) => x.cls === e.cls && x.line === e.line && x.message === e.message))
+      return { build: { ...s.build, logs, javaErrors: found.length ? [...s.build.javaErrors, ...found].slice(-200) : s.build.javaErrors } }
     })
   },
   setBuild(p) {
-    set((s) => ({ build: { ...s.build, ...p } }))
+    // a new build starts with no javac errors
+    set((s) => ({ build: { ...s.build, ...(p.running ? { javaErrors: [] } : {}), ...p } }))
   }
 }))
 

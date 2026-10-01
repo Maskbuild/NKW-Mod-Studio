@@ -263,7 +263,7 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
 
   handle(
     'build:start',
-    z.object({ project: ProjectSchema, target: TargetSchema, task: z.enum(['runClient', 'build']) }),
+    z.object({ project: ProjectSchema, target: TargetSchema, task: z.enum(['runClient', 'build', 'compileJava']) }),
     async ({ project, target, task }) => {
       const dir = requireProject()
       if (running) throw new Error('A build is already running')

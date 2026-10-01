@@ -14,6 +14,8 @@ import { IAlert, IUpload, Logo } from '../components/Icons'
 
 import { CraftGrid } from './CraftGrid'
 import { ArmorFitField } from './ArmorFit'
+import { TabOrder } from './TabOrder'
+import { ScriptEditor, ScriptTargets } from './ScriptEditor'
 
 const ModelPreview = lazy(() => import('./ModelPreview'))
 
@@ -390,14 +392,17 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
     useStore.getState().updateData(node.id, patch)
   }
   switch (p.kind) {
-    case 'bool':
+    case 'bool': {
+      // settings never saved on older nodes show their default
+      const on = value === undefined ? !!p.default : !!value
       return (
         <div className="bool-row">
           <span>{L(p.label)}</span>
-          <button className={`switch${value ? ' on' : ''}`} role="switch" aria-checked={!!value} onClick={() => set(!value)} />
+          <button className={`switch${on ? ' on' : ''}`} role="switch" aria-checked={on} onClick={() => set(!on)} />
           {p.hint && <span className="hint" style={{ flexBasis: '100%' }}>{L(p.hint)}</span>}
         </div>
       )
+    }
     case 'int':
     case 'float':
       return (
@@ -467,6 +472,12 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
       return <CraftGrid node={node} />
     case 'armorFit':
       return <ArmorFitField node={node} />
+    case 'tabOrder':
+      return <TabOrder node={node} />
+    case 'code':
+      return <ScriptEditor node={node} />
+    case 'scriptTargets':
+      return <ScriptTargets node={node} />
     default:
       return (
         <div className="field">
@@ -640,6 +651,12 @@ export function Inspector() {
         </div>
       </div>
       <div className="insp-desc">{L(def.description)}</div>
+      {node.type !== 'comment' && (
+        <div className={`bool-row node-enable${node.data.disabled ? ' off' : ''}`}>
+          <span>{node.data.disabled ? t('ws.disabledHint') : t('ws.enabledLabel')}</span>
+          <button className={`switch${node.data.disabled ? '' : ' on'}`} role="switch" aria-checked={!node.data.disabled} title="Ctrl+E" onClick={() => useStore.getState().toggleDisabled([node.id])} />
+        </div>
+      )}
       {diags.length > 0 && (
         <div className="issue-list">
           {diags.map((d, i) => (
