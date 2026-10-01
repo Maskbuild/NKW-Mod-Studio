@@ -10,6 +10,8 @@ by **Nam Kueap Wan (NKW)**
 
 [License: zlib](LICENSE)
 
+📖 **User guide:** [English](docs/GUIDE.md) · [ภาษาไทย](docs/GUIDE.th.md)
+
 </div>
 
 > [!WARNING]
