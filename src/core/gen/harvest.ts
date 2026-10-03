@@ -233,6 +233,8 @@ public final class NkwHarvest {
     /** rule cache (read by the client render thread and the server thread: synchronized; null = no rule) */
     private static final Map<Block, Rule> RULES = Collections.synchronizedMap(new IdentityHashMap<>());
     private static final Map<UUID, Session> SESSIONS = new HashMap<>();
+    /** ticks without a new swing after which a held left button counts as let go (a held button swings every 4) */
+    private static final int LEFT_GAP = 6;
     /** the local player's harvest (client side) */
     private static Session client;
 
@@ -297,7 +299,8 @@ ${ownRule}if (!GAME.isEmpty()) {
     }
 
     private static Session track(Session s, BlockPos pos, Rule rule, long now, Player player) {
-        if (s != null && s.pos.equals(pos) && s.rule == rule) {
+        // left button: a gap in the swings means the button was let go, so pressing again starts over
+        if (s != null && s.pos.equals(pos) && s.rule == rule && !(rule.left && now - s.lastUse > LEFT_GAP)) {
             s.lastUse = now;
             return s;
         }
@@ -307,10 +310,8 @@ ${ownRule}if (!GAME.isEmpty()) {
     /** 0 still going, 1 the crop is gone, 2 the button was let go, 3 the player moved. */
     private static int check(Session s, Player player, Level level, long now) {
         if (grown(level.getBlockState(s.pos)) != s.rule) return 1;
-        // adventure mode cannot keep mining, so holding the left button there works like "click and stand still"
-        boolean standing = s.rule.input == 3 || (s.rule.left && s.rule.input == 2 && !player.mayBuild());
-        if (s.rule.input == 2 && !standing && now - s.lastUse > 7) return 2;
-        if (standing && player.distanceToSqr(s.x, s.y, s.z) > 0.04) return 3;
+        if (s.rule.input == 2 && now - s.lastUse > (s.rule.left ? LEFT_GAP : 7)) return 2;
+        if (s.rule.input == 3 && player.distanceToSqr(s.x, s.y, s.z) > 0.04) return 3;
         return 0;
     }
 
@@ -351,7 +352,8 @@ ${ownRule}if (!GAME.isEmpty()) {
      * click, or held on a block that cannot be mined), or null. Works on both sides from the swing and the look.
      */
     private static BlockPos swingTarget(Player player, Level level) {
-        if (!player.swinging || player.isSpectator()) return null;
+        // only a swing that just started: a held button starts one every 4 ticks, a let-go button none
+        if (!player.swinging || player.swingTime > 1 || player.isSpectator()) return null;
         // the swing of a right-click (placing a block, using an item …) is no left click: a swing that started
         // within 2 ticks (0.1 s) of a right-click is ignored for as long as it lasts, later swings count right away
         Long right = RIGHT_CLICKED.get(player.getUUID());
@@ -363,7 +365,9 @@ ${ownRule}if (!GAME.isEmpty()) {
         if (!(hit instanceof BlockHitResult) || hit.getType() != HitResult.Type.BLOCK) return null;
         BlockPos pos = ((BlockHitResult) hit).getBlockPos().immutable();
         Rule rule = grown(level.getBlockState(pos));
-        return rule == null || !rule.left || (!rule.adventure && !player.mayBuild()) ? null : pos;
+        if (rule == null || !rule.left || (!rule.adventure && !player.mayBuild())) return null;
+        // the tool must be good enough for the original block, like mining it
+        return ((NkwRegenBlock) level.getBlockState(pos).getBlock()).canHarvest(player) ? pos : null;
     }`
         : ''
     }
@@ -376,12 +380,7 @@ ${ownRule}if (!GAME.isEmpty()) {
             ? `
             BlockPos swung = swingTarget(player, level);
             if (swung != null) {
-                BlockState state = level.getBlockState(swung);
-                Rule swing = grown(state);
-                if (swing.input == 1) {
-                    harvest(player, level, swung, state, swing);
-                    continue;
-                }
+                Rule swing = grown(level.getBlockState(swung));
                 SESSIONS.put(player.getUUID(), track(SESSIONS.get(player.getUUID()), swung, swing, now, player));
             }`
             : ''
@@ -395,7 +394,9 @@ ${ownRule}if (!GAME.isEmpty()) {
                 if (stop == 3) player.displayClientMessage(s.rule.left ? ${tr(`message.${ns}.harvest_moved_left`)} : ${tr(`message.${ns}.harvest_moved`)}, true);
                 continue;
             }
-            if (now - s.start >= s.rule.ticks) {
+            // holding the left button: only the time it was held counts (up to its last swing)
+            long counted = s.rule.left && s.rule.input == 2 ? s.lastUse : now;
+            if (counted - s.start >= s.rule.ticks) {
                 SESSIONS.remove(player.getUUID());
                 harvest(player, level, s.pos, level.getBlockState(s.pos), s.rule);
                 player.displayClientMessage(${tr(`message.${ns}.harvest_done`)}, true);
@@ -531,6 +532,8 @@ export function genHarvestHud(ctx: GenCtx, out: (cls: string, text: string) => v
     ? 'graphics.drawString(Minecraft.getInstance().font, s, x, y, color);'
     : 'Minecraft.getInstance().font.drawShadow(graphics, s, x, y, color);'
   const harvestPart = `        NkwHarvest.Session s = NkwHarvest.client(mc.player, mc.level);
+        // holding the left button: the timer goes away the moment it is let go
+        if (s != null && s.rule.left && s.rule.input == 2 && !mc.options.keyAttack.isDown()) s = null;
         if (s != null) {
             long done = mc.level.getGameTime() - s.start;
             ui = s.rule.ui;

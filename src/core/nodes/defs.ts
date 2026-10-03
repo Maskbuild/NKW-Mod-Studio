@@ -862,13 +862,12 @@ export const NODE_DEFS: NodeDef[] = [
         default: 'break',
         options: [
           opt('break', 'Break it (mine)', 'ทุบ (ขุด)'),
-          opt('click', 'Left-click', 'คลิกซ้าย'),
           opt('hold', 'Hold left-click for a while', 'กดคลิกซ้ายค้างตามเวลา'),
           opt('stand', 'Left-click once, then stand still', 'คลิกซ้ายครั้งเดียวแล้วยืนนิ่งตามเวลา')
         ],
         hint: t(
-          'Break: mined like a block (the right tool is needed for drops, like the original). Left-click ways: the block cannot be mined, the arm swings while you hold the button. In adventure mode "hold" works like "click once, then stand still".',
-          'ทุบ: ขุดเหมือนบล็อกทั่วไป (ต้องใช้อุปกรณ์ถูกถึงจะได้ของ เหมือนต้นฉบับ) · แบบคลิกซ้าย: ทุบบล็อกไม่ได้ แขนจะแกว่งตอนกดค้าง · ในโหมดผจญภัย "กดค้าง" จะทำงานแบบ "คลิกครั้งเดียวแล้วยืนนิ่ง"'
+          'Break: mined like a block. Hold: counts only while the button is held, stops as soon as it is let go and starts over on another block. Either way the tool must be good enough for the original block (a wooden pickaxe cannot take iron ore).',
+          'ทุบ: ขุดเหมือนบล็อกทั่วไป · กดค้าง: นับเวลาเฉพาะตอนกดค้าง ปล่อยปุ่มแล้วหยุดทันที หันไปบล็อกอื่นเริ่มนับใหม่ · ทุกแบบต้องใช้อุปกรณ์ที่ขุดบล็อกต้นฉบับได้ (อีเต้อไม้ขุดแร่เหล็กไม่ได้)'
         )
       },
       harvestSecondsProp((d) => d.input === 'hold' || d.input === 'stand'),

@@ -6,7 +6,7 @@ import { fabricLike, type GenCtx } from './types'
 /** Whether the mod has Regenerating Blocks. */
 export const usesRegen = (ir: ModIR) => ir.blocks.some((b) => b.regen)
 
-const INPUT = { break: 0, click: 1, hold: 2, stand: 3 } as const
+const INPUT = { break: 0, hold: 2, stand: 3 } as const
 
 /** Java expression that makes a Regenerating Blocks block or its depleted form (`props` = its block properties). */
 export function regenCtor(ctx: GenCtx, b: BlockIR, props: string): string {
@@ -57,7 +57,13 @@ export function genRegen(ctx: GenCtx, out: (cls: string, text: string) => void):
       MC.Item,
       MC.RL,
       MC.EquipmentSlot,
+      MC.BlockGetter,
+      MC.Component,
+      'net.minecraft.server.level.ServerPlayer',
       'java.util.Collections',
+      'java.util.Map',
+      'java.util.UUID',
+      'java.util.concurrent.ConcurrentHashMap',
       'java.util.List',
       'java.util.function.Supplier'
     )
@@ -65,6 +71,7 @@ export function genRegen(ctx: GenCtx, out: (cls: string, text: string) => void):
     const wearTool = p.stackId
       ? 'tool.hurtAndBreak(wear, player, EquipmentSlot.MAINHAND);'
       : 'tool.hurtAndBreak(wear, player, broken -> broken.broadcastBreakEvent(EquipmentSlot.MAINHAND));'
+    const toolMsg = translatable(p, j, `"message.${ns}.regen_tool"`)
     const blocks = registry(p, j, 'BLOCK')
     const items = registry(p, j, 'ITEM')
     out(
@@ -74,7 +81,7 @@ export function genRegen(ctx: GenCtx, out: (cls: string, text: string) => void):
 public class NkwRegenBlock extends Block {
     private final String original;
     private final Supplier<Block> depleted;
-    /** 0 break, 1 right-click, 2 hold right-click, 3 right-click and stand still */
+    /** 0 break, 2 hold left-click, 3 left-click and stand still */
     public final int input;
     public final int harvestTicks;
     /** harvest timer look (NkwHarvestHud) */
@@ -92,6 +99,8 @@ public class NkwRegenBlock extends Block {
     private final int dropMin;
     private final int dropMax;
     private BlockState originalState;
+    /** when each player was last told their tool is too weak (no spam while mining) */
+    private static final Map<UUID, Long> TOLD = new ConcurrentHashMap<>();
 
     public NkwRegenBlock(BlockBehaviour.Properties properties, String original, Supplier<Block> depleted, int input, int harvestTicks, int ui, int breakUi, boolean give, boolean adventure, int wear, String drop, int dropMin, int dropMax) {
         super(properties);
@@ -116,6 +125,29 @@ public class NkwRegenBlock extends Block {
             originalState = (block == null || block == Blocks.AIR ? Blocks.STONE : block).defaultBlockState();
         }
         return originalState;
+    }
+
+    /**
+     * Whether the player's tool is good enough, like mining the original (a wooden pickaxe cannot take iron
+     * ore). If not, the player is told (server side, at most every 1.5 s).
+     */
+    public boolean canHarvest(Player player) {
+        if (player.isCreative() || player.hasCorrectToolForDrops(original())) return true;
+        if (player instanceof ServerPlayer) {
+            long now = System.currentTimeMillis();
+            Long last = TOLD.get(player.getUUID());
+            if (last == null || now - last > 1500) {
+                TOLD.put(player.getUUID(), now);
+                player.displayClientMessage(${toolMsg}, true);
+            }
+        }
+        return false;
+    }
+
+    /** A tool too weak for the original block makes no mining progress at all. */
+    @Override
+    public float getDestroyProgress(BlockState state, Player player, BlockGetter level, BlockPos pos) {
+        return canHarvest(player) ? super.getDestroyProgress(state, player, level, pos) : 0.0F;
     }
 
     /** Mined by a player (survival): the harvest. Creative players just remove it. */

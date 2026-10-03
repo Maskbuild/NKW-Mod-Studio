@@ -241,6 +241,7 @@ export function genAssets(ctx: GenCtx): void {
   if (ir.blocks.some((b) => b.regen)) {
     put(`item.${ns}.regen_name`, '%s (Regenerating)', '%s (เกิดใหม่)', true)
     put(`message.${ns}.regen_op`, 'Only operators (OP) can place this', 'เฉพาะ OP เท่านั้นที่วางบล็อกนี้ได้')
+    put(`message.${ns}.regen_tool`, 'Needs a better tool', 'ต้องใช้อุปกรณ์ที่ดีกว่านี้')
   }
   for (const m of ir.mobs) {
     put(`entity.${ns}.${m.id}`, m.name, m.nameTh)

@@ -658,7 +658,20 @@ describe('generators', () => {
         // adventure mode cannot mine: no swing code unless some block is picked there with the left button
         expect(text(files, '/NkwHarvestHud.java')).not.toContain('mc.player.swing(')
         // picked with the left button: from the arm swing, where the player looks
-        expect(java).toContain('if (!player.swinging || player.isSpectator()) return null;')
+        expect(java).toContain('if (!player.swinging || player.swingTime > 1 || player.isSpectator()) return null;')
+        // holding the left button works like mining: only held time counts, letting go starts over
+        expect(java).toContain('long counted = s.rule.left && s.rule.input == 2 ? s.lastUse : now;')
+        expect(java).toContain('!(rule.left && now - s.lastUse > LEFT_GAP)')
+        expect(java).not.toContain('!player.mayBuild());\n        if (s.rule.input == 2')
+        expect(java).toContain('.canHarvest(player) ? pos : null;')
+        // a tool too weak for the original block (wooden pickaxe on iron ore) cannot mine or harvest it
+        const regenJava = text(files, '/NkwRegenBlock.java')!
+        expect(regenJava).toContain('if (player.isCreative() || player.hasCorrectToolForDrops(original())) return true;')
+        expect(regenJava).toMatch(
+          /public float getDestroyProgress\(BlockState state, (Player|PlayerEntity) player, (BlockGetter|IBlockReader) level, BlockPos pos\)/
+        )
+        expect(en['message.nkwtest.regen_tool']).toBe('Needs a better tool')
+        expect(text(files, '/NkwHarvestHud.java')).toContain('if (s != null && s.rule.left && s.rule.input == 2 && !mc.options.keyAttack.isDown()) s = null;')
         expect(java).toContain(p.stackId ? 'player.pick(player.blockInteractionRange(), 1.0F, false)' : 'player.pick(4.5, 1.0F, false)')
         expect(java).toContain('if (r.input > 0) rule = new Rule(r.input, r.harvestTicks, 3, 0, r.ui, r.give, r.adventure, true);')
         expect(en['message.nkwtest.harvest_released_left']).toBe('Keep holding left-click to harvest')
@@ -1047,5 +1060,12 @@ describe('review fixes', () => {
     expect(ir.tabs.filter((tb) => tb.id === 'regen_blocks').length).toBe(1)
     expect(ir.tabs.find((tb) => tb.id === 'regen_blocks')!.items).toContain('nkwtest:regen_gold_ore')
     expect(ir.tabs.find((tb) => tb.id === 'regen_blocks')!.items).toContain('nkwtest:regen_iron_ore')
+  })
+  it('turns the removed "left-click" way of Regenerating Blocks into holding the button', () => {
+    const p = structuredClone(project)
+    p.graph.nodes.find((n) => n.id === 'regen_hold')!.data.input = 'click'
+    const { ir } = compile(p, { loader: 'fabric', mc: '1.21.1' })
+    expect(ir.blocks.find((b) => b.id === 'node_amethyst_block')!.regen!.input).toBe('hold')
+    expect(NODE_DEF_MAP.regenBlock.props.find((x) => x.key === 'input')!.options!.map((o) => o.value)).toEqual(['break', 'hold', 'stand'])
   })
 })

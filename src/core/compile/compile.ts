@@ -714,7 +714,9 @@ export function compile(project: Project, target?: Target): CompileResult {
       case 'regenBlock': {
         const prefix = str(d, 'prefix', 'regen') || 'regen'
         if (!ID_RE.test(prefix)) err(n.id, `Invalid ID prefix "${prefix}" (use a-z, 0-9, _)`, `คำนำหน้า ID "${prefix}" ไม่ถูกต้อง (ใช้ a-z, 0-9, _)`)
-        const input = (['break', 'click', 'hold', 'stand'].includes(str(d, 'input')) ? str(d, 'input') : 'break') as NonNullable<BlockIR['regen']>['input']
+        // "left-click" was removed: older projects hold the button instead
+        const rawInput = str(d, 'input') === 'click' ? 'hold' : str(d, 'input')
+        const input = (['break', 'hold', 'stand'].includes(rawInput) ? rawInput : 'break') as NonNullable<BlockIR['regen']>['input']
         const look = str(d, 'depleted', 'minecraft:bedrock').replace(/^#/, '') || 'minecraft:bedrock'
         if (!NSID_RE.test(look)) err(n.id, `"${look}" is not a block ID (e.g. minecraft:bedrock)`, `"${look}" ไม่ใช่ ID บล็อก (เช่น minecraft:bedrock)`)
         const ticks = clamp(Math.round(num(d, 'regenSeconds', 60)), 1, 86400) * 20

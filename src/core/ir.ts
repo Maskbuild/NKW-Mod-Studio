@@ -202,7 +202,7 @@ export interface RegenIR {
   original: string
   /** registry id (no namespace) of the block it turns into until it grows back */
   depleted: string
-  input: 'break' | 'click' | 'hold' | 'stand'
+  input: 'break' | 'hold' | 'stand'
   harvestTicks: number
   ui: HarvestUiIR | null
   /** break harvest: show the breaking time on screen */
