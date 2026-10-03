@@ -245,16 +245,16 @@ You can also add these nodes by hand from **Utility**: **Existing Item** (`minec
 
 ### Items of other mods (Modrinth or .jar files)
 
-Click **+ Mod** in the Game items tab: a gallery of Modrinth mods for the selected Minecraft version opens, with a picture, the description, downloads, loaders and categories of each. Search, sort (relevance, downloads, newest …), **Show more**, or **↗** to open the mod's page. **Pick .jar files…** / **Pick a mods folder…** read mods already on this computer instead.
+Click **+ Mod** in the Game items tab: a list of Modrinth mods opens, like on the Modrinth site — only mods for the project's Minecraft version **and loader** (e.g. 1.20.1 Fabric). Each row shows the icon, name, author, description, where it runs, categories, loaders, downloads, followers and last update. Search, **Sort by**, **View** (mods per page), list / gallery layout and pages; click a name to open it on Modrinth. **⬇ Install ▾** offers **Required**, **Optional** or **Just install**. **Pick .jar files…** / **Pick a mods folder…** read mods already on this computer instead.
 
 Each linked mod has a role (in the gallery, or next to the list in Game items):
 
 - **Item list only**: its items, blocks (English names, icons), tags and **crops** show in the item lists, block pickers, Item Tag previews and the crop list of **Harvest a game crop**.
-- **In test runs**: also added to the game **Test in game** starts (the build for the project's loader, with the mods it requires). Your mod does not depend on it.
-- **Optional dependency**: in test runs, and listed as optional in your mod's metadata (fabric.mod.json `suggests`, mods.toml `mandatory=false` / `type="optional"`).
-- **Required dependency**: in test runs, and players must install it too (the game refuses to start without it).
+- **Just install** (test runs): also added to the game **Test in game** starts (the build for the project's loader, with the mods it requires). Your mod does not depend on it.
+- **Optional**: in test runs, and listed as optional in your mod's metadata (fabric.mod.json `suggests`, mods.toml `mandatory=false` / `type="optional"`).
+- **Required**: in test runs, and players must install it too (the game refuses to start without it).
 
-Notes: a mod without a build for the project's loader is left out of the test (the log says so). A .jar is for one Minecraft version and one loader: pick the right one again for another target. Dependencies use the mod's id in game, which is read when its items are loaded — load them once before building. Picked files go into test runs; a whole mods folder is linked for its item list (change the role per mod). **✕** removes a mod from the project.
+Notes: every test target uses the mod's build for its own Minecraft version and loader (Fabric 1.20.1 gets the Fabric 1.20.1 build, NeoForge 1.21.1 the NeoForge 1.21.1 one); a target the mod has no build for leaves it out (the log says so). A .jar is for one Minecraft version and one loader: pick the right one again for another target. Dependencies use the mod's id in game, which is read when its items are loaded — load them once before building. Picked files go into test runs; a whole mods folder is linked for its item list (change the role per mod). **✕** removes a mod from the project.
 
 > Steve/Alex skins for the armor preview also come from these downloaded game files. The app doesn't ship any Mojang files.
 

@@ -155,7 +155,7 @@ export function VanillaPanel() {
   const download = async () => {
     setLoading({ msg: '…' })
     try {
-      const d = await api.downloadVanilla(mc, source, mod?.title)
+      const d = await api.downloadVanilla(mc, source, mod?.title, useStore.getState().targets[useStore.getState().activeTarget]?.loader)
       if (d) useStore.setState((s) => ({ vanilla: { ...s.vanilla, [key(source, mc)]: d } }))
       else setUnavailable(mc)
     } catch (e) {

@@ -76,10 +76,11 @@ export const api = {
       audio
     }),
   vanilla: (mc: string, source: ItemSource = 'minecraft') => call<VanillaData | null>('vanilla:get', { mc, source }),
-  downloadVanilla: (mc: string, source: ItemSource = 'minecraft', title?: string) => call<VanillaData | null>('vanilla:download', { mc, source, title }),
-  /** mods on Modrinth for a Minecraft version (24 per page) */
-  searchMods: (query: string, mc: string, sort: ModSort = 'relevance', offset = 0) =>
-    call<{ hits: ModrinthHit[]; total: number }>('mods:search', { query, mc, sort, offset }),
+  downloadVanilla: (mc: string, source: ItemSource = 'minecraft', title?: string, loader?: string) =>
+    call<VanillaData | null>('vanilla:download', { mc, source, title, loader }),
+  /** mods on Modrinth for a Minecraft version and loader, `limit` per page */
+  searchMods: (query: string, mc: string, loader: string, sort: ModSort = 'relevance', offset = 0, limit = 20) =>
+    call<{ hits: ModrinthHit[]; total: number }>('mods:search', { query, mc, loader, sort, offset, limit }),
   /** reads .jar files (or every .jar of a folder) picked on disk */
   importModJars: (mc: string, folder: boolean) =>
     call<{ mods: { id: string; title: string; modId?: string }[]; errors: string[] }>('mods:importJars', { mc, folder }),
@@ -105,6 +106,10 @@ export interface ModrinthHit {
   loaders: string[]
   icon: string | null
   image: string | null
+  follows: number
+  /** last update (ISO date) */
+  updated: string
+  env: 'client' | 'server' | 'both' | 'any'
 }
 
 export const assetUrl = (asset: string) => `nkw-asset://project/${asset}`

@@ -378,16 +378,40 @@ export interface ModrinthHit {
   /** icon and a picture of the mod (Modrinth's CDN only) */
   icon: string | null
   image: string | null
+  follows: number
+  /** last update (ISO date) */
+  updated: string
+  /** where it runs: client, server, both (needed on both), any (client or server) */
+  env: 'client' | 'server' | 'both' | 'any'
+}
+
+/** Where a mod runs, from Modrinth's client_side / server_side (required, optional, unsupported). */
+function envOf(client: unknown, server: unknown): ModrinthHit['env'] {
+  if (client === 'required' && server === 'required') return 'both'
+  if (server === 'unsupported') return 'client'
+  if (client === 'unsupported') return 'server'
+  return 'any'
 }
 
 const LOADERS = ['fabric', 'forge', 'neoforge', 'quilt']
 /** Only pictures from Modrinth's CDN are shown (the app's image policy allows that host only). */
 const cdn = (v: unknown): string | null => (typeof v === 'string' && /^https:\/\/cdn\.modrinth\.com\/[^\s"'<>]+$/.test(v) ? v : null)
 
-/** Mods on Modrinth for a Minecraft version, 24 per page; sort: relevance, downloads, follows, newest, updated. */
-export async function searchModrinth(query: string, mc: string, sort = 'relevance', offset = 0): Promise<{ hits: ModrinthHit[]; total: number }> {
-  const facets = JSON.stringify([['project_type:mod'], [`versions:${mc}`]])
-  const url = `https://api.modrinth.com/v2/search?limit=24&offset=${offset}&index=${encodeURIComponent(sort)}&query=${encodeURIComponent(query)}&facets=${encodeURIComponent(facets)}`
+/**
+ * Mods on Modrinth for a Minecraft version and loader (Quilt also lists Fabric mods), `limit` per page;
+ * sort: relevance, downloads, follows, newest, updated.
+ */
+export async function searchModrinth(
+  query: string,
+  mc: string,
+  loader: string,
+  sort = 'relevance',
+  offset = 0,
+  limit = 20
+): Promise<{ hits: ModrinthHit[]; total: number }> {
+  const loaders = loader === 'quilt' ? ['categories:quilt', 'categories:fabric'] : [`categories:${loader}`]
+  const facets = JSON.stringify([['project_type:mod'], [`versions:${mc}`], loaders])
+  const url = `https://api.modrinth.com/v2/search?limit=${limit}&offset=${offset}&index=${encodeURIComponent(sort)}&query=${encodeURIComponent(query)}&facets=${encodeURIComponent(facets)}`
   const res = await getJson<{ hits?: Record<string, unknown>[]; total_hits?: number }>(url)
   const hits = (res.hits ?? [])
     .filter((h) => typeof h.slug === 'string' && LINKED_MOD_RE.test(h.slug))
@@ -403,7 +427,10 @@ export async function searchModrinth(query: string, mc: string, sort = 'relevanc
         categories: cats.filter((c) => !LOADERS.includes(c)).slice(0, 4),
         loaders: cats.filter((c) => LOADERS.includes(c)),
         icon: cdn(h.icon_url),
-        image: cdn(h.featured_gallery) ?? cdn(gallery[0])
+        image: cdn(h.featured_gallery) ?? cdn(gallery[0]),
+        follows: Number(h.follows) || 0,
+        updated: typeof h.date_modified === 'string' ? h.date_modified : '',
+        env: envOf(h.client_side, h.server_side)
       }
     })
   return { hits, total: Number(res.total_hits) || hits.length }
@@ -422,11 +449,19 @@ async function modrinthFile(slug: string, mc: string, loaders: readonly string[]
 }
 
 /** Downloads a Modrinth mod for a Minecraft version (checksum-checked) and reads its items; null when it has no build for it. */
-export async function ensureModrinthMod(toolsDir: string, mc: string, slug: string, title: string, progress: Progress): Promise<VanillaData | null> {
+export async function ensureModrinthMod(
+  toolsDir: string,
+  mc: string,
+  slug: string,
+  title: string,
+  progress: Progress,
+  loader = 'fabric'
+): Promise<VanillaData | null> {
   const cached = await loadMod(toolsDir, mc, slug)
   if (cached) return cached
   progress(`Looking up ${title} for ${mc}`)
-  const file = await modrinthFile(slug, mc, ['fabric', 'neoforge', 'forge', 'quilt'])
+  // the project's loader first (the same build test runs use), then any other
+  const file = await modrinthFile(slug, mc, [...new Set([loader === 'quilt' ? 'fabric' : loader, 'fabric', 'neoforge', 'forge', 'quilt'])])
   if (!file) return null
   const dir = modDir(toolsDir, mc, slug)
   await mkdir(dir, { recursive: true })

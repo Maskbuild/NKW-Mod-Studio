@@ -275,7 +275,12 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
   const MC = z.string().regex(/^\d+\.\d+(\.\d+)?$/)
   // minecraft, farmersdelight, or mod:<id> (a mod linked from Modrinth or a .jar file)
   const SOURCE = z.string().regex(/^(minecraft|farmersdelight|mod:[a-z0-9][a-z0-9_-]{0,63})$/)
-  const VSRC = z.object({ mc: MC, source: SOURCE.default('minecraft'), title: z.string().max(100).optional() })
+  const VSRC = z.object({
+    mc: MC,
+    source: SOURCE.default('minecraft'),
+    title: z.string().max(100).optional(),
+    loader: z.enum(['fabric', 'quilt', 'forge', 'neoforge']).optional()
+  })
   handle('vanilla:get', VSRC, ({ mc, source }) =>
     source === 'farmersdelight'
       ? loadFarmersDelight(toolsDir(), mc)
@@ -283,13 +288,13 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
         ? loadMod(toolsDir(), mc, source.slice(4))
         : loadVanilla(toolsDir(), mc)
   )
-  handle('vanilla:download', VSRC, ({ mc, source, title }) => {
+  handle('vanilla:download', VSRC, ({ mc, source, title, loader }) => {
     const progress = (msg: string, done?: number, total?: number) => send('vanilla:progress', { mc, source, msg, done, total })
     if (source === 'farmersdelight') return ensureFarmersDelight(toolsDir(), mc, progress)
     if (source.startsWith('mod:')) {
       const id = source.slice(4)
       // a .jar picked on disk cannot be downloaded again: pick it again for this version
-      return id.startsWith('file_') ? null : ensureModrinthMod(toolsDir(), mc, id, title ?? id, progress)
+      return id.startsWith('file_') ? null : ensureModrinthMod(toolsDir(), mc, id, title ?? id, progress, loader)
     }
     return ensureVanilla(toolsDir(), mc, progress)
   })
@@ -300,10 +305,12 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
     z.object({
       query: z.string().max(100),
       mc: MC,
+      loader: z.enum(['fabric', 'quilt', 'forge', 'neoforge']),
       sort: z.enum(['relevance', 'downloads', 'follows', 'newest', 'updated']).default('relevance'),
-      offset: z.number().int().min(0).max(10000).default(0)
+      offset: z.number().int().min(0).max(10000).default(0),
+      limit: z.number().int().min(5).max(100).default(20)
     }),
-    ({ query, mc, sort, offset }) => searchModrinth(query, mc, sort, offset)
+    ({ query, mc, loader, sort, offset, limit }) => searchModrinth(query, mc, loader, sort, offset, limit)
   )
   handle('mods:importJars', z.object({ mc: MC, folder: z.boolean() }), async ({ mc, folder }) => {
     const th = settings.get().language === 'th'
