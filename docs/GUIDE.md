@@ -365,7 +365,7 @@ Category **Farming**. A plant that grows in up to 8 stages.
   - _Gone: plant the seeds again_ (like wheat). Breaking it gives the harvest and some seeds back (**Seeds back min / max**).
   - _Replants itself_ (like **Harvest a game crop**): picking it gives the harvest and the seeds back minus the one that goes back into the ground, and the crop grows again from the start. Needs a right-click harvest.
   - _Stays and grows back_: picking it gives the harvest, then it goes back to the stage you choose and grows again after the **cooldown**.
-- **How to harvest**: break it, right-click, **hold right-click** for the harvest time, or **right-click once and stand still** for the harvest time (moving cancels and you must click again). While harvesting, a timer shows on screen; wire a **Timer look** node into **Timer look** to choose how it looks (without one: text above the hotbar).
+- **How to harvest**: break it, right-click, **hold right-click** for the harvest time, or **right-click once and stand still** for the harvest time (moving cancels and you must click again). While harvesting, a timer shows on screen; wire a **Timer window** node into **Timer window** to choose how it looks (without one: text above the hotbar).
 - **Harvest count min / max**.
 - **When a player breaks it**: _drops like normal_, _drops only when fully grown_ (breaking a young plant gives nothing, not even the seed), or _gives nothing_ (only picking by hand gives the harvest — pair it with a right-click harvest). Picking by hand is never affected, and neither is creative mode.
 - **Can be picked in adventure mode** (shown for right-click harvests): off = players in adventure mode cannot pick it by hand.
@@ -385,9 +385,9 @@ Gives a crop of Minecraft, Farmer's Delight or another mod the same hand harvest
 - **Can be picked in adventure mode**: off = players in adventure mode cannot pick these crops by hand.
 - One node per crop. Farmer's Delight crops only exist on targets that have Farmer's Delight (the Problems panel tells you), and Farmer's Delight is added to "Test in game" for you.
 
-### Timer look
+### Timer window
 
-Category **Utility**. How a timer looks on screen — picking crops by hand and breaking blocks. Wire its output into the **Timer look** pin of Crop, Harvest a game crop, Regenerating Blocks or Break Rule nodes; one look can be used by many nodes. The right panel shows a live preview on a pretend game screen.
+Category **Utility**. How a timer windows on screen — picking crops by hand and breaking blocks. Wire its output into the **Timer window** pin of Crop, Harvest a game crop, Regenerating Blocks or Break Rule nodes; one window can be used by many nodes. The right panel shows a live preview on a pretend game screen.
 
 - **Template**:
   - _Text_: `Harvesting ■■■□□□□□□□ 1.2 s` (the look from before).
@@ -407,7 +407,7 @@ Category **Blocks**. Makes blocks need a certain tool and mining (ore) level —
 - **Minimum level (ore level)**: wood/gold, stone, iron, diamond or netherite and better. Tools of your mod count with their Tool Material's mining level.
 - **With the wrong tool**: _it breaks but drops nothing_ (like stone mined by hand), or _it cannot be broken_.
 - **Tell the player which tool is needed**: a red message above the hotbar, written for you (e.g. "Needs an iron pickaxe or better to drop anything"), or your own text in English and Thai.
-- **Show a timer while breaking**: like picking crops by hand, the time left to break the block shows on screen while you mine; the mining swing and cracks stay as usual. Wire a **Timer look** node into **Timer look** to choose text, bar or circle (without one: text above the hotbar). The time follows the real mining speed of your tool.
+- **Show a timer while breaking**: like picking crops by hand, the time left to break the block shows on screen while you mine; the mining swing and cracks stay as usual. Wire a **Timer window** node into **Timer window** to choose text, bar or circle (without one: text above the hotbar). The time follows the real mining speed of your tool.
 - **Can be broken in adventure mode (right tool)**: nothing can be broken in adventure mode normally. On: holding a tool that passes the rule lets you break these blocks — the tool gets a hidden "can break" list of them (a list a map maker set already is kept). An empty hand cannot.
 - Creative mode is never stopped. A block in two rules follows the first one. Block tags need Minecraft 1.18.2 or newer; on 1.21.2+ swords have no mining level, so any sword counts.
 
@@ -417,7 +417,7 @@ Category **Blocks**. Blocks of Minecraft (or another mod) that are harvested lik
 
 - **Blocks (pick any number)**: e.g. iron ore, oak log, `othermod:ruby_ore`, or blocks of your own mod (tick them in the list or wire their **Block** pin into the **Mod block** pins). Each one gets its own block (`regen_iron_ore` with the **ID prefix** `regen`) that looks like the original (it uses the original's model) and gives the original's drops. Full blocks such as ores, stone and logs look best; tags cannot be used.
 - **Drops instead (item)**: wire any item — of the game, another mod or your own mod — to give it (**count min / max**) instead of the original's drops.
-- **How to harvest**, like crops: _break it_ (mined like a block: **hardness**, **mined fast with**; the original's right tool is needed for drops, fortune and silk touch work; **Show a timer while breaking**), _left-click_, _hold left-click_ or _left-click once and stand still_ for the **harvest time** (with the timer; wire a **Timer look** node to choose its look). With the left-click ways the block cannot be mined and the arm keeps swinging while you hold the button. In adventure mode, _hold left-click_ works like _left-click once and stand still_.
+- **How to harvest**, like crops: _break it_ (mined like a block: **hardness**, **mined fast with**; the original's right tool is needed for drops, fortune and silk touch work; **Show a timer while breaking**), _left-click_, _hold left-click_ or _left-click once and stand still_ for the **harvest time** (with the timer; wire a **Timer window** node to choose its look). With the left-click ways the block cannot be mined and the arm keeps swinging while you hold the button. In adventure mode, _hold left-click_ works like _left-click once and stand still_.
 - After the harvest it turns into the **block while growing back** (`minecraft:bedrock` by default — any block id for its look). That block cannot be broken, resists explosions and pistons cannot move it; after **Grows back after** seconds it turns back.
 - **Harvest goes into the inventory**, **Can be picked in adventure mode** (right-click ways).
 - **Only operators (OP)** can place these blocks; anyone else gets a message. They are in their own **creative tab** (**Creative tab title** EN/TH), after your tabs. In creative mode an OP removes them by breaking them as usual.

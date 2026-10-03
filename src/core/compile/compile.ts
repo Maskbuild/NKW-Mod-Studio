@@ -355,7 +355,7 @@ export function compile(project: Project, target?: Target): CompileResult {
     return out
   }
 
-  /** Timer look node plugged into a node's "ui" pin. */
+  /** Timer window node plugged into a node's "ui" pin. */
   const harvestUi = (nodeId: string): HarvestUiIR | null => {
     const s = source(nodeId, 'ui')
     if (!s || s.node.type !== 'harvestUi') return null
@@ -849,7 +849,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           adventure: bool(d, 'adventure', false)
         })
         if (source(n.id, 'ui') && !bool(d, 'timer', false))
-          warn(n.id, 'A timer look is wired in but "Show a timer while breaking" is off', 'ต่อหน้าตาเวลาไว้ แต่ยังไม่ได้เปิด "แสดงเวลาตอนทุบ"')
+          warn(n.id, 'A timer window is wired in but "Show a timer while breaking" is off', 'ต่อหน้าต่างเวลาไว้ แต่ยังไม่ได้เปิด "แสดงเวลาตอนทุบ"')
         break
       }
       case 'gameCrop': {

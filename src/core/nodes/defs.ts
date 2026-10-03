@@ -711,7 +711,7 @@ export const NODE_DEFS: NodeDef[] = [
     ),
     icon: '⛏',
     inputs: [
-      { id: 'ui', label: t('Timer look', 'หน้าตาเวลา'), type: 'harvestUi', optional: true },
+      { id: 'ui', label: t('Timer window', 'หน้าต่างเวลา'), type: 'harvestUi', optional: true },
       ...slots(32, 'block', 'Mod block', 'บล็อกของม็อด', 'block', { group: 'blocks' })
     ],
     outputs: [],
@@ -779,8 +779,8 @@ export const NODE_DEFS: NodeDef[] = [
         kind: 'bool',
         default: false,
         hint: t(
-          'Like picking crops by hand: the time left shows on screen while you mine (the mining swing and cracks stay). Wire a Timer look node (Utility) into "Timer look" to choose how it looks.',
-          'แบบเดียวกับตอนเก็บพืชด้วยมือ: ขณะทุบจะมีเวลาที่เหลือแสดงบนจอ (ยังมีท่าทุบและรอยแตกตามปกติ) ต่อโหนดหน้าตาเวลา (หมวดเครื่องมือ) เข้าขา "หน้าตาเวลา" เพื่อเลือกหน้าตา'
+          'Like picking crops by hand: the time left shows on screen while you mine (the mining swing and cracks stay). Wire a Timer window node (Utility) into "Timer window" to choose how it looks.',
+          'แบบเดียวกับตอนเก็บพืชด้วยมือ: ขณะทุบจะมีเวลาที่เหลือแสดงบนจอ (ยังมีท่าทุบและรอยแตกตามปกติ) ต่อโหนดหน้าต่างเวลา (หมวดเครื่องมือ) เข้าขา "หน้าต่างเวลา" เพื่อเลือกหน้าตา'
         )
       },
       {
@@ -806,7 +806,7 @@ export const NODE_DEFS: NodeDef[] = [
     ),
     icon: '♻',
     inputs: [
-      { id: 'ui', label: t('Timer look', 'หน้าตาเวลา'), type: 'harvestUi', optional: true },
+      { id: 'ui', label: t('Timer window', 'หน้าต่างเวลา'), type: 'harvestUi', optional: true },
       { id: 'drop', label: t('Drops instead (item)', 'ดรอปแทน (ไอเทม)'), type: 'item', optional: true },
       ...slots(32, 'block', 'Mod block', 'บล็อกของม็อด', 'block', { group: 'blocks' })
     ],
@@ -939,7 +939,7 @@ export const NODE_DEFS: NodeDef[] = [
     inputs: [
       ...slots(8, 'stage', 'Growth stage', 'ระยะการโต', 'texture', { group: 'stage' }),
       { id: 'produce', label: t('Harvest (item)', 'ผลผลิต (ไอเทม)'), type: 'item' },
-      { id: 'ui', label: t('Timer look', 'หน้าตาเวลา'), type: 'harvestUi', optional: true }
+      { id: 'ui', label: t('Timer window', 'หน้าต่างเวลา'), type: 'harvestUi', optional: true }
     ],
     outputs: [{ id: 'block', label: t('Block (for the seeds)', 'บล็อก (ต่อเข้าเมล็ด)'), type: 'block' }],
     props: [
@@ -1065,7 +1065,7 @@ export const NODE_DEFS: NodeDef[] = [
       "ให้พืชของ Minecraft, Farmer's Delight หรือม็อดอื่นใช้ระบบเก็บเกี่ยวด้วยมือ: คลิกขวา กดค้าง หรือคลิกแล้วยืนนิ่ง มีเวลาแสดงบนจอ พืชโตตามปกติของเกม เมื่อโตแล้วเก็บแบบปกติ ปลูกใหม่เอง หรือย้อนกลับไประยะที่เลือกได้"
     ),
     icon: '🌾',
-    inputs: [{ id: 'ui', label: t('Timer look', 'หน้าตาเวลา'), type: 'harvestUi', optional: true }],
+    inputs: [{ id: 'ui', label: t('Timer window', 'หน้าต่างเวลา'), type: 'harvestUi', optional: true }],
     outputs: [],
     props: [
       {
@@ -1899,14 +1899,14 @@ export const NODE_DEFS: NodeDef[] = [
   {
     type: 'harvestUi',
     category: 'util',
-    title: t('Timer look', 'หน้าตาเวลา'),
+    title: t('Timer window', 'หน้าต่างเวลา'),
     description: t(
-      'How a timer looks on screen (picking crops by hand, breaking blocks). Wire it into Crop, Harvest a game crop, Regenerating Blocks or Break Rule nodes (one look can be used by many).',
-      'หน้าตาเวลาบนจอ (ตอนเก็บพืชด้วยมือ ตอนทุบบล็อก) ต่อเข้าโหนดพืช เก็บเกี่ยวพืชในเกม บล็อกเกิดใหม่ หรือกฎการทุบบล็อก (ใช้ร่วมกันได้หลายโหนด)'
+      'How a timer windows on screen (picking crops by hand, breaking blocks). Wire it into Crop, Harvest a game crop, Regenerating Blocks or Break Rule nodes (one window can be used by many).',
+      'หน้าต่างเวลาบนจอ (ตอนเก็บพืชด้วยมือ ตอนทุบบล็อก) ต่อเข้าโหนดพืช เก็บเกี่ยวพืชในเกม บล็อกเกิดใหม่ หรือกฎการทุบบล็อก (ใช้ร่วมกันได้หลายโหนด)'
     ),
     icon: '⏳',
     inputs: [],
-    outputs: [{ id: 'out', label: t('Timer look', 'หน้าตาเวลา'), type: 'harvestUi' }],
+    outputs: [{ id: 'out', label: t('Timer window', 'หน้าต่างเวลา'), type: 'harvestUi' }],
     props: [
       {
         key: 'style',
