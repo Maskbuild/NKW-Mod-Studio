@@ -1,5 +1,5 @@
 import type { BreakDrops, ModIR } from '../ir'
-import { JavaFile, MC, forgeEvents } from './java'
+import { JavaFile, MC, forgeEvents, registry, translatable } from './java'
 import { harvestUiIndex } from './harvest'
 import { fabricLike, type GenCtx } from './types'
 
@@ -55,12 +55,8 @@ export function genBreakRules(ctx: GenCtx, out: (cls: string, text: string) => v
     'java.util.UUID',
     'java.util.concurrent.ConcurrentHashMap'
   )
-  const blockKey = p.builtInRegistries
-    ? (j.use(MC.BuiltIn), 'BuiltInRegistries.BLOCK.getKey(state.getBlock())')
-    : (j.use(MC.Registry), 'Registry.BLOCK.getKey(state.getBlock())')
-  const message = ['1.16.5', '1.18.2'].includes(p.mc)
-    ? (j.use('net.minecraft.network.chat.TranslatableComponent'), 'new TranslatableComponent(rule.message)')
-    : (j.use(MC.Component), 'Component.translatable(rule.message)')
+  const blockKey = `${registry(p, j, 'BLOCK')}.getKey(state.getBlock())`
+  const message = translatable(p, j, 'rule.message')
 
   // ── rules ──
   const lines: string[] = []

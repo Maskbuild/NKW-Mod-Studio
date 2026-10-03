@@ -1,5 +1,5 @@
 import type { BlockIR, ModIR } from '../ir'
-import { JavaFile, MC } from './java'
+import { JavaFile, MC, blockTicks, registry, translatable } from './java'
 import { harvestUiIndex } from './harvest'
 import { fabricLike, type GenCtx } from './types'
 
@@ -27,11 +27,6 @@ export function regenCtor(ctx: GenCtx, b: BlockIR, props: string): string {
 export function genRegen(ctx: GenCtx, out: (cls: string, text: string) => void): void {
   const { pkg, p, ns } = ctx
   const oldPush = p.blockMaterial // ≤1.19: push reaction is a method, later a block property
-  const tr = (key: string, arg = '') =>
-    ['1.16.5', '1.18.2'].includes(p.mc) ? `new TranslatableComponent("${key}"${arg})` : `Component.translatable("${key}"${arg})`
-  const trImport = ['1.16.5', '1.18.2'].includes(p.mc) ? 'net.minecraft.network.chat.TranslatableComponent' : MC.Component
-  const reg = p.builtInRegistries ? 'BuiltInRegistries.BLOCK' : 'Registry.BLOCK'
-  const regItems = p.builtInRegistries ? 'BuiltInRegistries.ITEM' : 'Registry.ITEM'
   const lookup = p.propertiesId ? 'getValue' : 'get'
   const rl = (v: string) => (p.rlFactory ? `ResourceLocation.parse(${v})` : `new ResourceLocation(${v})`)
   const push = (j: JavaFile) =>
@@ -62,10 +57,11 @@ export function genRegen(ctx: GenCtx, out: (cls: string, text: string) => void):
       MC.Item,
       MC.RL,
       'java.util.Collections',
-      p.builtInRegistries ? MC.BuiltIn : MC.Registry,
       'java.util.List',
       'java.util.function.Supplier'
     )
+    const blocks = registry(p, j, 'BLOCK')
+    const items = registry(p, j, 'ITEM')
     out(
       'NkwRegenBlock',
       j.render(`
@@ -108,7 +104,7 @@ public class NkwRegenBlock extends Block {
     /** The block this one stands for (stone when it is not in the game). */
     public BlockState original() {
         if (originalState == null) {
-            Block block = ${reg}.${lookup}(${rl('original')});
+            Block block = ${blocks}.${lookup}(${rl('original')});
             originalState = (block == null || block == Blocks.AIR ? Blocks.STONE : block).defaultBlockState();
         }
         return originalState;
@@ -142,7 +138,7 @@ public class NkwRegenBlock extends Block {
 
     /** The "Drops instead" item with a count between min and max. */
     private List<ItemStack> dropInstead(Level level) {
-        Item item = ${regItems}.${lookup}(${rl('drop')});
+        Item item = ${items}.${lookup}(${rl('drop')});
         int count = dropMin + (dropMax > dropMin ? level.getRandom().nextInt(dropMax - dropMin + 1) : 0);
         return Collections.singletonList(new ItemStack(item, count));
     }${push(j)}
@@ -161,8 +157,7 @@ public class NkwRegenBlock extends Block {
       MC.ServerLevel,
       'java.util.function.Supplier'
     )
-    const random = p.mc === '1.16.5' || p.mc === '1.18.2' ? (j.use('java.util.Random'), 'Random') : (j.use('net.minecraft.util.RandomSource'), 'RandomSource')
-    const schedule = p.mc === '1.16.5' ? 'level.getBlockTicks().scheduleTick(pos, this, ticks)' : 'level.scheduleTick(pos, this, ticks)'
+    const { random, schedule } = blockTicks(p, j)
     out(
       'NkwDepletedBlock',
       j.render(`
@@ -202,9 +197,9 @@ public class NkwDepletedBlock extends Block {
       MC.BlockPlaceContext,
       MC.InteractionResult,
       MC.Component,
-      'net.minecraft.ChatFormatting',
-      trImport
+      'net.minecraft.ChatFormatting'
     )
+    const tr = (key: string, ...args: string[]) => translatable(p, j, `"${key}"`, ...args)
     out(
       'NkwRegenBlockItem',
       j.render(`
@@ -227,7 +222,7 @@ public class NkwRegenBlockItem extends BlockItem {
 
     @Override
     public Component getName(ItemStack stack) {
-        return ${tr(`item.${ns}.regen_name`, ', ((NkwRegenBlock) getBlock()).original().getBlock().getName()')};
+        return ${tr(`item.${ns}.regen_name`, '((NkwRegenBlock) getBlock()).original().getBlock().getName()')};
     }
 }`)
     )

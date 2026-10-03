@@ -123,6 +123,33 @@ export const MC = {
   ItemEntity: 'net.minecraft.world.entity.item.ItemEntity'
 }
 
+/** Translatable text (`key` and `args` are Java expressions): TranslatableComponent before 1.19, Component.translatable after. */
+export function translatable(p: VersionProfile, j: JavaFile, key: string, ...args: string[]): string {
+  const a = args.map((x) => `, ${x}`).join('')
+  if (p.mc === '1.16.5' || p.mc === '1.18.2') {
+    j.use('net.minecraft.network.chat.TranslatableComponent')
+    return `new TranslatableComponent(${key}${a})`
+  }
+  j.use(MC.Component)
+  return `Component.translatable(${key}${a})`
+}
+
+/** The game's block or item registry: BuiltInRegistries (1.19.3+) or Registry. */
+export function registry(p: VersionProfile, j: JavaFile, kind: 'BLOCK' | 'ITEM'): string {
+  j.use(p.builtInRegistries ? MC.BuiltIn : MC.Registry)
+  return `${p.builtInRegistries ? 'BuiltInRegistries' : 'Registry'}.${kind}`
+}
+
+/** Scheduled block ticks: the random type tick() takes, and the call that schedules a tick `ticks` from now. */
+export function blockTicks(p: VersionProfile, j: JavaFile): { random: string; schedule: string } {
+  const old = p.mc === '1.16.5' || p.mc === '1.18.2'
+  j.use(old ? 'java.util.Random' : 'net.minecraft.util.RandomSource')
+  return {
+    random: old ? 'Random' : 'RandomSource',
+    schedule: p.mc === '1.16.5' ? 'level.getBlockTicks().scheduleTick(pos, this, ticks)' : 'level.scheduleTick(pos, this, ticks)'
+  }
+}
+
 /** Duration in ticks; infinite = -1 on 1.19.4+ (MobEffectInstance.INFINITE_DURATION), else max int. */
 function effectTicks(e: EffectIR, p: VersionProfile): string {
   if (!e.infinite) return String(e.ticks)
@@ -213,7 +240,7 @@ export function genJava(ctx: GenCtx): void {
   const tabIcons = tabIconItems(ctx)
   const allItemIds = [...ir.items.map((i) => i.id), ...blockItems, ...tabIcons.map((t) => t.id), ...ir.mobs.map((m) => `${m.id}_spawn_egg`)]
   const modelBlocks = ir.blocks.filter((b) => b.kind === 'model')
-  const cutoutBlocks = ir.blocks.filter((b) => b.kind === 'model' || b.kind === 'crop' || b.kind === 'regen' || b.kind === 'depleted')
+  const cutoutBlocks = ir.blocks.filter((b) => b.kind === 'model' || b.kind === 'crop' || ((b.kind === 'regen' || b.kind === 'depleted') && b.seeThrough))
   const needsRenderLayer = cutoutBlocks.length > 0
   const hasGeo = ctx.gecko && ir.items.some((i) => i.armor?.geo)
 
@@ -1411,13 +1438,8 @@ ${it.food.hits.map((h) => `                    new NkwEffect(NkwEffect.${HIT_ACT
 `
     }
     const lines: string[] = []
-    const tr = (key: string, ...args: string[]) => {
-      j.use(MC.Component)
-      const a = args.length ? `, ${args.join(', ')}` : ''
-      return ['1.16.5', '1.18.2'].includes(p.mc)
-        ? (j.use('net.minecraft.network.chat.TranslatableComponent'), `new TranslatableComponent("${key}"${a})`)
-        : `Component.translatable("${key}"${a})`
-    }
+    j.use(MC.Component)
+    const tr = (key: string, ...args: string[]) => translatable(p, j, `"${key}"`, ...args)
     if (it.headwear) lines.push(`tooltip.add(${tr(`tooltip.${ctx.ns}.wearable_head`)}.withStyle(ChatFormatting.LIGHT_PURPLE));`)
     // stat bonuses, grouped under "When in Main Hand:" … like vanilla attribute modifiers
     const shown = (it.attributes ?? []).filter((a) => a.tooltip)
@@ -2006,8 +2028,7 @@ function genCropBlock(ctx: GenCtx, out: (cls: string, text: string) => void): vo
     MC.ServerLevel,
     MC.Level
   )
-  const random = p.mc === '1.16.5' || p.mc === '1.18.2' ? (j.use('java.util.Random'), 'Random') : (j.use('net.minecraft.util.RandomSource'), 'RandomSource')
-  const schedule = p.mc === '1.16.5' ? 'level.getBlockTicks().scheduleTick(pos, this, ticks)' : 'level.scheduleTick(pos, this, ticks)'
+  const { random, schedule } = blockTicks(p, j)
   out(
     'NkwCropBlock',
     j.render(`

@@ -234,6 +234,27 @@ const itemCommon: PropDef[] = [
   { key: 'glint', label: t('Enchant glint', 'มีประกายเอนชานต์'), kind: 'bool', default: false }
 ]
 
+/** Block sound types (SoundType fields). */
+const SOUND_OPTIONS = [
+  opt('stone', 'Stone', 'หิน'),
+  opt('wood', 'Wood', 'ไม้'),
+  opt('metal', 'Metal', 'โลหะ'),
+  opt('glass', 'Glass', 'แก้ว'),
+  opt('grass', 'Grass', 'หญ้า'),
+  opt('sand', 'Sand', 'ทราย'),
+  opt('gravel', 'Gravel', 'กรวด'),
+  opt('wool', 'Wool', 'ขนแกะ')
+]
+
+/** Tools a block is mined fast with (mineable tags). */
+const MINE_TOOL_OPTIONS = [
+  opt('none', 'Hand / any', 'มือเปล่า / อะไรก็ได้'),
+  opt('pickaxe', 'Pickaxe', 'อีเต้อ'),
+  opt('axe', 'Axe', 'ขวาน'),
+  opt('shovel', 'Shovel', 'พลั่ว'),
+  opt('hoe', 'Hoe', 'จอบ')
+]
+
 const blockCommon: PropDef[] = [
   {
     key: 'hasItem',
@@ -249,29 +270,14 @@ const blockCommon: PropDef[] = [
     label: t('Sound type', 'เสียงบล็อก'),
     kind: 'select',
     default: 'stone',
-    options: [
-      opt('stone', 'Stone', 'หิน'),
-      opt('wood', 'Wood', 'ไม้'),
-      opt('metal', 'Metal', 'โลหะ'),
-      opt('glass', 'Glass', 'แก้ว'),
-      opt('grass', 'Grass', 'หญ้า'),
-      opt('sand', 'Sand', 'ทราย'),
-      opt('gravel', 'Gravel', 'กรวด'),
-      opt('wool', 'Wool', 'ขนแกะ')
-    ]
+    options: SOUND_OPTIONS
   },
   {
     key: 'tool',
     label: t('Mined with', 'ขุดด้วย'),
     kind: 'select',
     default: 'pickaxe',
-    options: [
-      opt('none', 'Hand / any', 'มือเปล่า / อะไรก็ได้'),
-      opt('pickaxe', 'Pickaxe', 'อีเต้อ'),
-      opt('axe', 'Axe', 'ขวาน'),
-      opt('shovel', 'Shovel', 'พลั่ว'),
-      opt('hoe', 'Hoe', 'จอบ')
-    ]
+    options: MINE_TOOL_OPTIONS
   },
   {
     key: 'toolLevel',
@@ -773,8 +779,8 @@ export const NODE_DEFS: NodeDef[] = [
         kind: 'bool',
         default: false,
         hint: t(
-          'Like picking crops by hand: the time left shows on screen while you mine (the mining swing and cracks stay). Wire a Harvest timer look node into "Timer look" to choose how it looks.',
-          'แบบเดียวกับตอนเก็บพืชด้วยมือ: ขณะทุบจะมีเวลาที่เหลือแสดงบนจอ (ยังมีท่าทุบและรอยแตกตามปกติ) ต่อโหนดหน้าตาเวลาเก็บเกี่ยวเข้าขา "หน้าตาเวลา" เพื่อเลือกหน้าตา'
+          'Like picking crops by hand: the time left shows on screen while you mine (the mining swing and cracks stay). Wire a Timer look node (Utility) into "Timer look" to choose how it looks.',
+          'แบบเดียวกับตอนเก็บพืชด้วยมือ: ขณะทุบจะมีเวลาที่เหลือแสดงบนจอ (ยังมีท่าทุบและรอยแตกตามปกติ) ต่อโหนดหน้าตาเวลา (หมวดเครื่องมือ) เข้าขา "หน้าตาเวลา" เพื่อเลือกหน้าตา'
         )
       },
       {
@@ -800,7 +806,7 @@ export const NODE_DEFS: NodeDef[] = [
     ),
     icon: '♻',
     inputs: [
-      { id: 'ui', label: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'), type: 'harvestUi', optional: true },
+      { id: 'ui', label: t('Timer look', 'หน้าตาเวลา'), type: 'harvestUi', optional: true },
       { id: 'drop', label: t('Drops instead (item)', 'ดรอปแทน (ไอเทม)'), type: 'item', optional: true },
       ...slots(32, 'block', 'Mod block', 'บล็อกของม็อด', 'block', { group: 'blocks' })
     ],
@@ -873,13 +879,7 @@ export const NODE_DEFS: NodeDef[] = [
         label: t('Mined fast with', 'ขุดเร็วด้วย'),
         kind: 'select',
         default: 'pickaxe',
-        options: [
-          opt('none', 'Hand / any', 'มือเปล่า / อะไรก็ได้'),
-          opt('pickaxe', 'Pickaxe', 'อีเต้อ'),
-          opt('axe', 'Axe', 'ขวาน'),
-          opt('shovel', 'Shovel', 'พลั่ว'),
-          opt('hoe', 'Hoe', 'จอบ')
-        ],
+        options: MINE_TOOL_OPTIONS,
         showIf: (d) => (d.input ?? 'break') === 'break'
       },
       {
@@ -887,16 +887,7 @@ export const NODE_DEFS: NodeDef[] = [
         label: t('Sound type', 'เสียงบล็อก'),
         kind: 'select',
         default: 'stone',
-        options: [
-          opt('stone', 'Stone', 'หิน'),
-          opt('wood', 'Wood', 'ไม้'),
-          opt('metal', 'Metal', 'โลหะ'),
-          opt('glass', 'Glass', 'แก้ว'),
-          opt('grass', 'Grass', 'หญ้า'),
-          opt('sand', 'Sand', 'ทราย'),
-          opt('gravel', 'Gravel', 'กรวด'),
-          opt('wool', 'Wool', 'ขนแกะ')
-        ]
+        options: SOUND_OPTIONS
       },
       {
         key: 'regenSeconds',
@@ -948,7 +939,7 @@ export const NODE_DEFS: NodeDef[] = [
     inputs: [
       ...slots(8, 'stage', 'Growth stage', 'ระยะการโต', 'texture', { group: 'stage' }),
       { id: 'produce', label: t('Harvest (item)', 'ผลผลิต (ไอเทม)'), type: 'item' },
-      { id: 'ui', label: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'), type: 'harvestUi', optional: true }
+      { id: 'ui', label: t('Timer look', 'หน้าตาเวลา'), type: 'harvestUi', optional: true }
     ],
     outputs: [{ id: 'block', label: t('Block (for the seeds)', 'บล็อก (ต่อเข้าเมล็ด)'), type: 'block' }],
     props: [
@@ -1074,7 +1065,7 @@ export const NODE_DEFS: NodeDef[] = [
       "ให้พืชของ Minecraft, Farmer's Delight หรือม็อดอื่นใช้ระบบเก็บเกี่ยวด้วยมือ: คลิกขวา กดค้าง หรือคลิกแล้วยืนนิ่ง มีเวลาแสดงบนจอ พืชโตตามปกติของเกม เมื่อโตแล้วเก็บแบบปกติ ปลูกใหม่เอง หรือย้อนกลับไประยะที่เลือกได้"
     ),
     icon: '🌾',
-    inputs: [{ id: 'ui', label: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'), type: 'harvestUi', optional: true }],
+    inputs: [{ id: 'ui', label: t('Timer look', 'หน้าตาเวลา'), type: 'harvestUi', optional: true }],
     outputs: [],
     props: [
       {
@@ -1168,77 +1159,6 @@ export const NODE_DEFS: NodeDef[] = [
         )
       ),
       harvestAdventureProp()
-    ]
-  },
-  {
-    type: 'harvestUi',
-    category: 'farm',
-    title: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'),
-    description: t(
-      'How the harvest timer looks on screen. Wire it into Crop, Harvest a game crop or Break Rule nodes (one look can be used by many).',
-      'หน้าตาเวลาเก็บเกี่ยวบนจอ ต่อเข้าโหนดพืช โหนดเก็บเกี่ยวพืชในเกม หรือโหนดกฎการทุบบล็อก (ใช้ร่วมกันได้หลายโหนด)'
-    ),
-    icon: '⏳',
-    inputs: [],
-    outputs: [{ id: 'out', label: t('Timer look', 'หน้าตาเวลา'), type: 'harvestUi' }],
-    props: [
-      {
-        key: 'style',
-        label: t('Template', 'แบบ'),
-        kind: 'select',
-        default: 'bar',
-        options: [
-          opt('text', 'Text: ■■■□□ and the seconds', 'ข้อความ: ■■■□□ และวินาที'),
-          opt('bar', 'Bar that fills up', 'หลอดที่เพิ่มขึ้น'),
-          opt('ring', 'Circle that fills around the crosshair', 'วงกลมที่เต็มขึ้นรอบเป้ากลางจอ')
-        ]
-      },
-      { key: 'color', label: t('Colour', 'สี'), kind: 'color', default: '#4ade80' },
-      { key: 'back', label: t('Background colour', 'สีพื้นหลัง'), kind: 'color', default: '#000000', showIf: (d) => d.style !== 'text' },
-      {
-        key: 'backOpacity',
-        label: t('Background opacity (%)', 'ความทึบพื้นหลัง (%)'),
-        kind: 'int',
-        default: 50,
-        min: 0,
-        max: 100,
-        showIf: (d) => d.style !== 'text'
-      },
-      {
-        key: 'place',
-        label: t('Position', 'ตำแหน่ง'),
-        kind: 'select',
-        default: 'crosshair',
-        options: [
-          opt('crosshair', 'Under the crosshair', 'ใต้เป้ากลางจอ'),
-          opt('hotbar', 'Above the hotbar', 'เหนือแถบไอเทม'),
-          opt('top', 'Top of the screen', 'ด้านบนของจอ')
-        ],
-        showIf: (d) => d.style !== 'ring'
-      },
-      {
-        key: 'offset',
-        label: t('Move down (pixels, negative = up)', 'เลื่อนลง (พิกเซล, ติดลบ = ขึ้น)'),
-        kind: 'int',
-        default: 0,
-        min: -200,
-        max: 200,
-        showIf: (d) => d.style !== 'ring'
-      },
-      { key: 'width', label: t('Bar width', 'ความยาวหลอด'), kind: 'int', default: 60, min: 10, max: 300, showIf: (d) => d.style === 'bar' },
-      { key: 'height', label: t('Bar height', 'ความสูงหลอด'), kind: 'int', default: 4, min: 1, max: 20, showIf: (d) => d.style === 'bar' },
-      { key: 'radius', label: t('Circle size (radius)', 'ขนาดวงกลม (รัศมี)'), kind: 'int', default: 9, min: 3, max: 40, showIf: (d) => d.style === 'ring' },
-      {
-        key: 'thickness',
-        label: t('Line thickness', 'ความหนาเส้น'),
-        kind: 'int',
-        default: 3,
-        min: 1,
-        max: 40,
-        hint: t('As large as the size = a filled circle.', 'เท่ากับขนาด = วงกลมทึบ'),
-        showIf: (d) => d.style === 'ring'
-      },
-      { key: 'time', label: t('Show the seconds left', 'แสดงวินาทีที่เหลือ'), kind: 'bool', default: true }
     ]
   },
 
@@ -1974,6 +1894,77 @@ export const NODE_DEFS: NodeDef[] = [
       { key: 'title', label: t('Title (EN)', 'ชื่อแท็บ (EN)'), kind: 'text', default: 'My Mod' },
       { key: 'titleTh', label: t('Title (TH)', 'ชื่อแท็บ (ไทย)'), kind: 'text', default: '' },
       { key: 'order', label: t('Item order', 'ลำดับไอเทม'), kind: 'tabOrder', default: null }
+    ]
+  },
+  {
+    type: 'harvestUi',
+    category: 'util',
+    title: t('Timer look', 'หน้าตาเวลา'),
+    description: t(
+      'How a timer looks on screen (picking crops by hand, breaking blocks). Wire it into Crop, Harvest a game crop, Regenerating Blocks or Break Rule nodes (one look can be used by many).',
+      'หน้าตาเวลาบนจอ (ตอนเก็บพืชด้วยมือ ตอนทุบบล็อก) ต่อเข้าโหนดพืช เก็บเกี่ยวพืชในเกม บล็อกเกิดใหม่ หรือกฎการทุบบล็อก (ใช้ร่วมกันได้หลายโหนด)'
+    ),
+    icon: '⏳',
+    inputs: [],
+    outputs: [{ id: 'out', label: t('Timer look', 'หน้าตาเวลา'), type: 'harvestUi' }],
+    props: [
+      {
+        key: 'style',
+        label: t('Template', 'แบบ'),
+        kind: 'select',
+        default: 'bar',
+        options: [
+          opt('text', 'Text: ■■■□□ and the seconds', 'ข้อความ: ■■■□□ และวินาที'),
+          opt('bar', 'Bar that fills up', 'หลอดที่เพิ่มขึ้น'),
+          opt('ring', 'Circle that fills around the crosshair', 'วงกลมที่เต็มขึ้นรอบเป้ากลางจอ')
+        ]
+      },
+      { key: 'color', label: t('Colour', 'สี'), kind: 'color', default: '#4ade80' },
+      { key: 'back', label: t('Background colour', 'สีพื้นหลัง'), kind: 'color', default: '#000000', showIf: (d) => d.style !== 'text' },
+      {
+        key: 'backOpacity',
+        label: t('Background opacity (%)', 'ความทึบพื้นหลัง (%)'),
+        kind: 'int',
+        default: 50,
+        min: 0,
+        max: 100,
+        showIf: (d) => d.style !== 'text'
+      },
+      {
+        key: 'place',
+        label: t('Position', 'ตำแหน่ง'),
+        kind: 'select',
+        default: 'crosshair',
+        options: [
+          opt('crosshair', 'Under the crosshair', 'ใต้เป้ากลางจอ'),
+          opt('hotbar', 'Above the hotbar', 'เหนือแถบไอเทม'),
+          opt('top', 'Top of the screen', 'ด้านบนของจอ')
+        ],
+        showIf: (d) => d.style !== 'ring'
+      },
+      {
+        key: 'offset',
+        label: t('Move down (pixels, negative = up)', 'เลื่อนลง (พิกเซล, ติดลบ = ขึ้น)'),
+        kind: 'int',
+        default: 0,
+        min: -200,
+        max: 200,
+        showIf: (d) => d.style !== 'ring'
+      },
+      { key: 'width', label: t('Bar width', 'ความยาวหลอด'), kind: 'int', default: 60, min: 10, max: 300, showIf: (d) => d.style === 'bar' },
+      { key: 'height', label: t('Bar height', 'ความสูงหลอด'), kind: 'int', default: 4, min: 1, max: 20, showIf: (d) => d.style === 'bar' },
+      { key: 'radius', label: t('Circle size (radius)', 'ขนาดวงกลม (รัศมี)'), kind: 'int', default: 9, min: 3, max: 40, showIf: (d) => d.style === 'ring' },
+      {
+        key: 'thickness',
+        label: t('Line thickness', 'ความหนาเส้น'),
+        kind: 'int',
+        default: 3,
+        min: 1,
+        max: 40,
+        hint: t('As large as the size = a filled circle.', 'เท่ากับขนาด = วงกลมทึบ'),
+        showIf: (d) => d.style === 'ring'
+      },
+      { key: 'time', label: t('Show the seconds left', 'แสดงวินาทีที่เหลือ'), kind: 'bool', default: true }
     ]
   },
   {

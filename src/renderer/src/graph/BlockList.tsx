@@ -5,7 +5,7 @@ import { breakRuleEntries, type PropDef } from '@core/nodes/defs'
 import { NSID_RE } from '@core/project'
 import { L } from '../i18n'
 import { vanillaIconUrl } from '../api'
-import { useActiveMc, useItemInfo, useVanilla } from './VanillaPanel'
+import { prettyId as pretty, useActiveMc, useItemInfo, useVanilla } from './VanillaPanel'
 import { useStore, type FlowNode } from '../store'
 
 /** Block tags that are handy in Break Rules (they exist on every supported version that has tags). */
@@ -37,12 +37,12 @@ const BLOCK_TAGS = [
   'minecraft:flowers',
   'minecraft:saplings'
 ]
-const MOD_BLOCK_TYPES = ['block', 'block3d', 'crop']
+/** this mod's blocks offered in the list (Regenerating Blocks: no crops) */
+const modBlockTypes = (nodeType: string | undefined) => (nodeType === 'regenBlock' ? ['block', 'block3d'] : ['block', 'block3d', 'crop'])
 const SHOWN = 80
 
 type Entry = { id: string; name: string; thName: string }
 
-const pretty = (id: string) => (id.split(':').pop() ?? id).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 const valid = (e: string) => NSID_RE.test(e.replace(/^#/, ''))
 
 function Icon({ id }: { id: string }) {
@@ -61,11 +61,12 @@ export function BlockListField({ node, p }: { node: FlowNode; p: PropDef }) {
   const data = useVanilla(mc)
   const fd = useVanilla(mc, 'farmersdelight')
   const modId = useStore((s) => s.meta?.modId ?? '')
+  const types = modBlockTypes(node.type)
   const modBlocks = useStoreWithEqualityFn(
     useStore,
     (s) =>
       s.nodes
-        .filter((n) => MOD_BLOCK_TYPES.includes(n.type ?? '') && !n.data.disabled && typeof n.data.id === 'string')
+        .filter((n) => types.includes(n.type ?? '') && !n.data.disabled && typeof n.data.id === 'string')
         .map((n) => `${String(n.data.id)}|${String(n.data.name || n.data.id)}`),
     shallow
   )

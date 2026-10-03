@@ -5,7 +5,7 @@ import { useStoreWithEqualityFn } from 'zustand/traditional'
 import { NODE_DEF_MAP } from '@core/nodes/defs'
 import { L } from '../i18n'
 import { assetUrl, vanillaIconUrl } from '../api'
-import { useItemInfo } from './VanillaPanel'
+import { prettyId as pretty, useItemInfo } from './VanillaPanel'
 import { useStore, wireSource, type FlowNode } from '../store'
 
 const DRAG = 'application/nkw-ing'
@@ -61,9 +61,6 @@ function RefIcon({ id }: { id: string }) {
   if (!info?.item.icon) return <span className="cg-letter">{(info?.item.en ?? id.split(':').pop() ?? '?').slice(0, 2)}</span>
   return <img className="pixel frame0" src={vanillaIconUrl(info.mc, info.item.id, info.ns)} alt="" draggable={false} />
 }
-
-/** "minecraft:oak_planks" → "Oak Planks" while the game item list is not loaded. */
-const pretty = (id: string) => (id.split(':').pop() ?? id).replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase())
 
 function RefName({ id }: { id: string }) {
   const info = useItemInfo(id)

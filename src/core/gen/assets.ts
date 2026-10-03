@@ -245,7 +245,7 @@ export function genAssets(ctx: GenCtx): void {
     put(`item.${ns}.${m.id}_spawn_egg`, `${m.name} Spawn Egg`, `ไข่เกิด${m.nameTh || m.name}`)
   }
   if (ir.items.some((i) => i.headwear)) put(`tooltip.${ns}.wearable_head`, 'Can be worn on the head', 'สวมบนหัวได้')
-  // crop harvest timer
+  // timers on screen (picking crops, breaking blocks)
   if (usesHud(ir)) {
     put(`message.${ns}.breaking`, 'Breaking %s %s s', 'กำลังทุบ %s %s วิ')
     put(`message.${ns}.breaking_notime`, 'Breaking %s', 'กำลังทุบ %s')
@@ -335,7 +335,7 @@ function genBlock(
   const lookOf = b.regen?.original ?? b.depleted?.look
   if (lookOf) {
     const [lns, lpath] = lookOf.split(':')
-    const renderType = !fabricLike(ctx.loader) && ctx.p.modelRenderType ? { render_type: 'minecraft:cutout' } : {}
+    const renderType = b.seeThrough && !fabricLike(ctx.loader) && ctx.p.modelRenderType ? { render_type: 'minecraft:cutout' } : {}
     files.push({ path: `${A}/models/block/${b.id}.json`, text: json({ parent: `${lns}:block/${lpath}`, ...renderType }) })
     files.push({ path: `${A}/blockstates/${b.id}.json`, text: json(states) })
     if (b.hasItem) files.push({ path: `${A}/models/item/${b.id}.json`, text: json({ parent: model }) })

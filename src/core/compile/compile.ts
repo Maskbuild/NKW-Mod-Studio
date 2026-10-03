@@ -126,15 +126,16 @@ export function breakRuleMessage(r: Pick<BreakRuleIR, 'tool' | 'level' | 'onFail
   const leveled = r.tool !== 'shears' && r.level !== 'wood'
   const lv = LEVEL_NAME[r.level]
   const top = r.level === 'netherite'
-  let en =
+  const what =
     r.tool === 'shears'
       ? 'shears'
       : leveled
         ? `${/^[aeiou]/.test(lv.en) ? 'an' : 'a'} ${lv.en} ${tool.en}${top ? '' : ' or better'}`
         : `${r.tool === 'axe' ? 'an' : 'a'} ${tool.en}`
   const th = leveled ? `${tool.th}ระดับ${lv.th}${top ? '' : 'ขึ้นไป'}` : tool.th
-  en = `Needs ${en} ${r.onFail === 'cantBreak' ? 'to break' : 'to drop anything'}`
-  return { en, th: r.onFail === 'cantBreak' ? `ต้องใช้${th}ถึงจะทุบได้` : `ต้องใช้${th}ถึงจะได้ของ` }
+  return r.onFail === 'cantBreak'
+    ? { en: `Needs ${what} to break`, th: `ต้องใช้${th}ถึงจะทุบได้` }
+    : { en: `Needs ${what} to drop anything`, th: `ต้องใช้${th}ถึงจะได้ของ` }
 }
 
 export function compile(project: Project, target?: Target): CompileResult {
@@ -354,7 +355,7 @@ export function compile(project: Project, target?: Target): CompileResult {
     return out
   }
 
-  /** Harvest timer look (Harvest UI node) plugged into a crop's "ui" pin. */
+  /** Timer look node plugged into a node's "ui" pin. */
   const harvestUi = (nodeId: string): HarvestUiIR | null => {
     const s = source(nodeId, 'ui')
     if (!s || s.node.type !== 'harvestUi') return null
@@ -1358,10 +1359,13 @@ export function compile(project: Project, target?: Target): CompileResult {
         'No seeds: wire this crop into an Item\'s "Places block" pin so it can be planted',
         'ยังไม่มีเมล็ด: ต่อพืชนี้เข้าขา "วางเป็นบล็อก" ของไอเทม เพื่อให้ปลูกได้'
       )
-  // Regenerating Blocks of this mod's blocks: the block must exist (and not be a regenerating block itself)
+  // Regenerating Blocks of this mod's blocks: a Block or 3D Block of the mod (not a crop or another regenerating block)
   for (const b of ir.blocks)
-    if (b.regen?.original.startsWith(`${modid}:`) && !ir.blocks.some((x) => !x.regen && !x.depleted && `${modid}:${x.id}` === b.regen!.original))
-      err(b.nodeId, `${b.regen.original} is not a block of this mod`, `${b.regen.original} ไม่ใช่บล็อกของม็อดนี้`)
+    if (
+      b.regen?.original.startsWith(`${modid}:`) &&
+      !ir.blocks.some((x) => (x.kind === 'cube' || x.kind === 'model') && `${modid}:${x.id}` === b.regen!.original)
+    )
+      err(b.nodeId, `${b.regen.original} is not a Block or 3D Block of this mod`, `${b.regen.original} ไม่ใช่บล็อกหรือบล็อก 3D ของม็อดนี้`)
   // Break Rules: own blocks must exist; a block in two rules follows the first one
   const ruled = new Map<string, string>()
   for (const r of ir.breakRules)

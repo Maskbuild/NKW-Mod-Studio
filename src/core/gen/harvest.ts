@@ -1,5 +1,5 @@
 import type { HarvestUiIR, ModIR } from '../ir'
-import { JavaFile, MC, forgeEvents } from './java'
+import { JavaFile, MC, forgeEvents, registry, translatable } from './java'
 import { mcAtLeast } from './profiles'
 import { fabricLike, type GenCtx } from './types'
 
@@ -44,8 +44,11 @@ export function harvestUiIndex(ir: ModIR, ui: HarvestUiIR | null): number {
 export const usesHarvest = (ir: ModIR) =>
   ir.gameCrops.length > 0 || ir.blocks.some((b) => (b.crop && b.crop.input !== 'break') || (b.regen && b.regen.input !== 'break'))
 
-/** Whether the timer HUD is needed: hand harvests, or breaking timers (Break Rules, Regenerating Blocks). */
-export const usesHud = (ir: ModIR) => usesHarvest(ir) || ir.breakRules.some((r) => r.timer) || ir.blocks.some((b) => b.regen?.timer)
+/** Whether some block shows its breaking time on screen (Break Rules, Regenerating Blocks). */
+const usesBreakTimer = (ir: ModIR) => ir.breakRules.some((r) => r.timer) || ir.blocks.some((b) => b.regen?.timer)
+
+/** Whether the timer HUD is needed: hand harvests or breaking timers. */
+export const usesHud = (ir: ModIR) => usesHarvest(ir) || usesBreakTimer(ir)
 
 const INPUT = { click: 1, hold: 2, stand: 3 } as const
 const AFTER = { break: 0, replant: 1, regrow: 2 } as const
@@ -82,11 +85,8 @@ export function genHarvest(ctx: GenCtx, out: (cls: string, text: string) => void
     'java.util.UUID',
     'java.util.concurrent.ConcurrentHashMap'
   )
-  const tr = (key: string) =>
-    ['1.16.5', '1.18.2'].includes(p.mc)
-      ? (j.use('net.minecraft.network.chat.TranslatableComponent'), `new TranslatableComponent("${key}")`)
-      : `Component.translatable("${key}")`
-  const blockKey = p.builtInRegistries ? (j.use(MC.BuiltIn), 'BuiltInRegistries.BLOCK.getKey(block)') : (j.use(MC.Registry), 'Registry.BLOCK.getKey(block)')
+  const tr = (key: string) => translatable(p, j, `"${key}"`)
+  const blockKey = `${registry(p, j, 'BLOCK')}.getKey(block)`
   // left-button picking reads arm swings, but placing a block, using an item or clicking a mob swings the arm
   // too: those right-clicks are remembered so their swing is not taken for a left click
   const leftButton = ir.blocks.some((b) => b.regen && b.regen.input !== 'break')
@@ -443,7 +443,7 @@ const argb = (rgb: number, alpha = 255) => `0x${((((alpha & 0xff) << 24) | rgb) 
 export function genHarvestHud(ctx: GenCtx, out: (cls: string, text: string) => void): void {
   const { pkg, loader, p, ns, ir } = ctx
   const harvest = usesHarvest(ir)
-  const breaking = ir.breakRules.some((r) => r.timer) || ir.blocks.some((b) => b.regen?.timer)
+  const breaking = usesBreakTimer(ir)
   const fab = fabricLike(loader)
   const neo = loader === 'neoforge'
   const graphics = mcAtLeast(p.mc, '1.20.1')
@@ -530,7 +530,7 @@ export function genHarvestHud(ctx: GenCtx, out: (cls: string, text: string) => v
         float progress = 0.0F;
         double ticksLeft = 0;
         boolean mining = false;
-${harvest ? `${harvestPart}${breaking ? ' else ' : ''}` : '        '}${breaking ? breakPart : ''}
+${[harvest ? harvestPart : '', breaking ? `        ${breakPart}` : ''].filter(Boolean).join('\n')}
         if (ui < 0) return;`
   let breakTracker = ''
   if (breaking) {
@@ -595,7 +595,7 @@ ${hooks}
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null || mc.options.hideGui) return;
 ${timerSource}
-        int[] look = LOOKS[ui >= 0 && ui < LOOKS.length ? ui : 0];
+        int[] look = LOOKS[ui < LOOKS.length ? ui : 0];
         String left = String.format("%.1f", ticksLeft / 20.0);
         String key = mining ? "message.${ns}.breaking" : "message.${ns}.harvest";
         int w = mc.getWindow().getGuiScaledWidth();

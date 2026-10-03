@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import type { VanillaData, VanillaItem } from '@core/vanilla'
 import { L } from '../i18n'
 import { vanillaIconUrl } from '../api'
-import { useActiveMc, useVanilla } from './VanillaPanel'
+import { prettyId as pretty, useActiveMc, useVanilla } from './VanillaPanel'
 
 export interface TagEntry {
   /** namespaced item id */
@@ -45,7 +45,6 @@ function resolveTag(id: string, sources: (VanillaData | undefined)[]): { items: 
   return { items: out, found: tags.has(id) }
 }
 
-const pretty = (id: string) => (id.split(':').pop() ?? id).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 const nameOf = (e: TagEntry) => (e.item ? L({ en: e.item.en, th: e.item.th || e.item.en }) : pretty(e.id))
 
 function Cell({ e, mc, small }: { e: TagEntry; mc: string; small?: boolean }) {

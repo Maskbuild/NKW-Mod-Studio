@@ -35,6 +35,9 @@ export function useVanilla(mc: string, source: ItemSource = 'minecraft'): Vanill
   return data
 }
 
+/** "minecraft:oak_planks" → "Oak Planks": a readable name while the game item list is not loaded. */
+export const prettyId = (id: string) => (id.split(':').pop() ?? id).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+
 /** Looks up a namespaced item id in the loaded data of the active version. */
 export function useItemInfo(id: string): { item: VanillaItem; mc: string; ns: string } | undefined {
   const mc = useStore((s) => s.targets[s.activeTarget]?.mc ?? '')
