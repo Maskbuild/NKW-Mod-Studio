@@ -651,6 +651,17 @@ describe('generators', () => {
         expect(java).toContain(p.stackId ? 'player.pick(player.blockInteractionRange(), 1.0F, false)' : 'player.pick(4.5, 1.0F, false)')
         expect(java).toContain('if (r.input > 0) rule = new Rule(r.input, r.harvestTicks, 3, 0, r.ui, r.give, r.adventure, true);')
         expect(en['message.nkwtest.harvest_released_left']).toBe('Keep holding left-click to harvest')
+        // placing a block / using an item swings the arm too: that is no left click
+        expect(java).toContain('if (right != null && Math.abs(level.getGameTime() - right) <= 8) return null;')
+        expect(java).toMatch(/static boolean use\([^)]*\) \{\s+rightClicked\(player, level\);/)
+        if (loader === 'fabric' || loader === 'quilt') {
+          expect(java).toContain('UseEntityCallback.EVENT.register')
+          expect(java).toContain(
+            p.propertiesId
+              ? 'rightClicked(player, level);\n            return InteractionResult.PASS;'
+              : 'InteractionResultHolder.pass(player.getItemInHand(hand))'
+          )
+        } else expect(java).toContain('private static void onUseItem(PlayerInteractEvent.RightClickItem event)')
         expect(regenBlocks).toMatch(/new NkwDepletedBlock\([^\n]*strength\(-1\.0F, 3600000\.0F\)[^\n]*\(\) -> ModBlocks\.REGEN_IRON_ORE(\.get\(\))?, 600\)/)
         expect(files.find((x) => x.path.endsWith('/ModItems.java'))!.text).toContain('new NkwRegenBlockItem(ModBlocks.REGEN_IRON_ORE')
         expect(text(files, '/NkwRegenBlockItem.java')).toContain('player.hasPermissions(2)')

@@ -79,28 +79,67 @@ export function genHarvest(ctx: GenCtx, out: (cls: string, text: string) => void
     'java.util.IdentityHashMap',
     'java.util.List',
     'java.util.Map',
-    'java.util.UUID'
+    'java.util.UUID',
+    'java.util.concurrent.ConcurrentHashMap'
   )
   const tr = (key: string) =>
     ['1.16.5', '1.18.2'].includes(p.mc)
       ? (j.use('net.minecraft.network.chat.TranslatableComponent'), `new TranslatableComponent("${key}")`)
       : `Component.translatable("${key}")`
   const blockKey = p.builtInRegistries ? (j.use(MC.BuiltIn), 'BuiltInRegistries.BLOCK.getKey(block)') : (j.use(MC.Registry), 'Registry.BLOCK.getKey(block)')
+  // left-button picking reads arm swings, but placing a block, using an item or clicking a mob swings the arm
+  // too: those right-clicks are remembered so their swing is not taken for a left click
+  const leftButton = ir.blocks.some((b) => b.regen && b.regen.input !== 'break')
   let hooks: string
   if (fab) {
     j.use('net.fabricmc.fabric.api.event.player.UseBlockCallback', 'net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents', MC.InteractionResult)
+    let rightClicks = ''
+    if (leftButton) {
+      j.use('net.fabricmc.fabric.api.event.player.UseItemCallback', 'net.fabricmc.fabric.api.event.player.UseEntityCallback')
+      // 1.21.2+: UseItemCallback returns an InteractionResult, before an InteractionResultHolder
+      const pass = p.propertiesId
+        ? 'InteractionResult.PASS'
+        : (j.use('net.minecraft.world.InteractionResultHolder'), 'InteractionResultHolder.pass(player.getItemInHand(hand))')
+      rightClicks = `
+        UseItemCallback.EVENT.register((player, level, hand) -> {
+            rightClicked(player, level);
+            return ${pass};
+        });
+        UseEntityCallback.EVENT.register((player, level, hand, entity, hit) -> {
+            rightClicked(player, level);
+            return InteractionResult.PASS;
+        });`
+    }
     hooks = `    public static void init() {
-        UseBlockCallback.EVENT.register((player, level, hand, hit) -> use(player, level, hit.getBlockPos(), hand) ? InteractionResult.SUCCESS : InteractionResult.PASS);
+        UseBlockCallback.EVENT.register((player, level, hand, hit) -> use(player, level, hit.getBlockPos(), hand) ? InteractionResult.SUCCESS : InteractionResult.PASS);${rightClicks}
         ServerTickEvents.END_WORLD_TICK.register(level -> tick(level));
     }`
   } else {
     const ev = forgeEvents(ctx, j)
     j.use(`${ev.base}.event.entity.player.PlayerInteractEvent`, MC.InteractionResult)
     hooks = `    public static void init() {
-        ${ev.bus}.addListener(NkwHarvest::onRightClick);
+        ${ev.bus}.addListener(NkwHarvest::onRightClick);${
+          leftButton
+            ? `
+        ${ev.bus}.addListener(NkwHarvest::onUseItem);
+        ${ev.bus}.addListener(NkwHarvest::onUseEntity);`
+            : ''
+        }
         ${ev.bus}.addListener(NkwHarvest::onTick);
     }
+${
+  leftButton
+    ? `
+    private static void onUseItem(PlayerInteractEvent.RightClickItem event) {
+        rightClicked(event.${ev.player}, event.${ev.level});
+    }
 
+    private static void onUseEntity(PlayerInteractEvent.EntityInteract event) {
+        rightClicked(event.${ev.player}, event.${ev.level});
+    }
+`
+    : ''
+}
     private static void onRightClick(PlayerInteractEvent.RightClickBlock event) {
         if (use(event.${ev.player}, event.${ev.level}, event.getPos(), event.getHand())) {
             event.setCancellationResult(InteractionResult.SUCCESS);
@@ -237,7 +276,7 @@ ${ownRule}if (!GAME.isEmpty()) {
     }
 
     /** A right-click on a block: true when it was a grown crop picked by hand (the click is used up). */
-    static boolean use(Player player, Level level, BlockPos pos, InteractionHand hand) {
+    static boolean use(Player player, Level level, BlockPos pos, InteractionHand hand) {${leftButton ? '\n        rightClicked(player, level);' : ''}
         BlockState state = level.getBlockState(pos);
         Rule rule = grown(state);
         if (rule == null || rule.left) return false;
@@ -286,6 +325,13 @@ ${ownRule}if (!GAME.isEmpty()) {
 
     /** the block the last swingRule call found */
     private static BlockPos swingPos;
+    /** game time of each player's last right-click (both sides) */
+    private static final Map<UUID, Long> RIGHT_CLICKED = new ConcurrentHashMap<>();
+
+    /** A right-click happened: its arm swing is not a left click. */
+    static void rightClicked(Player player, Level level) {
+        RIGHT_CLICKED.put(player.getUUID(), level.getGameTime());
+    }
 
     /**
      * Left-button picking: the player swings the arm (a click, or held on a block that cannot be mined) at a
@@ -293,6 +339,9 @@ ${ownRule}if (!GAME.isEmpty()) {
      */
     private static Rule swingRule(Player player, Level level) {
         if (!player.swinging || player.isSpectator()) return null;
+        // the swing of a right-click (placing a block, using an item …) is no left click
+        Long right = RIGHT_CLICKED.get(player.getUUID());
+        if (right != null && Math.abs(level.getGameTime() - right) <= 8) return null;
         HitResult hit = player.pick(${p.stackId ? 'player.blockInteractionRange()' : '4.5'}, 1.0F, false);
         if (!(hit instanceof BlockHitResult) || hit.getType() != HitResult.Type.BLOCK) return null;
         BlockPos pos = ((BlockHitResult) hit).getBlockPos();
