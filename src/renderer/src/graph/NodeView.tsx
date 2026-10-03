@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, type CSSProperties } from 'react'
 import { JAVA_KEYWORDS } from '@core/scriptApi'
 import { Handle, NodeResizer, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
 import { useTranslation } from 'react-i18next'
-import { EFFECTS, NODE_DEF_MAP, PIN_COLORS, visibleInputs, type Category, type PinDef } from '@core/nodes/defs'
+import { EFFECTS, NODE_DEF_MAP, gameCropIds, PIN_COLORS, visibleInputs, type Category, type PinDef } from '@core/nodes/defs'
 import { L } from '../i18n'
 import { assetUrl, vanillaIconUrl } from '../api'
 import { useItemInfo } from './VanillaPanel'
@@ -12,11 +12,14 @@ export const CATEGORY_COLOR: Record<Category, string> = {
   asset: '#f59e0b',
   item: '#3b82f6',
   block: '#8b5cf6',
+  farm: '#65a30d',
   armor: '#f97316',
   sound: '#10b981',
   recipe: '#e11d48',
   fd: '#84cc16',
   script: '#a855f7',
+  addon: '#0ea5e9',
+  mob: '#b91c1c',
   effect: '#ec4899',
   util: '#71717a'
 }
@@ -119,6 +122,15 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
     }
     case 'script':
       return <CodePreview code={String(data.code ?? '')} targets={Array.isArray(data.targets) ? (data.targets as string[]) : []} />
+    case 'gameCrop': {
+      const ids = gameCropIds(data)
+      const opts = NODE_DEF_MAP.gameCrop.props.find((p) => p.key === 'crops')?.options ?? []
+      const names = ids.map((id) => {
+        const o = opts.find((x) => x.value === id)
+        return o ? L(o.label).replace(/ \(Farmer's Delight\)$/, ' (FD)') : id
+      })
+      return <span title={names.join(', ')}>{names.length > 3 ? `${names.slice(0, 3).join(', ')} +${names.length - 3}` : names.join(', ') || '—'}</span>
+    }
     case 'armorSet':
       return <span className="mono">{String(data.baseId ?? '')}_*</span>
     default:

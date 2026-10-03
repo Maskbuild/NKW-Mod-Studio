@@ -62,3 +62,11 @@ export function Logo({ size = 22 }: { size?: number }) {
     </svg>
   )
 }
+
+// activity bar / IDE
+export const INodes = icon(['M5 6h5v5H5z', 'M14 13h5v5h-5z', 'M10 8.5h2a2 2 0 0 1 2 2v2.5'])
+export const IBox = icon(['M12 3l8 4.5v9L12 21l-8-4.5v-9z', 'M12 12l8-4.5', 'M12 12v9', 'M12 12L4 7.5'])
+export const IFiles = icon(['M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z', 'M14 3v5h5'])
+export const ICode = icon(['M8 7l-5 5 5 5', 'M16 7l5 5-5 5', 'M14 4l-4 16'])
+export const ILayout = icon(['M3 4h18v16H3z', 'M9 4v16', 'M9 15h12'])
+export const ICube = icon(['M12 2l9 5v10l-9 5-9-5V7z', 'M3 7l9 5 9-5', 'M12 12v10'])

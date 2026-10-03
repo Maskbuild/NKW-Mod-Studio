@@ -6,11 +6,15 @@ import { compile, scriptBracketProblem } from '../src/core/compile/compile'
 import { FALLBACK_DEPS, TOOL_VERSIONS, generate } from '../src/core/gen/index'
 import { convertBBModel, rotateBoxes, shapeBoxes } from '../src/core/gen/model'
 import { PROFILES } from '../src/core/gen/profiles'
-import { NODE_DEF_MAP, visibleInputs } from '../src/core/nodes/defs'
+import { NODE_DEF_MAP, gameCropIds, visibleInputs } from '../src/core/nodes/defs'
 import { bbmodelToGeo } from '../src/core/gen/geo'
-import { RESERVED_CLASSES, importInsertPos, parseJavacError, scriptClassName, scriptEntrypoints, scriptSource } from '../src/core/scriptApi'
-import { ASSET_RE, ProjectSchema, toId, type Project } from '../src/core/project'
+import { isReservedClass, importInsertPos, parseJavacError, scriptClassName, scriptEntrypoints, scriptSource } from '../src/core/scriptApi'
+import { ASSET_RE, ProjectSchema, overrideKey, toId, type Project } from '../src/core/project'
 import { safeJoin } from '../src/main/services/builder'
+import { applyOverrides } from '../src/core/gen/overrides'
+import { CONTROL_PRESETS, ModelControlsSchema, gestureFor, keyName } from '../src/core/modelControls'
+import { boxUnwrap, faceQuad, faceUv, floodFill, moveBy, newCube, newModel, normalize, toSaved, uvToPixel } from '../src/core/modelEdit'
+import { GameOptionsSchema, keyLabel, mcKeyFromCode, mcKeyFromMouse, mergeOptionsTxt, optionsEntries } from '../src/core/gameOptions'
 import { HAT_BBMODEL, writeFixture } from '../scripts/fixture'
 
 const dir = mkdtempSync(join(tmpdir(), 'nkw-test-'))
@@ -51,7 +55,7 @@ describe('compiler', () => {
     const boots = ir.items.find((i) => i.id === 'winged_boots')!
     expect(boots.armor!.geo!.animation).toEqual({ asset: 'animations/ruby_armor.json', name: 'animation.ruby_armor.idle' })
     expect(ir.textureAnims['textures/glow.png']).toEqual({ frametime: 4, interpolate: true })
-    expect(ir.blocks.length).toBe(6)
+    expect(ir.blocks.length).toBe(8)
     expect(ir.items.find((i) => i.id === 'ruby_seeds')!.places).toBe('ruby_crop')
     expect(ir.items.find((i) => i.id === 'lamp_trophy')!.separateIcon).toBe(true)
     expect(ir.tabs.map((tb) => tb.id)).toEqual(['main', 'gear'])
@@ -217,6 +221,169 @@ describe('compiler', () => {
     const def = JSON.parse(modern.find((f) => f.path.endsWith('/items/block_crown_flat.json'))!.text!)
     expect(def.model.type).toBe('minecraft:select')
   })
+  it('makes drinks drink like a potion, before and after the consumable component', () => {
+    const { ir } = compile(project)
+    expect(ir.items.find((i) => i.id === 'ruby_juice')!.food!.drink).toBe(true)
+    expect(ir.items.find((i) => i.id === 'ruby_soup')!.food!.drink).toBe(false)
+    const gen = (loader: 'fabric' | 'forge' | 'neoforge', mc: string) =>
+      generate(ir, { loader, mc }, { ...FALLBACK_DEPS[mc], ...deps } as never, read).find((f) => f.path.endsWith('/ModItems.java'))!.text!
+    const old = gen('forge', '1.20.1')
+    expect(old).toContain('return UseAnim.DRINK;')
+    expect(old).toContain('public SoundEvent getEatingSound() {\n                return SoundEvents.GENERIC_DRINK;')
+    expect(old).toContain('import net.minecraft.world.item.UseAnim;')
+    // only the juice drinks
+    expect(old.match(/UseAnim\.DRINK/g)!.length).toBe(1)
+    expect(gen('forge', '1.16.5')).toContain('import net.minecraft.item.UseAction;')
+    const modern = gen('fabric', '1.21.4')
+    expect(modern).toContain('Consumables.defaultDrink()')
+    expect(modern).not.toContain('UseAnim')
+  })
+  it('gives thirst values to every supported thirst mod without depending on them', () => {
+    const { ir } = compile(project)
+    expect(ir.items.find((i) => i.id === 'ruby_juice')!.food!.thirst).toEqual({ thirst: 8, hydration: 6 })
+    const gen = (loader: 'fabric' | 'quilt' | 'forge' | 'neoforge', mc: string) =>
+      generate(ir, { loader, mc }, { ...FALLBACK_DEPS[mc], ...deps } as never, read)
+    const text = (files: ReturnType<typeof gen>, end: string) => files.find((f) => f.path.endsWith(end))?.text
+    const f21 = gen('fabric', '1.21.1')
+    // Tough As Nails tags (singular folder on 1.21), hydration rounded to its 10 % steps
+    expect(JSON.parse(text(f21, '/data/toughasnails/tags/item/thirst/8_thirst_drinks.json')!).values).toEqual(['nkwtest:ruby_juice'])
+    expect(JSON.parse(text(f21, '/data/toughasnails/tags/item/hydration/30_hydration_drinks.json')!).values).toEqual(['nkwtest:ruby_juice'])
+    expect(f21.some((f) => f.path.includes('hydration') && f.text?.includes('ruby_soup'))).toBe(false)
+    // Thirst Was Taken 2 and Legendary Survival Overhaul data files
+    expect(JSON.parse(text(f21, '/data/nkwtest/thirstwastaken2/drinks/nkwtest.json')!).values).toEqual({
+      'nkwtest:ruby_juice': { thirst: 8, quenched: 6 },
+      'nkwtest:ruby_soup': { thirst: 3, quenched: 0 }
+    })
+    expect(JSON.parse(text(f21, '/legendarysurvivaloverhaul/thirst/consumables/ruby_juice.json')!)).toEqual([
+      { effects: [], hydration: 8, properties: {}, saturation: 6 }
+    ])
+    expect(text(f21, '/NkwThirst.java')).toBeUndefined()
+    const f20 = gen('forge', '1.20.1')
+    expect(text(f20, '/data/toughasnails/tags/items/thirst/3_thirst_drinks.json')).toContain('nkwtest:ruby_soup')
+    // Thirst Was Taken: drinks vs foods through its event, by reflection
+    const twt = text(f20, '/NkwThirst.java')!
+    expect(twt).toContain('ModList.get().isLoaded("thirst")')
+    expect(twt).toContain('drink.invoke(event, ModItems.RUBY_JUICE.get(), 8, 6);')
+    expect(twt).toContain('food.invoke(event, ModItems.RUBY_SOUP.get(), 3, 0);')
+    expect(text(f20, '/NkwMod.java')).toContain('NkwThirst.init();')
+    expect(text(gen('neoforge', '1.21.1'), '/NkwThirst.java')).toContain('NeoForge.EVENT_BUS.addListener(EventPriority.NORMAL, false, event')
+    // Thirsty (Fabric 1.20.1)
+    expect(text(gen('quilt', '1.20.1'), '/NkwThirst.java')).toContain('add(items, entry, itemId, "nkwtest:ruby_juice", 8, 6);')
+    expect(text(gen('forge', '1.21.4'), '/NkwThirst.java')).toBeUndefined()
+  })
+  it('writes the license and credits into the mod metadata and the jar', () => {
+    const { ir } = compile(project)
+    const gen = (loader: 'fabric' | 'quilt' | 'forge' | 'neoforge', mc: string) =>
+      generate(ir, { loader, mc }, { ...FALLBACK_DEPS[mc], ...deps } as never, read)
+    const fab = gen('fabric', '1.21.1')
+    const fmj = JSON.parse(fab.find((f) => f.path.endsWith('/fabric.mod.json'))!.text!)
+    expect(fmj.license).toBe('MIT')
+    // empty names are left out, bad links dropped
+    // shown in Mod Menu as "Name - what they made (site)"
+    expect(fmj.contributors).toEqual([
+      { name: 'Ruby "Artist" - Ruby texture (example.com/ruby)', contact: { homepage: 'https://example.com/ruby' } },
+      'No Link'
+    ])
+    expect(fmj.contact).toEqual({ homepage: 'https://example.com/nkw', issues: 'https://example.com/nkw/issues' })
+    const credits = fab.find((f) => f.path.endsWith('/resources/CREDITS.txt'))!.text!
+    expect(credits).toContain('Ruby "Artist": Ruby texture\n  folders: textures/\n  files: textures/ruby.png\n  https://example.com/ruby')
+    expect(credits).not.toContain('half-typed')
+    expect(fab.find((f) => f.path.endsWith('/resources/LICENSE.txt'))!.text).toContain('https://spdx.org/licenses/MIT.html')
+    const qmj = JSON.parse(gen('quilt', '1.20.1').find((f) => f.path.endsWith('/quilt.mod.json'))!.text!)
+    expect(qmj.quilt_loader.metadata.license).toBe('MIT')
+    expect(qmj.quilt_loader.metadata.contributors['Ruby "Artist"']).toBe('Ruby texture (example.com/ruby)')
+    expect(qmj.quilt_loader.metadata.contact.issues).toBe('https://example.com/nkw/issues')
+    const toml = gen('neoforge', '1.21.1').find((f) => f.path.endsWith('mods.toml'))!.text!
+    expect(toml).toContain('license="MIT"')
+    // one credit per line under "Credits:" in the mod list
+    expect(toml).toContain('credits="\\nRuby \\"Artist\\" - Ruby texture (https://example.com/ruby)\\nNo Link"')
+    expect(toml).toContain('displayURL="https://example.com/nkw"')
+    expect(toml).toContain('issueTrackerURL="https://example.com/nkw/issues"')
+    // defaults: all rights reserved, no extra files
+    const plain = compile({ ...project, meta: { ...project.meta, license: undefined, credits: undefined } }).ir
+    const pf = generate(plain, { loader: 'forge', mc: '1.20.1' }, { ...FALLBACK_DEPS['1.20.1'], ...deps } as never, read)
+    expect(pf.find((f) => f.path.endsWith('mods.toml'))!.text).toContain('license="All Rights Reserved"')
+    expect(pf.some((f) => /(LICENSE|CREDITS)\.txt$/.test(f.path))).toBe(false)
+  })
+  it('gives weapons hit abilities, their own durability or no durability at all', () => {
+    const gen = (loader: 'fabric' | 'forge' | 'neoforge', mc: string) => {
+      const { ir } = compile(project, { loader, mc })
+      return generate(ir, { loader, mc }, { ...FALLBACK_DEPS[mc], ...deps } as never, read)
+    }
+    const text = (files: ReturnType<typeof gen>, end: string) => files.find((f) => f.path.endsWith(end))!.text!
+    const { ir } = compile(project)
+    const sword = ir.items.find((i) => i.id === 'ruby_sword')!.tool!
+    expect(sword.hits).toEqual([
+      { ability: 'fire', ticks: 80, chance: 1 },
+      { ability: 'lightning', ticks: 80, chance: 0.25 }
+    ])
+    expect(sword.durability).toBe(3000)
+    const f20 = gen('forge', '1.20.1')
+    const items = text(f20, '/ModItems.java')
+    expect(items).toContain('new NkwEffect(NkwEffect.FIRE, 80, 1.0F), new NkwEffect(NkwEffect.LIGHTNING, 80, 0.25F)')
+    expect(items).toContain('.durability(3000)')
+    expect(items).toContain('stack.getOrCreateTag().putBoolean("Unbreakable", true);')
+    const effect = text(f20, '/NkwEffect.java')
+    expect(effect).toContain('target.setSecondsOnFire(Math.max(1, ticks / 20));')
+    expect(effect).toContain('EntityType.LIGHTNING_BOLT.create(level)')
+    expect(effect).toContain('target.setTicksFrozen(')
+    const n21 = gen('neoforge', '1.21.1')
+    expect(text(n21, '/ModItems.java')).toContain('NkwTiers.withUses(ModToolTiers.RUBY, 3000)')
+    expect(text(n21, '/ModItems.java')).toContain('.component(DataComponents.UNBREAKABLE, new Unbreakable(true))')
+    expect(text(n21, '/NkwTiers.java')).toContain('public int getUses() {\n                return uses;')
+    expect(text(n21, '/NkwEffect.java')).toContain('target.igniteForSeconds(ticks / 20F);')
+    const f214 = gen('fabric', '1.21.4')
+    expect(text(f214, '/NkwTiers.java')).toContain('new ToolMaterial(material.incorrectBlocksForDrops(), uses,')
+    expect(text(f214, '/NkwEffect.java')).toContain('EntityType.LIGHTNING_BOLT.create(level, EntitySpawnReason.TRIGGERED)')
+    // abilities when eaten happen to the eater, on the server
+    const food = text(f20, '/ModItems.java')
+    expect(food).toContain(
+      'public ItemStack finishUsingItem(ItemStack stack, Level level, LivingEntity entity) {\n                if (!level.isClientSide) {\n                    new NkwEffect(NkwEffect.FREEZE, 60, 1.0F).apply(entity);\n                    new NkwEffect(NkwEffect.CLEAR, 80, 1.0F).apply(entity);'
+    )
+    expect(food).toContain('new NkwEffect(NkwEffect.TELEPORT, 80, 1.0F).apply(entity);')
+    expect(effect).toContain('target.randomTeleport(x, y, z, true)')
+    expect(effect).toContain('target.removeAllEffects();')
+    expect(text(f214, '/ModItems.java')).toContain('new NkwEffect(NkwEffect.FIRE, 80, 1.0F).apply(entity);')
+    // 1.16.5 has no freezing
+    expect(text(gen('forge', '1.16.5'), '/NkwEffect.java')).not.toContain('setTicksFrozen')
+  })
+  it('adds stat bonuses while items are held, worn or carried', () => {
+    const gen = (loader: 'fabric' | 'forge' | 'neoforge', mc: string) => {
+      const res = compile(project, { loader, mc })
+      return { ...res, files: generate(res.ir, { loader, mc }, { ...FALLBACK_DEPS[mc], ...deps } as never, read) }
+    }
+    const text = (files: { path: string; text?: string }[], end: string) => files.find((f) => f.path.endsWith(end))!.text!
+    // block reach needs 1.20.5+: left out (with a warning) on 1.20.1
+    const old = gen('forge', '1.20.1')
+    expect(old.ir.items.find((i) => i.id === 'ruby_pickaxe')!.attributes).toEqual([])
+    expect(old.diagnostics.some((d) => d.severity === 'warning' && d.message.en.includes('needs Minecraft 1.21.1'))).toBe(true)
+    const attrs = text(old.files, '/NkwAttributes.java')
+    expect(attrs).toContain('list.add(new Bonus(ModItems.RUBY_SWORD.get(), MAINHAND, Attributes.MAX_HEALTH, new AttributeModifier(UUID.nameUUIDFromBytes(')
+    expect(attrs).toContain('Attributes.MOVEMENT_SPEED, new AttributeModifier(UUID.nameUUIDFromBytes("nkwtest:bonus/shiny_ruby/0"')
+    expect(attrs).toContain('AttributeModifier.Operation.MULTIPLY_BASE')
+    // armor bonuses default to the piece's slot
+    expect(attrs).toContain('ModItems.RUBY_CROWN.get(), HEAD, Attributes.ARMOR')
+    expect(attrs).toContain('MinecraftForge.EVENT_BUS.addListener(NkwAttributes::onTick);')
+    expect(text(old.files, '/NkwMod.java')).toContain('NkwAttributes.init();')
+    const items = text(old.files, '/ModItems.java')
+    expect(items).toContain('Component.translatable("tooltip.nkwtest.when.mainhand").withStyle(ChatFormatting.GRAY)')
+    expect(items).toContain(
+      'Component.translatable("attribute.modifier.plus.0", "4", Component.translatable(Attributes.MAX_HEALTH.getDescriptionId())).withStyle(ChatFormatting.BLUE)'
+    )
+    expect(items).toContain('"attribute.modifier.plus.1", "20"')
+    // hidden from the tooltip
+    expect(items).not.toContain('Attributes.LUCK')
+    expect(JSON.parse(text(old.files, '/lang/th_th.json'))['tooltip.nkwtest.when.hand']).toBe('เมื่อถือในมือ:')
+    const modern = gen('neoforge', '1.21.1')
+    const m = text(modern.files, '/NkwAttributes.java')
+    expect(m).toContain(
+      'Attributes.BLOCK_INTERACTION_RANGE, new AttributeModifier(NkwMod.id("bonus/ruby_pickaxe/0"), 2, AttributeModifier.Operation.ADD_VALUE)'
+    )
+    expect(m).toContain('instance.getModifier(bonus.modifier.id())')
+    expect(text(modern.files, '/ModItems.java')).toContain('Attributes.MAX_HEALTH.value().getDescriptionId()')
+    expect(text(gen('fabric', '1.16.5').files, '/NkwAttributes.java')).toContain('player.inventory.contains(new ItemStack(item))')
+    expect(text(gen('forge', '1.16.5').files, '/NkwAttributes.java')).toContain('ModifiableAttributeInstance instance')
+  })
   it('leaves disabled nodes (and their wires) out of the mod', () => {
     const p = structuredClone(project)
     p.graph.nodes.find((n) => n.id === 'glow_item')!.data.disabled = true
@@ -251,7 +418,7 @@ describe('compiler', () => {
         const scripts = new Set(ir.scripts.map((s) => s.className))
         for (const f of generate(ir, target, { ...FALLBACK_DEPS[p.mc], ...deps } as never, read)) {
           const m = /\/([A-Za-z]+)\.java$/.exec(f.path)
-          if (m && !scripts.has(m[1])) expect(RESERVED_CLASSES.has(m[1]), `${m[1]} (${loader} ${p.mc})`).toBe(true)
+          if (m && !scripts.has(m[1])) expect(isReservedClass(m[1]), `${m[1]} (${loader} ${p.mc})`).toBe(true)
         }
       }
   })
@@ -406,5 +573,233 @@ describe('path safety', () => {
     expect(() => safeJoin(dir, 'a/../../x')).toThrow()
     expect(() => safeJoin(dir, 'C:/Windows/x')).toThrow()
     expect(safeJoin(dir, 'src/main/A.java')).toContain('A.java')
+  })
+})
+
+describe('test game settings', () => {
+  it('maps keys and writes options.txt entries, keeping other lines', () => {
+    expect(mcKeyFromCode('KeyW')).toBe('key.keyboard.w')
+    expect(mcKeyFromCode('ShiftLeft')).toBe('key.keyboard.left.shift')
+    expect(mcKeyFromCode('F5')).toBe('key.keyboard.f5')
+    expect(mcKeyFromCode('MetaLeft')).toBe(null)
+    expect(mcKeyFromMouse(2)).toBe('key.mouse.right')
+    expect(keyLabel('key.keyboard.left.shift')).toBe('Left Shift')
+    const o = GameOptionsSchema.parse({ maxFps: 60, keys: { 'key.jump': 'key.keyboard.j' } })
+    expect(o.width).toBe(1280)
+    const e = optionsEntries(o, 'th')
+    expect(e).toMatchObject({ maxFps: '60', lang: 'th_th', 'key_key.jump': 'key.keyboard.j', 'key_key.forward': 'key.keyboard.w', overrideWidth: '1280' })
+    const merged = mergeOptionsTxt('version:3955\nmaxFps:120\nfov:0.5\r\n', { maxFps: '60', lang: 'th_th' })
+    expect(merged).toBe('version:3955\nmaxFps:60\nfov:0.5\nlang:th_th\n')
+    // a bad value falls back to defaults instead of breaking the settings file
+    expect(() => GameOptionsSchema.parse({ keys: { 'key.jump': 'rm -rf' } })).toThrow()
+  })
+})
+
+describe('model editor', () => {
+  it('keeps cubes valid, rotates face UVs like Minecraft and fills areas', () => {
+    const c = newCube('a')
+    expect(c.from).toEqual([4, 0, 4])
+    // from/to swapped back, snapped to 0.25 px, kept inside −16…32
+    expect(normalize({ ...c, from: [10, 0, 40], to: [2.1, 3.3, 0] })).toMatchObject({ from: [2, 0, 0], to: [10, 3.25, 32] })
+    // rotation snaps to the allowed angles; 0° removes it
+    expect(normalize({ ...c, rotation: { axis: 'y', angle: 30, origin: [8, 8, 8] } }).rotation!.angle).toBe(22.5)
+    expect(normalize({ ...c, rotation: { axis: 'y', angle: 5, origin: [8, 8, 8] } }).rotation).toBeUndefined()
+    expect(moveBy(c, [1, 2, 3])).toMatchObject({ from: [5, 2, 7], to: [13, 10, 15] })
+    // automatic UV (no "uv" key) = Minecraft's default for the face
+    expect(faceUv(c, 'north')).toEqual([4, 8, 12, 16])
+    const plain = faceQuad({ ...c, faces: { north: { texture: '#0', uv: [0, 0, 16, 16] } } }, 'north').uv
+    expect(plain).toEqual([
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [0, 1]
+    ])
+    const turned = faceQuad({ ...c, faces: { north: { texture: '#0', uv: [0, 0, 16, 16], rotation: 90 } } }, 'north').uv
+    expect(turned[0]).toEqual([0, 1])
+    expect(uvToPixel(0.999, 0.5, 16, 16)).toEqual([15, 8])
+    const px = new Uint8ClampedArray(4 * 4 * 4)
+    px.set([255, 0, 0, 255], 0) // one red pixel in the corner
+    floodFill(px, 4, 4, 2, 2, [0, 0, 255, 255])
+    expect(Array.from(px.slice(0, 4))).toEqual([255, 0, 0, 255])
+    expect(Array.from(px.slice(4, 8))).toEqual([0, 0, 255, 255])
+    const saved = toSaved({ ...newModel('textures/x'), elements: [{ ...c, faces: { ...c.faces, up: undefined as never } }] })
+    expect(Object.keys(saved.elements![0].faces)).not.toContain('up')
+    expect(saved.textures).toEqual({ '0': 'textures/x', particle: 'textures/x' })
+  })
+})
+
+describe('editing generated code', () => {
+  it('uses edited files instead of generated ones, only for files the generator makes', () => {
+    const target = { loader: 'fabric' as const, mc: '1.21.1' }
+    const { ir } = compile(project, target)
+    const files = generate(ir, target, { ...FALLBACK_DEPS['1.21.1'], ...deps } as never, read)
+    const mod = files.find((f) => f.path.endsWith('/NkwMod.java'))!
+    const p = {
+      ...project,
+      overrides: {
+        [overrideKey(target, mod.path)]: '// mine\n',
+        [overrideKey(target, 'src/main/java/Evil.java')]: 'x',
+        [overrideKey({ loader: 'forge', mc: '1.20.1' }, mod.path)]: 'other target'
+      }
+    }
+    const { files: out, edited } = applyOverrides(files, p, target)
+    expect(out.find((f) => f.path === mod.path)!.text).toBe('// mine\n')
+    expect(out.some((f) => f.path.endsWith('Evil.java'))).toBe(false)
+    expect([...edited]).toEqual([mod.path])
+    expect(ProjectSchema.safeParse(p).success).toBe(true)
+    // no ".." paths
+    expect(ProjectSchema.safeParse({ ...project, overrides: { 'fabric-1.21.1:../x.java': 'x' } }).success).toBe(false)
+  })
+  it('unwraps cubes as unfolded boxes that fit the texture', () => {
+    const a = { ...newCube('a'), from: [0, 0, 0], to: [4, 2, 4] }
+    const b = { ...newCube('b'), from: [0, 0, 0], to: [2, 2, 2] }
+    const [ua, ub] = boxUnwrap([a, b], [0, 1], '#0')
+    expect(ua.faces.up!.uv).toEqual([4, 0, 8, 4])
+    expect(ua.faces.north!.uv).toEqual([4, 4, 8, 6])
+    expect(ua.faces.south!.uv).toEqual([12, 4, 16, 6])
+    // the second net goes to the next row
+    expect(ub.faces.east!.uv).toEqual([0, 8, 2, 10])
+    // too big for 16×16: everything scaled down to fit
+    const big = { ...newCube('c'), from: [-16, -16, -16], to: [32, 32, 32] }
+    const [uc] = boxUnwrap([big], [0], '#0')
+    expect(Math.max(...Object.values(uc.faces).flatMap((f) => f!.uv!))).toBeLessThanOrEqual(16)
+  })
+})
+
+describe('model editor controls', () => {
+  it('matches mouse gestures of the Blockbench, Maya and Blender presets', () => {
+    const none = { altKey: false, shiftKey: false, ctrlKey: false, metaKey: false }
+    expect(gestureFor(CONTROL_PRESETS.blockbench, 0, none)).toBe('orbit')
+    expect(gestureFor(CONTROL_PRESETS.blockbench, 2, none)).toBe('pan')
+    expect(gestureFor(CONTROL_PRESETS.maya, 0, none)).toBe(null)
+    expect(gestureFor(CONTROL_PRESETS.maya, 0, { ...none, altKey: true })).toBe('orbit')
+    expect(gestureFor(CONTROL_PRESETS.maya, 2, { ...none, altKey: true })).toBe('zoom')
+    expect(gestureFor(CONTROL_PRESETS.blender, 1, none)).toBe('orbit')
+    expect(gestureFor(CONTROL_PRESETS.blender, 1, { ...none, shiftKey: true })).toBe('pan')
+    expect(CONTROL_PRESETS.maya.keys).toMatchObject({ move: 'w', rotate: 'e', scale: 'r' })
+    expect(CONTROL_PRESETS.blender.keys.frame).toBe('.')
+    expect(keyName('Home')).toBe('home')
+    // bad bindings are refused
+    expect(ModelControlsSchema.safeParse({ keys: { move: 'ctrl+w' } }).success).toBe(false)
+  })
+})
+
+describe('crops', () => {
+  it('makes growing crops with stage models, loot and hand harvesting', () => {
+    const gen = (loader: 'fabric' | 'forge' | 'neoforge', mc: string) => {
+      const { ir, diagnostics } = compile(project, { loader, mc })
+      return { ir, diagnostics, files: generate(ir, { loader, mc }, { ...FALLBACK_DEPS[mc], ...deps } as never, read) }
+    }
+    const text = (files: { path: string; text?: string }[], end: string) => files.find((f) => f.path.endsWith(end))?.text
+    const { ir, files, diagnostics } = gen('fabric', '1.21.1')
+    expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
+    const wheat = ir.blocks.find((b) => b.id === 'ruby_wheat')!.crop!
+    expect(wheat).toMatchObject({ mode: 'replant', input: 'hold', harvestTicks: 30, growStep: 0, stages: expect.any(Array) })
+    const bush = ir.blocks.find((b) => b.id === 'ruby_bush')!.crop!
+    // 120 s over 7 steps; 30 s cooldown back from age 4
+    expect(bush).toMatchObject({ mode: 'regrow', input: 'stand', growStep: 343, regrowAge: 4, regrowTicks: 600, look: 'cross', soil: 'dirt' })
+    // ages 0–7 spread over the 4 stage models
+    const states = JSON.parse(text(files, '/blockstates/ruby_wheat.json')!)
+    expect(states.variants['age=0'].model).toBe('nkwtest:block/ruby_wheat_stage0')
+    expect(states.variants['age=7'].model).toBe('nkwtest:block/ruby_wheat_stage3')
+    expect(JSON.parse(text(files, '/models/block/ruby_bush_stage1.json')!).parent).toBe('minecraft:block/cross')
+    // loot: the harvest when grown, seeds back when grown, one seed when not
+    const loot = JSON.parse(text(files, '/loot_table/blocks/ruby_wheat.json')!)
+    expect(loot.pools[0].entries[0]).toMatchObject({ name: 'nkwtest:ruby', functions: [{ count: { min: 1, max: 3 } }] })
+    expect(loot.pools[1].entries[0].children.map((c: { name: string }) => c.name)).toEqual(['nkwtest:ruby_wheat_seeds', 'nkwtest:ruby_wheat_seeds'])
+    // a regrowing bush gives no seeds back when grown
+    expect(JSON.parse(text(files, '/loot_table/blocks/ruby_bush.json')!).pools[1].entries[0].children).toHaveLength(1)
+    const blocks = text(files, '/ModBlocks.java')!
+    expect(blocks).toContain(
+      'new NkwCropBlock(BlockBehaviour.Properties.of().noCollission().randomTicks().instabreak().sound(SoundType.CROP), false, 0, false, 0, 1200, 2, 30, 1, false)'
+    )
+    expect(blocks).toContain('return ModItems.RUBY_WHEAT_SEEDS;')
+    expect(text(files, '/NkwCropBlock.java')).toContain('level.scheduleTick(pos, this, ticks);')
+    expect(text(files, '/NkwHarvest.java')).toContain('UseBlockCallback.EVENT.register')
+    expect(text(files, '/NkwClient.java')).toContain('BlockRenderLayerMap.INSTANCE.putBlock(ModBlocks.RUBY_WHEAT, RenderType.cutout());')
+    expect(JSON.parse(text(files, '/lang/th_th.json')!)['message.nkwtest.harvest_moved']).toContain('ขยับ')
+    // old versions: Random, getBlockTicks, Material.PLANT
+    const old = gen('forge', '1.16.5').files
+    expect(text(old, '/NkwCropBlock.java')).toContain('level.getBlockTicks().scheduleTick(pos, this, ticks);')
+    expect(text(old, '/NkwCropBlock.java')).toContain('extends CropsBlock')
+    expect(text(old, '/ModBlocks.java')).toContain('AbstractBlock.Properties.of(Material.PLANT)')
+    // render type in the model on Forge 1.20.1
+    expect(JSON.parse(text(gen('forge', '1.20.1').files, '/models/block/ruby_wheat_stage0.json')!).render_type).toBe('minecraft:cutout')
+  })
+  it("picks game and Farmer's Delight crops by hand and draws the timer looks", () => {
+    const gen = (loader: 'fabric' | 'forge' | 'neoforge', mc: string) => {
+      const { ir, diagnostics } = compile(project, { loader, mc })
+      return { ir, diagnostics, files: generate(ir, { loader, mc }, { ...FALLBACK_DEPS[mc], ...deps } as never, read) }
+    }
+    const text = (files: { path: string; text?: string }[], end: string) => files.find((f) => f.path.endsWith(end))?.text
+    const { ir, files } = gen('fabric', '1.21.1')
+    const byBlock = Object.fromEntries(ir.gameCrops.map((g) => [g.block, g]))
+    // "like the game": wheat breaks, berries go back to their picked stage
+    expect(byBlock['minecraft:wheat']).toMatchObject({ input: 'hold', harvestTicks: 20, after: 'break' })
+    expect(byBlock['minecraft:sweet_berry_bush']).toMatchObject({ input: 'click', after: 'regrow', back: 1 })
+    expect(byBlock['minecraft:carrots']).toMatchObject({ after: 'replant', back: 0 })
+    const harvest = text(files, '/NkwHarvest.java')!
+    expect(harvest).toContain('GAME.put("minecraft:wheat", new Rule(2, 20, 0, 1, 2, true));')
+    // one node, many crops (checked + typed ids), all with the same settings
+    for (const id of ['farmersdelight:cabbages', 'farmersdelight:onions', 'farmersdelight:rice_panicles'])
+      expect(harvest).toContain(`GAME.put("${id}", new Rule(2, 30, 1, 0, 1, false));`)
+    expect(gameCropIds({ crop: 'custom', block: 'a:b, c:d' })).toEqual(['a:b', 'c:d'])
+    expect(gameCropIds({})).toEqual(['minecraft:wheat'])
+    expect(harvest).toContain('BuiltInRegistries.BLOCK.getKey(block)')
+    expect(harvest).toContain('if (rule.give) give(player, level, pos, drops);')
+    // a mod with game crops only has no NkwCropBlock: the harvest code must not use it
+    const only = { ...ir, blocks: ir.blocks.filter((b) => !b.crop) }
+    const onlyFiles = generate(only, { loader: 'fabric', mc: '1.21.1' }, { ...FALLBACK_DEPS['1.21.1'], ...deps } as never, read)
+    expect(onlyFiles.some((f) => f.path.endsWith('/NkwCropBlock.java'))).toBe(false)
+    expect(text(onlyFiles, '/NkwHarvest.java')).not.toContain('NkwCropBlock')
+    const hud = text(files, '/NkwHarvestHud.java')!
+    expect(hud).toContain('{ 1, 0xFFFACC15, 0x80000000, 0, 0, 80, 5, 9, 3, 1 }')
+    expect(hud).toContain('{ 2, 0xFF22D3EE, 0x66000000, 0, 0, 60, 4, 10, 4, 1 }')
+    expect(text(files, '/NkwClient.java')).toContain('NkwHarvestHud.init();')
+    expect(JSON.parse(text(files, '/lang/th_th.json')!)['message.nkwtest.harvest_seconds']).toBe('%s วิ')
+    // each loader's HUD hook
+    const hook = (loader: 'forge' | 'neoforge', mc: string) => text(gen(loader, mc).files, '/NkwHarvestHud.java')!
+    expect(hook('forge', '1.16.5')).toContain('import com.mojang.blaze3d.matrix.MatrixStack;')
+    expect(hook('forge', '1.16.5')).toContain('AbstractGui.fill(graphics')
+    expect(hook('forge', '1.19.2')).toContain('render(event.getPoseStack());')
+    expect(hook('forge', '1.20.1')).toContain('render(event.getGuiGraphics());')
+    expect(hook('forge', '1.21.1')).toContain('CustomizeGuiOverlayEvent.Chat event')
+    expect(hook('forge', '1.21.4')).toContain('event.getLayeredDraw().add(NkwMod.id("harvest_timer")')
+    expect(hook('neoforge', '1.21.1')).toContain('RenderGuiEvent.Post event')
+    expect(text(gen('forge', '1.20.1').files, '/NkwMod.java')).toContain('if (FMLEnvironment.dist == Dist.CLIENT) NkwHarvestHud.init(bus);')
+    expect(text(gen('forge', '1.18.2').files, '/NkwHarvest.java')).toContain('Registry.BLOCK.getKey(block)')
+  })
+  it('makes mobs from game bodies everywhere and from GeckoLib models on 1.20.1 / 1.21.1', () => {
+    const gen = (loader: 'fabric' | 'forge', mc: string) => {
+      const { ir, diagnostics } = compile(project, { loader, mc })
+      return { diagnostics, files: generate(ir, { loader, mc }, { ...FALLBACK_DEPS[mc], ...deps } as never, read) }
+    }
+    const text = (files: { path: string; text?: string }[], end: string) => files.find((f) => f.path.endsWith(end))?.text
+    const { files } = gen('fabric', '1.21.1')
+    const golem = text(files, '/NkwRubyGolemEntity.java')!
+    expect(golem).toContain('extends PathfinderMob implements GeoEntity')
+    expect(golem).toContain('import software.bernie.geckolib.animation.AnimationController;')
+    expect(golem).toContain('new HurtByTargetGoal(this)')
+    expect(golem).not.toContain('NearestAttackableTargetGoal')
+    expect(golem).toContain('RawAnimation.begin().thenLoop("animation.ruby_armor.idle")')
+    const entities = text(files, '/ModEntities.java')!
+    expect(entities).toContain('EntityType.Builder.<NkwRubyGolemEntity>of(NkwRubyGolemEntity::new, MobCategory.CREATURE).sized(0.8F, 2.0F)')
+    expect(entities).toContain('Mob.createMobAttributes().add(Attributes.MAX_HEALTH, 40)')
+    expect(entities).toContain('Mob::checkMobSpawnRules')
+    expect(text(files, '/NkwClient.java')).toContain(
+      'new GeoEntityRenderer<NkwRubyGolemEntity>(context, new DefaultedEntityGeoModel<>(NkwMod.id("ruby_golem")))'
+    )
+    expect(files.some((f) => f.path.endsWith('/geo/entity/ruby_golem.geo.json'))).toBe(true)
+    expect(files.some((f) => f.path.endsWith('/animations/entity/ruby_golem.animation.json'))).toBe(true)
+    expect(text(files, '/NkwZombieRenderer.java')).toContain('extends ZombieRenderer')
+    // GeckoLib 4.4 packages on 1.20.1
+    expect(text(gen('forge', '1.20.1').files, '/NkwRubyGolemEntity.java')).toContain('import software.bernie.geckolib.core.animation.AnimationController;')
+    // no GeckoLib on 1.19.2: a zombie body with the skin, and a warning
+    const old = gen('forge', '1.19.2')
+    expect(old.files.some((f) => f.path.endsWith('/NkwRubyGolemEntity.java'))).toBe(false)
+    expect(text(old.files, '/ModEntities.java')).toContain(
+      'EntityType.Builder.<Zombie>of(Zombie::new, MobCategory.MONSTER).sized(0.6F, 1.95F).build("ruby_golem")'
+    )
+    expect(old.diagnostics.some((d) => d.nodeId === 'm_golem' && d.severity === 'warning')).toBe(true)
   })
 })

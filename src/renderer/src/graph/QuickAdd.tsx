@@ -22,13 +22,16 @@ export function QuickAdd({
   y,
   pending,
   onPick,
-  onClose
+  onClose,
+  onPaste
 }: {
   x: number
   y: number
   pending: Pending | null
   onPick: (type: string) => void
   onClose: () => void
+  /** right-click on the canvas with nodes copied: a "Paste here" item */
+  onPaste?: () => void
 }) {
   const { t } = useTranslation()
   const [q, setQ] = useState('')
@@ -66,6 +69,13 @@ export function QuickAdd({
             else if (e.key === 'Enter' && items[idx]) onPick(items[idx].type)
           }}
         />
+        {onPaste && (
+          <div className="qa-item qa-paste" role="menuitem" onMouseDown={(e) => (e.preventDefault(), onPaste())}>
+            <span aria-hidden>📋</span>
+            {t('ws.paste')}
+            <small>Ctrl+V</small>
+          </div>
+        )}
         <div className="qa-list" ref={listRef}>
           {items.map((d, i) => (
             <div

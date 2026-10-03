@@ -1,5 +1,5 @@
 import { inflateSync } from 'node:zlib'
-import { CORNERS, DEFAULT_UV, type Face, type V3 } from '@core/gen/faces'
+import { CORNERS, DEFAULT_UV, rotAxis, type Face, type V3 } from '@core/gen/faces'
 import { encodePng } from './png'
 
 /**
@@ -194,18 +194,6 @@ function textureRef(textures: Record<string, string>, v: string | undefined): st
 
 /** Minecraft's fixed per-direction block shading. */
 const SHADE: Record<Face, number> = { up: 1, down: 0.5, north: 0.8, south: 0.8, east: 0.6, west: 0.6 }
-
-const rad = (d: number) => (d * Math.PI) / 180
-function rotAxis(p: V3, axis: 'x' | 'y' | 'z', deg: number, o: V3): V3 {
-  const c = Math.cos(rad(deg))
-  const s = Math.sin(rad(deg))
-  const x = p[0] - o[0]
-  const y = p[1] - o[1]
-  const z = p[2] - o[2]
-  if (axis === 'x') return [x + o[0], y * c - z * s + o[1], y * s + z * c + o[2]]
-  if (axis === 'y') return [x * c + z * s + o[0], y + o[1], -x * s + z * c + o[2]]
-  return [x * c - y * s + o[0], x * s + y * c + o[1], z + o[2]]
-}
 
 /**
  * Draws the model into a size×size RGBA icon. `texture(ref)` returns decoded textures; `tint(i)`

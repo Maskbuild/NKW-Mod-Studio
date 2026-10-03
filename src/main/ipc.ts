@@ -1,4 +1,6 @@
 import { copyFile } from 'node:fs/promises'
+import { GameOptionsSchema, optionsEntries } from '@core/gameOptions'
+import { ModelControlsSchema } from '@core/modelControls'
 import { existsSync } from 'node:fs'
 import { basename, extname, join, resolve } from 'node:path'
 import { BrowserWindow, app, dialog, ipcMain, nativeTheme, net, protocol, shell } from 'electron'
@@ -17,11 +19,13 @@ import {
   makeFolder,
   moveAsset,
   readModel,
-  type AssetKind
+  type AssetKind,
+  writeModel,
+  writeTexture
 } from './services/assets'
 import { CONVERTIBLE } from './services/audio'
 import { ensureFarmersDelight, ensureVanilla, loadFarmersDelight, loadVanilla, vanillaIconPath, vanillaSkinPath } from './services/vanilla'
-import { assetPath, buildDir, findJar, startBuild, type RunningBuild } from './services/builder'
+import { assetPath, buildDir, findJar, previewFiles, startBuild, type RunningBuild } from './services/builder'
 import { createProjectDir, readProject, saveProject, type SettingsStore } from './services/store'
 import { TEMPLATE_IDS, applyTemplate } from './templates'
 
@@ -93,7 +97,9 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
       theme: z.enum(['system', 'light', 'dark']).optional(),
       language: z.enum(['th', 'en']).optional(),
       memoryMb: z.number().int().min(1024).max(16384).optional(),
-      allowDownloads: z.boolean().optional()
+      allowDownloads: z.boolean().optional(),
+      game: GameOptionsSchema.optional(),
+      modelControls: ModelControlsSchema.optional()
     }),
     async (patch) => {
       const s = await settings.update(patch)
@@ -251,6 +257,10 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
 
   // ───────── asset tree: folders, rename, move, delete ─────────
   const PATH = z.string().min(3).max(300)
+  handle('assets:writeModel', z.object({ asset: PATH, model: z.record(z.string(), z.unknown()) }), ({ asset, model }) =>
+    writeModel(requireProject(), asset, model)
+  )
+  handle('assets:writeTexture', z.object({ asset: PATH, png: z.string().max(11_000_000) }), ({ asset, png }) => writeTexture(requireProject(), asset, png))
   handle('assets:mkdir', z.object({ folder: PATH }), ({ folder }) => makeFolder(requireProject(), folder))
   handle('assets:move', z.object({ from: PATH, to: PATH }), ({ from, to }) => moveAsset(requireProject(), from, to))
   handle('assets:delete', z.object({ path: PATH }), async ({ path }) => {
@@ -275,6 +285,7 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
     return { jdks: jdks.map((j) => ({ major: j.major, home: j.home, managed: j.managed })), toolsDir: toolsDir() }
   })
 
+  handle('code:preview', z.object({ project: ProjectSchema, target: TargetSchema }), ({ project, target }) => previewFiles(requireProject(), project, target))
   handle(
     'build:start',
     z.object({ project: ProjectSchema, target: TargetSchema, task: z.enum(['runClient', 'build', 'compileJava']) }),
@@ -311,7 +322,8 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
             task,
             log,
             progress,
-            memoryMb: settings.get().memoryMb
+            memoryMb: settings.get().memoryMb,
+            gameOptions: optionsEntries(settings.get().game, settings.get().language)
           })
           break
         } catch (e) {

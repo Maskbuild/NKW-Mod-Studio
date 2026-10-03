@@ -54,8 +54,33 @@ export interface ItemIR extends Named {
   rarity: Rarity
   fireResistant: boolean
   glint: boolean
-  food?: { nutrition: number; saturation: number; alwaysEdible: boolean; fast: boolean; effects: EffectIR[] }
-  tool?: { type: ToolType; material: string; damage: number; speed: number; effects: EffectIR[] }
+  food?: {
+    nutrition: number
+    saturation: number
+    alwaysEdible: boolean
+    fast: boolean
+    effects: EffectIR[]
+    /** abilities applied to whoever eats it (fire, freeze …) */
+    hits: HitIR[]
+    /** drunk like a potion (animation + gulping sound) instead of eaten */
+    drink: boolean
+    /** water value for thirst mods (Thirst add-on node) */
+    thirst: ThirstIR | null
+  }
+  tool?: {
+    type: ToolType
+    material: string
+    damage: number
+    speed: number
+    effects: EffectIR[]
+    /** on-hit abilities (fire, lightning, freeze) */
+    hits: HitIR[]
+    /** uses before it breaks; 0 = the material's */
+    durability: number
+    unbreakable: boolean
+  }
+  /** stat bonuses while held / worn / carried (Stat Bonus nodes) */
+  attributes?: AttributeIR[]
   armor?: { material: string; slot: ArmorSlot; geo: GeoRef | null; effects: EffectIR[] }
   disc?: {
     sound: string
@@ -81,8 +106,69 @@ export interface ItemIR extends Named {
   geoIcon?: boolean
 }
 
+/** A plant (Crop node): ages 0–7 like vanilla crops, drawn with 1–8 stage textures. */
+export interface CropIR {
+  /** stage textures (assets), at least one */
+  stages: string[]
+  look: 'crop' | 'cross'
+  soil: 'farmland' | 'dirt'
+  /** ticks per age step; 0 = random growth like wheat */
+  growStep: number
+  mode: 'replant' | 'regrow'
+  /** regrow: the age a harvest goes back to, and the ticks from there to fully grown */
+  regrowAge: number
+  regrowTicks: number
+  input: 'break' | 'click' | 'hold' | 'stand'
+  harvestTicks: number
+  produce: string | null
+  produceMin: number
+  produceMax: number
+  seedMin: number
+  seedMax: number
+  /** harvest timer look (Harvest UI node); null = the default text */
+  ui: HarvestUiIR | null
+  /** a hand harvest goes straight into the inventory instead of dropping */
+  give: boolean
+}
+
+/** How the harvest timer is drawn (Harvest UI node). Colours are 0xRRGGBB. */
+export interface HarvestUiIR {
+  style: 'text' | 'bar' | 'ring'
+  color: number
+  back: number
+  /** background opacity 0–255 */
+  backAlpha: number
+  /** bar / text: where on the screen, moved down by offset */
+  place: 'crosshair' | 'hotbar' | 'top'
+  offset: number
+  width: number
+  height: number
+  /** ring around the crosshair: radius and line thickness (thickness >= radius = a filled circle) */
+  radius: number
+  thickness: number
+  /** show the seconds left */
+  time: boolean
+}
+
+/** Picking a crop of the game or of another mod by hand (Game Crop Harvest node). */
+export interface GameCropIR {
+  nodeId: string
+  /** block id, e.g. minecraft:wheat */
+  block: string
+  input: 'click' | 'hold' | 'stand'
+  harvestTicks: number
+  /** break: like breaking it; replant: drops minus one seed, back to the start; regrow: back to an age */
+  after: 'break' | 'replant' | 'regrow'
+  back: number
+  ui: HarvestUiIR | null
+  /** the harvest goes straight into the inventory instead of dropping */
+  give: boolean
+}
+
 export interface BlockIR extends Named {
-  kind: 'cube' | 'model'
+  kind: 'cube' | 'model' | 'crop'
+  /** Crop node settings */
+  crop?: CropIR
   /** registers a BlockItem for the block */
   hasItem: boolean
   shape: 'cube_all' | 'cube_bottom_top' | 'pillar'
@@ -183,6 +269,55 @@ export interface ScriptIR {
   entry: { main: boolean; client: boolean }
 }
 
+/** Where a stat bonus is active. */
+export type AttrSlot = 'mainhand' | 'offhand' | 'hand' | 'head' | 'chest' | 'legs' | 'feet' | 'inventory'
+
+/** A player attribute modifier from a Stat Bonus node. */
+export interface AttributeIR {
+  /** Mojang field name in Attributes, e.g. MAX_HEALTH */
+  field: string
+  amount: number
+  operation: 'add' | 'base' | 'total'
+  slot: AttrSlot
+  tooltip: boolean
+}
+
+/** Something that happens to the target when a weapon hits. */
+export interface HitIR {
+  ability: 'fire' | 'lightning' | 'freeze' | 'teleport' | 'clear'
+  ticks: number
+  chance: number
+}
+
+/** Thirst restored by a food in thirst mods: points on a 20-point bar, like hunger and saturation. */
+export interface ThirstIR {
+  thirst: number
+  hydration: number
+}
+
+/** A creature (Mob node). */
+export interface MobIR extends Named {
+  /** a game body, or a GeckoLib 3D model */
+  body: 'zombie' | 'skeleton' | 'spider' | 'cow' | 'pig' | 'model3d'
+  behavior: 'hostile' | 'neutral' | 'passive'
+  /** skin texture (game bodies) */
+  skin: string | null
+  geo: GeoRef | null
+  health: number
+  attack: number
+  speed: number
+  armor: number
+  width: number
+  height: number
+  anims: { idle: string; walk: string; attack: string }
+  spawn: { where: 'overworld' | 'nether' | 'end'; weight: number; min: number; max: number } | null
+  drops: string[]
+  dropMin: number
+  dropMax: number
+  /** spawn egg colours, 0xRRGGBB */
+  egg: [number, number]
+}
+
 export interface ModIR {
   meta: ProjectMeta
   items: ItemIR[]
@@ -193,6 +328,8 @@ export interface ModIR {
   recipes: RecipeIR[]
   tabs: TabIR[]
   scripts: ScriptIR[]
+  mobs: MobIR[]
+  gameCrops: GameCropIR[]
   /** animated textures (asset path → .mcmeta animation settings) */
   textureAnims: Record<string, { frametime: number; interpolate: boolean }>
 }

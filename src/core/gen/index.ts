@@ -12,7 +12,7 @@ export type { GenFile, ResolvedDeps, AssetReader } from './types'
 /** FD recipes, or any Farmer's Delight item/tag used as an ingredient, result, drop or tab entry. */
 function usesFarmersDelight(ir: ModIR): boolean {
   if (ir.recipes.some((r) => r.kind === 'fdCutting' || r.kind === 'fdCooking')) return true
-  return JSON.stringify([ir.recipes, ir.tabs, ir.blocks.map((b) => b.drop), ir.toolMats, ir.armorMats]).includes('farmersdelight:')
+  return JSON.stringify([ir.recipes, ir.tabs, ir.blocks.map((b) => b.drop), ir.toolMats, ir.armorMats, ir.gameCrops]).includes('farmersdelight:')
 }
 
 function geoNames(ir: ModIR): Map<string, string> {
@@ -41,7 +41,7 @@ export function generate(ir: ModIR, target: Target, deps: ResolvedDeps, read: As
   const p = getProfile(target.mc)
   if (!p.loaders.includes(target.loader)) throw new Error(`${target.loader} is not available for ${target.mc}`)
   const usesFD = usesFarmersDelight(ir)
-  const usesGeo = ir.items.some((i) => i.armor?.geo)
+  const usesGeo = ir.items.some((i) => i.armor?.geo) || ir.mobs.some((m) => m.body === 'model3d' && m.geo)
   const ctx: GenCtx = {
     ir,
     target,

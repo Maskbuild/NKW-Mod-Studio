@@ -5,7 +5,23 @@ import { SCRIPT_STARTER } from '../scriptApi'
  */
 
 export type PinType =
-  'item' | 'ingredient' | 'texture' | 'model' | 'geo' | 'sound' | 'soundEvent' | 'toolMat' | 'armorMat' | 'effect' | 'animation' | 'block' | 'any'
+  | 'item'
+  | 'ingredient'
+  | 'texture'
+  | 'model'
+  | 'geo'
+  | 'sound'
+  | 'soundEvent'
+  | 'toolMat'
+  | 'armorMat'
+  | 'effect'
+  | 'animation'
+  | 'block'
+  | 'thirst'
+  | 'attribute'
+  | 'hit'
+  | 'harvestUi'
+  | 'any'
 
 export interface L10n {
   en: string
@@ -25,6 +41,10 @@ export const PIN_COLORS: Record<PinType, string> = {
   effect: '#ec4899',
   animation: '#8b5cf6',
   block: '#7c3aed',
+  thirst: '#0ea5e9',
+  attribute: '#14b8a6',
+  hit: '#dc2626',
+  harvestUi: '#84cc16',
   any: '#9ca3af'
 }
 
@@ -58,6 +78,7 @@ export type PropKind =
   | 'float'
   | 'bool'
   | 'select'
+  | 'multi'
   | 'asset'
   | 'nsid'
   | 'textarea'
@@ -84,7 +105,7 @@ export interface PropDef {
   showIf?: (data: Record<string, unknown>) => boolean
 }
 
-export type Category = 'asset' | 'item' | 'block' | 'armor' | 'effect' | 'sound' | 'recipe' | 'fd' | 'script' | 'util'
+export type Category = 'asset' | 'item' | 'block' | 'farm' | 'armor' | 'effect' | 'sound' | 'recipe' | 'fd' | 'mob' | 'script' | 'addon' | 'util'
 
 export interface NodeDef {
   type: string
@@ -104,16 +125,32 @@ export interface NodeDef {
 const t = (en: string, th: string): L10n => ({ en, th })
 const opt = (value: string, en: string, th: string) => ({ value, label: t(en, th) })
 
+/** Block ids a "Harvest a game crop" node covers (checked crops + typed ids; older nodes had one "crop"). */
+export function gameCropIds(d: Record<string, unknown>): string[] {
+  const picked = Array.isArray(d.crops)
+    ? d.crops.filter((c): c is string => typeof c === 'string')
+    : typeof d.crop === 'string' && d.crop !== 'custom'
+      ? [d.crop]
+      : d.crop === undefined
+        ? ['minecraft:wheat']
+        : []
+  const typed = typeof d.others === 'string' ? d.others : d.crop === 'custom' && typeof d.block === 'string' ? d.block : ''
+  return [...new Set([...picked, ...typed.split(/[\s,]+/).filter(Boolean)])]
+}
+
 export const CATEGORY_LABEL: Record<Category, L10n> = {
   asset: t('Assets', 'ไฟล์ทรัพยากร'),
   item: t('Items', 'ไอเทม'),
   block: t('Blocks', 'บล็อก'),
+  farm: t('Farming', 'การเกษตร'),
   armor: t('Armor', 'ชุดเกราะ'),
-  effect: t('Effects', 'เอฟเฟกต์'),
+  effect: t('Effects & abilities', 'เอฟเฟกต์และความสามารถ'),
   sound: t('Sound & Music', 'เสียงและเพลง'),
   recipe: t('Recipes', 'สูตรคราฟ'),
   fd: t("Farmer's Delight", "Farmer's Delight"),
+  mob: t('Mobs & monsters', 'ม็อบและมอนสเตอร์'),
   script: t('Scripts', 'สคริปต์'),
+  addon: t('Add-ons (other mods)', 'ส่วนเสริม (ม็อดอื่น)'),
   util: t('Utility', 'เครื่องมือ')
 }
 
@@ -222,7 +259,7 @@ const countProp = (label = t('Result count', 'จำนวนที่ได้'
   max: 64
 })
 
-const slots = (n: number, prefix: string, en: string, th: string, type: 'ingredient' | 'item' = 'ingredient', extra: Partial<PinDef> = {}): PinDef[] =>
+const slots = (n: number, prefix: string, en: string, th: string, type: PinType = 'ingredient', extra: Partial<PinDef> = {}): PinDef[] =>
   Array.from({ length: n }, (_, i) => ({
     id: `${prefix}${i + 1}`,
     label: t(`${en} ${i + 1}`, `${th} ${i + 1}`),
@@ -272,6 +309,46 @@ export const EFFECTS: { value: string; label: L10n }[] = [
   opt('SLOW_FALLING', 'Slow Falling', 'ตกช้า'),
   opt('CONDUIT_POWER', 'Conduit Power', 'พลังคอนดูอิต'),
   opt('DOLPHINS_GRACE', "Dolphin's Grace", 'ว่ายน้ำเร็ว')
+]
+
+/**
+ * Player attributes offered by the Stat Bonus node (Mojang field names in Attributes). `since` is the
+ * first supported Minecraft version that has it for players; older targets skip it with a warning.
+ */
+export const ATTRIBUTES: { id: string; field: string; since: string; label: L10n }[] = [
+  { id: 'max_health', field: 'MAX_HEALTH', since: '1.16.5', label: t('Max health', 'เลือดสูงสุด') },
+  { id: 'armor', field: 'ARMOR', since: '1.16.5', label: t('Armor', 'เกราะ') },
+  { id: 'armor_toughness', field: 'ARMOR_TOUGHNESS', since: '1.16.5', label: t('Armor toughness', 'ความแกร่งของเกราะ') },
+  { id: 'attack_damage', field: 'ATTACK_DAMAGE', since: '1.16.5', label: t('Attack damage', 'พลังโจมตี') },
+  { id: 'attack_speed', field: 'ATTACK_SPEED', since: '1.16.5', label: t('Attack speed', 'ความเร็วโจมตี') },
+  { id: 'attack_knockback', field: 'ATTACK_KNOCKBACK', since: '1.16.5', label: t('Attack knockback', 'แรงกระแทกตอนตี') },
+  { id: 'knockback_resistance', field: 'KNOCKBACK_RESISTANCE', since: '1.16.5', label: t('Knockback resistance', 'ต้านแรงกระแทก') },
+  { id: 'movement_speed', field: 'MOVEMENT_SPEED', since: '1.16.5', label: t('Movement speed', 'ความเร็วเดิน') },
+  { id: 'luck', field: 'LUCK', since: '1.16.5', label: t('Luck', 'โชค') },
+  { id: 'max_absorption', field: 'MAX_ABSORPTION', since: '1.20.4', label: t('Max absorption', 'เลือดเสริมสูงสุด') },
+  { id: 'jump_strength', field: 'JUMP_STRENGTH', since: '1.21.1', label: t('Jump strength', 'กระโดดสูง') },
+  { id: 'block_interaction_range', field: 'BLOCK_INTERACTION_RANGE', since: '1.21.1', label: t('Block reach (mine / place far)', 'ระยะขุด/วางบล็อก (ขุดไกล)') },
+  { id: 'entity_interaction_range', field: 'ENTITY_INTERACTION_RANGE', since: '1.21.1', label: t('Attack reach', 'ระยะตีศัตรู') },
+  { id: 'block_break_speed', field: 'BLOCK_BREAK_SPEED', since: '1.21.1', label: t('Block break speed', 'ความเร็วทุบบล็อก') },
+  { id: 'scale', field: 'SCALE', since: '1.21.1', label: t('Size (scale)', 'ขนาดตัว') },
+  { id: 'step_height', field: 'STEP_HEIGHT', since: '1.21.1', label: t('Step height', 'ก้าวขึ้นที่สูง') },
+  { id: 'gravity', field: 'GRAVITY', since: '1.21.1', label: t('Gravity', 'แรงโน้มถ่วง') },
+  { id: 'safe_fall_distance', field: 'SAFE_FALL_DISTANCE', since: '1.21.1', label: t('Safe fall distance', 'ระยะตกที่ไม่เจ็บ') },
+  { id: 'fall_damage_multiplier', field: 'FALL_DAMAGE_MULTIPLIER', since: '1.21.1', label: t('Fall damage multiplier', 'ตัวคูณความเสียหายจากการตก') },
+  { id: 'burning_time', field: 'BURNING_TIME', since: '1.21.1', label: t('Burning time', 'ระยะเวลาไฟไหม้') },
+  {
+    id: 'explosion_knockback_resistance',
+    field: 'EXPLOSION_KNOCKBACK_RESISTANCE',
+    since: '1.21.1',
+    label: t('Explosion knockback resistance', 'ต้านแรงระเบิด')
+  },
+  { id: 'mining_efficiency', field: 'MINING_EFFICIENCY', since: '1.21.1', label: t('Mining efficiency', 'ประสิทธิภาพการขุด') },
+  { id: 'movement_efficiency', field: 'MOVEMENT_EFFICIENCY', since: '1.21.1', label: t('Movement efficiency (rough ground)', 'เดินบนพื้นช้าได้เร็วขึ้น') },
+  { id: 'oxygen_bonus', field: 'OXYGEN_BONUS', since: '1.21.1', label: t('Oxygen bonus (breath underwater)', 'กลั้นหายใจใต้น้ำนานขึ้น') },
+  { id: 'sneaking_speed', field: 'SNEAKING_SPEED', since: '1.21.1', label: t('Sneaking speed', 'ความเร็วตอนย่อง') },
+  { id: 'submerged_mining_speed', field: 'SUBMERGED_MINING_SPEED', since: '1.21.1', label: t('Underwater mining speed', 'ความเร็วขุดใต้น้ำ') },
+  { id: 'sweeping_damage_ratio', field: 'SWEEPING_DAMAGE_RATIO', since: '1.21.1', label: t('Sweeping damage', 'ความเสียหายฟันกวาด') },
+  { id: 'water_movement_efficiency', field: 'WATER_MOVEMENT_EFFICIENCY', since: '1.21.1', label: t('Water movement', 'ว่ายน้ำเร็ว') }
 ]
 
 const effectIns = (en: string, th: string): PinDef[] =>
@@ -377,7 +454,8 @@ export const NODE_DEFS: NodeDef[] = [
     inputs: [
       texIn('texture', 'Icon texture', 'ไอคอน / เท็กซ์เจอร์', true),
       { id: 'model', label: t('3D model', 'โมเดล 3D'), type: 'model', optional: true },
-      { id: 'places', label: t('Places block', 'วางเป็นบล็อก'), type: 'block', optional: true }
+      { id: 'places', label: t('Places block', 'วางเป็นบล็อก'), type: 'block', optional: true },
+      ...slots(8, 'attr', 'Stat bonus', 'โบนัสค่าสถานะ', 'attribute', { group: 'attr' })
     ],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],
     props: [
@@ -397,7 +475,10 @@ export const NODE_DEFS: NodeDef[] = [
       texIn('texture', 'Icon texture', 'ไอคอน / เท็กซ์เจอร์', true),
       { id: 'model', label: t('3D model', 'โมเดล 3D'), type: 'model', optional: true },
       { id: 'places', label: t('Places block', 'วางเป็นบล็อก'), type: 'block', optional: true },
-      ...effectIns('Effect when eaten', 'เอฟเฟกต์ตอนกิน')
+      ...effectIns('Effect when eaten', 'เอฟเฟกต์ตอนกิน'),
+      ...slots(3, 'hit', 'Ability when eaten', 'ความสามารถตอนกิน', 'hit', { group: 'hit' }),
+      { id: 'thirst', label: t('Thirst (add-on)', 'ค่าน้ำ (ส่วนเสริม)'), type: 'thirst', optional: true },
+      ...slots(8, 'attr', 'Stat bonus', 'โบนัสค่าสถานะ', 'attribute', { group: 'attr' })
     ],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],
     props: [
@@ -406,6 +487,14 @@ export const NODE_DEFS: NodeDef[] = [
       { key: 'saturation', label: t('Saturation', 'ความอิ่ม'), kind: 'float', default: 0.3, min: 0, max: 5, step: 0.1 },
       { key: 'alwaysEdible', label: t('Edible when full', 'กินได้แม้อิ่ม'), kind: 'bool', default: false },
       { key: 'fast', label: t('Eat fast', 'กินเร็ว'), kind: 'bool', default: false },
+      {
+        key: 'useSound',
+        label: t('Eating sound', 'เสียงตอนกิน'),
+        kind: 'select',
+        default: 'eat',
+        options: [opt('eat', 'Eat (munching)', 'กิน (เสียงเคี้ยว)'), opt('drink', 'Drink (gulping, like a potion)', 'ดื่ม (เสียงกลืน แบบขวดยา)')],
+        hint: t('Also changes the animation: drinking holds the item up like a potion.', 'เปลี่ยนท่าทางด้วย: ดื่มจะยกขึ้นแบบดื่มขวดยา')
+      },
       ...itemCommon
     ]
   },
@@ -450,7 +539,9 @@ export const NODE_DEFS: NodeDef[] = [
       texIn(),
       { id: 'material', label: t('Material (optional: iron)', 'วัสดุ (ไม่ใส่ = เหล็ก)'), type: 'toolMat', optional: true },
       { id: 'model', label: t('3D model', 'โมเดล 3D'), type: 'model', optional: true },
-      ...effectIns('Effect on hit target', 'เอฟเฟกต์ใส่ศัตรูที่ตี')
+      ...effectIns('Effect on hit target', 'เอฟเฟกต์ใส่ศัตรูที่ตี'),
+      ...slots(3, 'hit', 'Hit ability', 'ความสามารถตอนตี', 'hit', { group: 'hit' }),
+      ...slots(8, 'attr', 'Stat bonus', 'โบนัสค่าสถานะ', 'attribute', { group: 'attr' })
     ],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],
     props: [
@@ -489,7 +580,24 @@ export const NODE_DEFS: NodeDef[] = [
         showIf: (data) => data.wearOnHead === true,
         hint: t('Off: it can only be dragged / shift-clicked into the helmet slot.', 'ปิด: ใส่ได้เฉพาะลาก/Shift+คลิกเข้าช่องหมวกเท่านั้น')
       },
-      { key: 'rarity', label: t('Rarity', 'ความหายาก'), kind: 'select', default: 'common', options: itemCommon[1].options }
+      { key: 'rarity', label: t('Rarity', 'ความหายาก'), kind: 'select', default: 'common', options: itemCommon[1].options },
+      {
+        key: 'unbreakable',
+        label: t('Unbreakable (never breaks)', 'ไม่มีวันพัง'),
+        kind: 'bool',
+        default: false,
+        hint: t('Never loses durability. The tooltip says "Unbreakable".', 'ไม่เสียความคงทนเลย คำอธิบายไอเทมจะขึ้นว่า "Unbreakable"')
+      },
+      {
+        key: 'durability',
+        label: t('Durability (0 = from the material)', 'ความคงทน (0 = ตามวัสดุ)'),
+        kind: 'int',
+        default: 0,
+        min: 0,
+        max: 100000,
+        showIf: (d) => d.unbreakable !== true,
+        hint: t('How many uses before it breaks. Iron tools: 250, diamond: 1561.', 'ใช้ได้กี่ครั้งก่อนพัง — เครื่องมือเหล็ก 250, เพชร 1561')
+      }
     ]
   },
 
@@ -547,6 +655,298 @@ export const NODE_DEFS: NodeDef[] = [
       { key: 'rotatable', label: t('Faces the player when placed', 'หันหน้าเข้าหาผู้เล่นตอนวาง'), kind: 'bool', default: true },
       { key: 'solid', label: t('Has collision', 'มีการชน'), kind: 'bool', default: true },
       ...blockCommon
+    ]
+  },
+
+  {
+    type: 'crop',
+    category: 'farm',
+    title: t('Crop (plant)', 'พืช (ปลูกได้)'),
+    description: t(
+      'A plant that grows in stages on farmland. Wire its Block pin into a seeds Item\'s "Places block" pin. Harvest by breaking (replant like wheat) or pick it and let it grow back after a cooldown; picking can be a click, holding the button or standing still for a while, with a timer on screen.',
+      'พืชที่โตเป็นระยะบนดินไถ ต่อขา "บล็อก" เข้าขา "วางเป็นบล็อก" ของไอเทมเมล็ด เก็บได้แบบทุบแล้วปลูกใหม่ (แบบข้าวสาลี) หรือเก็บแล้วรอโตใหม่ตามเวลาคูลดาวน์ การเก็บเป็นแบบคลิก กดค้าง หรือกดแล้วยืนนิ่งตามเวลาได้ มีเวลาแสดงบนจอ'
+    ),
+    icon: '🌱',
+    registers: true,
+    inputs: [
+      ...slots(8, 'stage', 'Growth stage', 'ระยะการโต', 'texture', { group: 'stage' }),
+      { id: 'produce', label: t('Harvest (item)', 'ผลผลิต (ไอเทม)'), type: 'item' },
+      { id: 'ui', label: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'), type: 'harvestUi', optional: true }
+    ],
+    outputs: [{ id: 'block', label: t('Block (for the seeds)', 'บล็อก (ต่อเข้าเมล็ด)'), type: 'block' }],
+    props: [
+      ...nameProps('my_crop', 'My Crop'),
+      {
+        key: 'look',
+        label: t('Look', 'รูปทรง'),
+        kind: 'select',
+        default: 'crop',
+        options: [opt('crop', '# like wheat', '# แบบข้าวสาลี'), opt('cross', 'X like a flower / berry bush', 'X แบบดอกไม้ / พุ่มเบอร์รี')]
+      },
+      {
+        key: 'soil',
+        label: t('Grows on', 'ปลูกบน'),
+        kind: 'select',
+        default: 'farmland',
+        options: [opt('farmland', 'Farmland', 'ดินไถ'), opt('dirt', 'Farmland, dirt and grass', 'ดินไถ ดิน และหญ้า')]
+      },
+      {
+        key: 'growSeconds',
+        label: t('Time to grow (seconds, 0 = like wheat)', 'เวลาโตเต็มที่ (วินาที, 0 = แบบข้าวสาลี)'),
+        kind: 'int',
+        default: 0,
+        min: 0,
+        max: 36000,
+        hint: t('0: grows at random like vanilla crops (faster on wet farmland).', '0: โตแบบสุ่มเหมือนพืชในเกม (ดินไถเปียกโตเร็วกว่า)')
+      },
+      {
+        key: 'mode',
+        label: t('After harvest', 'หลังเก็บเกี่ยว'),
+        kind: 'select',
+        default: 'replant',
+        options: [
+          opt('replant', 'Gone: plant the seeds again (like wheat)', 'หายไป ต้องปลูกเมล็ดใหม่ (แบบข้าวสาลี)'),
+          opt('regrow', 'Stays and grows back after a cooldown', 'ต้นยังอยู่ โตใหม่ตามเวลาคูลดาวน์')
+        ]
+      },
+      {
+        key: 'regrowSeconds',
+        label: t('Cooldown before the next harvest (seconds)', 'คูลดาวน์ก่อนเก็บรอบถัดไป (วินาที)'),
+        kind: 'int',
+        default: 60,
+        min: 1,
+        max: 36000,
+        showIf: (d) => d.mode === 'regrow'
+      },
+      {
+        key: 'regrowStage',
+        label: t('Goes back to stage', 'ย้อนกลับไประยะที่'),
+        kind: 'int',
+        default: 0,
+        min: 0,
+        max: 7,
+        hint: t('0 = the start. The cooldown is the time back to fully grown.', '0 = เริ่มต้น เวลาคูลดาวน์คือเวลาจนโตเต็มที่อีกครั้ง'),
+        showIf: (d) => d.mode === 'regrow'
+      },
+      {
+        key: 'input',
+        label: t('How to harvest', 'วิธีเก็บเกี่ยว'),
+        kind: 'select',
+        default: 'break',
+        options: [
+          opt('break', 'Break it (vanilla)', 'ทุบ (แบบปกติ)'),
+          opt('click', 'Right-click', 'คลิกขวา'),
+          opt('hold', 'Hold right-click for a while', 'กดคลิกขวาค้างตามเวลา'),
+          opt('stand', 'Right-click once, then stand still', 'คลิกขวาครั้งเดียวแล้วยืนนิ่งตามเวลา')
+        ],
+        hint: t(
+          'Hold: releasing the button stops it. Stand still: moving stops it and you have to click again. A timer shows above the hotbar.',
+          'กดค้าง: ปล่อยปุ่มแล้วหยุด · ยืนนิ่ง: ขยับแล้วหยุด ต้องคลิกใหม่ · มีเวลาแสดงเหนือแถบไอเทม'
+        )
+      },
+      {
+        key: 'harvestSeconds',
+        label: t('Harvest time (seconds)', 'เวลาเก็บ (วินาที)'),
+        kind: 'float',
+        default: 2,
+        min: 0.5,
+        max: 120,
+        step: 0.5,
+        showIf: (d) => d.input === 'hold' || d.input === 'stand'
+      },
+      {
+        key: 'give',
+        label: t('Harvest goes into the inventory', 'ผลผลิตเข้าตัวทันที'),
+        kind: 'bool',
+        default: false,
+        hint: t(
+          'Off: drops on the ground like normal. On: straight into the inventory (what does not fit drops at your feet).',
+          'ปิด: ดรอปบนพื้นแบบปกติ · เปิด: เข้าช่องเก็บของเลย (ถ้าเต็มจะดรอปที่เท้า)'
+        ),
+        showIf: (d) => d.input === 'click' || d.input === 'hold' || d.input === 'stand' || d.mode === 'regrow'
+      },
+      { key: 'produceMin', label: t('Harvest count min', 'จำนวนผลผลิตต่ำสุด'), kind: 'int', default: 1, min: 1, max: 64 },
+      { key: 'produceMax', label: t('Harvest count max', 'จำนวนผลผลิตสูงสุด'), kind: 'int', default: 2, min: 1, max: 64 },
+      {
+        key: 'seedMin',
+        label: t('Seeds back min', 'ได้เมล็ดคืนต่ำสุด'),
+        kind: 'int',
+        default: 1,
+        min: 0,
+        max: 64,
+        showIf: (d) => d.mode !== 'regrow'
+      },
+      { key: 'seedMax', label: t('Seeds back max', 'ได้เมล็ดคืนสูงสุด'), kind: 'int', default: 3, min: 0, max: 64, showIf: (d) => d.mode !== 'regrow' }
+    ]
+  },
+
+  {
+    type: 'gameCrop',
+    category: 'farm',
+    title: t('Harvest a game crop', 'เก็บเกี่ยวพืชในเกม'),
+    description: t(
+      "Gives a crop of Minecraft, Farmer's Delight or another mod the hand-harvest system: right-click, hold right-click or right-click and stand still, with a timer on screen. It grows like in the game; when grown it can break like normal, replant itself or go back to a younger stage.",
+      "ให้พืชของ Minecraft, Farmer's Delight หรือม็อดอื่นใช้ระบบเก็บเกี่ยวด้วยมือ: คลิกขวา กดค้าง หรือคลิกแล้วยืนนิ่ง มีเวลาแสดงบนจอ พืชโตตามปกติของเกม เมื่อโตแล้วเก็บแบบปกติ ปลูกใหม่เอง หรือย้อนกลับไประยะที่เลือกได้"
+    ),
+    icon: '🌾',
+    inputs: [{ id: 'ui', label: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'), type: 'harvestUi', optional: true }],
+    outputs: [],
+    props: [
+      {
+        key: 'crops',
+        label: t('Crops (pick any number)', 'พืช (เลือกได้หลายอย่าง)'),
+        kind: 'multi',
+        default: ['minecraft:wheat'],
+        hint: t('All of them use the settings below.', 'ทุกพืชที่เลือกใช้ค่าด้านล่างเหมือนกัน'),
+        options: [
+          opt('minecraft:wheat', 'Wheat', 'ข้าวสาลี'),
+          opt('minecraft:carrots', 'Carrots', 'แครอท'),
+          opt('minecraft:potatoes', 'Potatoes', 'มันฝรั่ง'),
+          opt('minecraft:beetroots', 'Beetroots', 'บีทรูท'),
+          opt('minecraft:nether_wart', 'Nether wart', 'หูดเนเธอร์'),
+          opt('minecraft:sweet_berry_bush', 'Sweet berry bush', 'พุ่มสวีทเบอร์รี'),
+          opt('minecraft:cocoa', 'Cocoa', 'โกโก้'),
+          opt('farmersdelight:cabbages', "Cabbages (Farmer's Delight)", "กะหล่ำปลี (Farmer's Delight)"),
+          opt('farmersdelight:onions', "Onions (Farmer's Delight)", "หัวหอม (Farmer's Delight)"),
+          opt('farmersdelight:tomatoes', "Tomatoes (Farmer's Delight)", "มะเขือเทศ (Farmer's Delight)"),
+          opt('farmersdelight:rice_panicles', "Rice (Farmer's Delight)", "ข้าว (Farmer's Delight)")
+        ]
+      },
+      {
+        key: 'others',
+        label: t('Other crops (block IDs, comma separated)', 'พืชอื่น (ID บล็อก คั่นด้วยจุลภาค)'),
+        kind: 'text',
+        default: '',
+        hint: t('Blocks with an "age" property that grow, e.g. mymod:corn, othermod:chili', 'บล็อกที่มีค่า "age" และโตได้ เช่น mymod:corn, othermod:chili')
+      },
+      {
+        key: 'input',
+        label: t('How to harvest', 'วิธีเก็บเกี่ยว'),
+        kind: 'select',
+        default: 'hold',
+        options: [
+          opt('click', 'Right-click', 'คลิกขวา'),
+          opt('hold', 'Hold right-click for a while', 'กดคลิกขวาค้างตามเวลา'),
+          opt('stand', 'Right-click once, then stand still', 'คลิกขวาครั้งเดียวแล้วยืนนิ่งตามเวลา')
+        ],
+        hint: t('Breaking the crop still works like in the game.', 'ทุบพืชยังได้เหมือนในเกม')
+      },
+      {
+        key: 'harvestSeconds',
+        label: t('Harvest time (seconds)', 'เวลาเก็บ (วินาที)'),
+        kind: 'float',
+        default: 2,
+        min: 0.5,
+        max: 120,
+        step: 0.5,
+        showIf: (d) => d.input !== 'click'
+      },
+      {
+        key: 'after',
+        label: t('After harvest', 'หลังเก็บเกี่ยว'),
+        kind: 'select',
+        default: 'normal',
+        options: [
+          opt(
+            'normal',
+            'Like the game / the mod (berries and tomatoes are picked, the rest breaks)',
+            'แบบปกติของเกม / ม็อด (เบอร์รีและมะเขือเทศเด็ดผล อย่างอื่นแตก)'
+          ),
+          opt('replant', 'Replants itself (one seed is used)', 'ปลูกใหม่เอง (ใช้เมล็ด 1 เมล็ด)'),
+          opt('regrow', 'Stays and goes back to a stage', 'ต้นยังอยู่ ย้อนกลับไประยะที่เลือก')
+        ]
+      },
+      {
+        key: 'backStage',
+        label: t('Goes back to stage', 'ย้อนกลับไประยะที่'),
+        kind: 'int',
+        default: 1,
+        min: 0,
+        max: 15,
+        hint: t('0 = the start. It then grows again like in the game.', '0 = เริ่มต้น จากนั้นโตใหม่ตามปกติของเกม'),
+        showIf: (d) => d.after === 'regrow'
+      },
+      {
+        key: 'give',
+        label: t('Harvest goes into the inventory', 'ผลผลิตเข้าตัวทันที'),
+        kind: 'bool',
+        default: false,
+        hint: t(
+          'Off: drops on the ground like normal. On: straight into the inventory (what does not fit drops at your feet).',
+          'ปิด: ดรอปบนพื้นแบบปกติ · เปิด: เข้าช่องเก็บของเลย (ถ้าเต็มจะดรอปที่เท้า)'
+        )
+      }
+    ]
+  },
+  {
+    type: 'harvestUi',
+    category: 'farm',
+    title: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'),
+    description: t(
+      'How the harvest timer looks on screen. Wire it into Crop or Harvest a game crop nodes (one look can be used by many crops).',
+      'หน้าตาเวลาเก็บเกี่ยวบนจอ ต่อเข้าโหนดพืช หรือโหนดเก็บเกี่ยวพืชในเกม (ใช้กับหลายพืชได้)'
+    ),
+    icon: '⏳',
+    inputs: [],
+    outputs: [{ id: 'out', label: t('Timer look', 'หน้าตาเวลา'), type: 'harvestUi' }],
+    props: [
+      {
+        key: 'style',
+        label: t('Template', 'แบบ'),
+        kind: 'select',
+        default: 'bar',
+        options: [
+          opt('text', 'Text: ■■■□□ and the seconds', 'ข้อความ: ■■■□□ และวินาที'),
+          opt('bar', 'Bar that fills up', 'หลอดที่เพิ่มขึ้น'),
+          opt('ring', 'Circle that fills around the crosshair', 'วงกลมที่เต็มขึ้นรอบเป้ากลางจอ')
+        ]
+      },
+      { key: 'color', label: t('Colour', 'สี'), kind: 'color', default: '#4ade80' },
+      { key: 'back', label: t('Background colour', 'สีพื้นหลัง'), kind: 'color', default: '#000000', showIf: (d) => d.style !== 'text' },
+      {
+        key: 'backOpacity',
+        label: t('Background opacity (%)', 'ความทึบพื้นหลัง (%)'),
+        kind: 'int',
+        default: 50,
+        min: 0,
+        max: 100,
+        showIf: (d) => d.style !== 'text'
+      },
+      {
+        key: 'place',
+        label: t('Position', 'ตำแหน่ง'),
+        kind: 'select',
+        default: 'crosshair',
+        options: [
+          opt('crosshair', 'Under the crosshair', 'ใต้เป้ากลางจอ'),
+          opt('hotbar', 'Above the hotbar', 'เหนือแถบไอเทม'),
+          opt('top', 'Top of the screen', 'ด้านบนของจอ')
+        ],
+        showIf: (d) => d.style !== 'ring'
+      },
+      {
+        key: 'offset',
+        label: t('Move down (pixels, negative = up)', 'เลื่อนลง (พิกเซล, ติดลบ = ขึ้น)'),
+        kind: 'int',
+        default: 0,
+        min: -200,
+        max: 200,
+        showIf: (d) => d.style !== 'ring'
+      },
+      { key: 'width', label: t('Bar width', 'ความยาวหลอด'), kind: 'int', default: 60, min: 10, max: 300, showIf: (d) => d.style === 'bar' },
+      { key: 'height', label: t('Bar height', 'ความสูงหลอด'), kind: 'int', default: 4, min: 1, max: 20, showIf: (d) => d.style === 'bar' },
+      { key: 'radius', label: t('Circle size (radius)', 'ขนาดวงกลม (รัศมี)'), kind: 'int', default: 9, min: 3, max: 40, showIf: (d) => d.style === 'ring' },
+      {
+        key: 'thickness',
+        label: t('Line thickness', 'ความหนาเส้น'),
+        kind: 'int',
+        default: 3,
+        min: 1,
+        max: 40,
+        hint: t('As large as the size = a filled circle.', 'เท่ากับขนาด = วงกลมทึบ'),
+        showIf: (d) => d.style === 'ring'
+      },
+      { key: 'time', label: t('Show the seconds left', 'แสดงวินาทีที่เหลือ'), kind: 'bool', default: true }
     ]
   },
 
@@ -643,7 +1043,8 @@ export const NODE_DEFS: NodeDef[] = [
       { id: 'material', label: t('Armor material (optional: iron)', 'วัสดุเกราะ (ไม่ใส่ = เหล็ก)'), type: 'armorMat', optional: true },
       texIn('icon', 'Icon texture', 'ไอคอน'),
       { id: 'geo', label: t('3D model (Blockbench / .json)', 'โมเดล 3D (Blockbench / .json)'), type: 'geo', optional: true },
-      ...effectIns('Effect while worn', 'เอฟเฟกต์ตอนสวม')
+      ...effectIns('Effect while worn', 'เอฟเฟกต์ตอนสวม'),
+      ...slots(8, 'attr', 'Stat bonus', 'โบนัสค่าสถานะ', 'attribute', { group: 'attr' })
     ],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],
     props: [
@@ -715,6 +1116,108 @@ export const NODE_DEFS: NodeDef[] = [
       { key: 'chance', label: t('Chance', 'โอกาส'), kind: 'float', default: 1, min: 0, max: 1, step: 0.05 },
       { key: 'particles', label: t('Show particles', 'แสดงอนุภาค (particle)'), kind: 'bool', default: true },
       { key: 'showIcon', label: t('Show status icon', 'แสดงไอคอนสถานะ'), kind: 'bool', default: true }
+    ]
+  },
+
+  {
+    type: 'attribute',
+    category: 'effect',
+    title: t('Stat Bonus (attribute)', 'โบนัสค่าสถานะ (Attribute)'),
+    description: t(
+      'Changes a stat of the player while the item is held, worn or carried: max health, armor, speed, jump, reach and more. Wire it into an item, food, tool or armor piece.',
+      'เปลี่ยนค่าสถานะของผู้เล่นตอนถือ สวม หรือพกไอเทม: เลือดสูงสุด เกราะ ความเร็ว กระโดด ระยะเอื้อม ฯลฯ ต่อเข้าไอเทม อาหาร เครื่องมือ หรือชิ้นเกราะ'
+    ),
+    icon: '📈',
+    inputs: [],
+    outputs: [{ id: 'out', label: t('Stat bonus', 'โบนัสค่าสถานะ'), type: 'attribute' }],
+    props: [
+      {
+        key: 'attribute',
+        label: t('Stat', 'ค่าสถานะ'),
+        kind: 'select',
+        default: 'max_health',
+        options: ATTRIBUTES.map((a) => ({
+          value: a.id,
+          label: a.since === '1.16.5' ? a.label : t(`${a.label.en} (${a.since}+)`, `${a.label.th} (${a.since}+)`)
+        }))
+      },
+      {
+        key: 'amount',
+        label: t('Amount', 'ค่า'),
+        kind: 'float',
+        default: 4,
+        min: -1000,
+        max: 1000,
+        step: 0.5,
+        hint: t('Negative values lower the stat. Max health: 2 = one heart.', 'ค่าติดลบคือลดลง — เลือดสูงสุด: 2 = 1 หัวใจ')
+      },
+      {
+        key: 'operation',
+        label: t('How it adds up', 'วิธีคิด'),
+        kind: 'select',
+        default: 'add',
+        options: [
+          opt('add', 'Add the amount (+4)', 'บวกเพิ่มตามค่า (+4)'),
+          opt('base', 'Percent of the base value (0.5 = +50 %)', 'เปอร์เซ็นต์ของค่าพื้นฐาน (0.5 = +50 %)'),
+          opt('total', 'Percent of the total (0.5 = +50 %)', 'เปอร์เซ็นต์ของค่ารวม (0.5 = +50 %)')
+        ]
+      },
+      {
+        key: 'slot',
+        label: t('Active when', 'ทำงานเมื่อ'),
+        kind: 'select',
+        default: 'auto',
+        options: [
+          opt('auto', 'Auto (armor: worn, other items: main hand)', 'อัตโนมัติ (เกราะ: ตอนสวม, อื่น ๆ: ถือมือหลัก)'),
+          opt('mainhand', 'Held in the main hand', 'ถือในมือหลัก'),
+          opt('offhand', 'Held in the off hand', 'ถือในมือรอง'),
+          opt('hand', 'Held in either hand', 'ถือมือใดก็ได้'),
+          opt('head', 'Worn on the head', 'สวมที่หัว'),
+          opt('chest', 'Worn on the body', 'สวมที่ลำตัว'),
+          opt('legs', 'Worn on the legs', 'สวมที่ขา'),
+          opt('feet', 'Worn on the feet', 'สวมที่เท้า'),
+          opt('inventory', 'Anywhere in the inventory', 'อยู่ที่ไหนก็ได้ในช่องเก็บของ')
+        ]
+      },
+      { key: 'tooltip', label: t('Show in the item tooltip', 'แสดงในคำอธิบายไอเทม'), kind: 'bool', default: true }
+    ]
+  },
+  {
+    type: 'hitAbility',
+    category: 'effect',
+    title: t('Ability (on hit / when eaten)', 'ความสามารถ (ตอนตี / ตอนกิน)'),
+    description: t(
+      'Something that happens: set on fire, lightning, freeze like powder snow, random teleport or clearing all effects. On a Tool / Weapon it happens to the target that is hit; on Food it happens to whoever eats it.',
+      'สิ่งที่จะเกิดขึ้น: ติดไฟ, ฟ้าผ่า, แช่แข็งแบบหิมะผง, วาร์ปสุ่ม หรือล้างเอฟเฟกต์ทั้งหมด — ต่อเข้าเครื่องมือ / อาวุธ จะเกิดกับเป้าหมายที่ตีโดน ต่อเข้าอาหาร จะเกิดกับคนที่กิน'
+    ),
+    icon: '⚡',
+    inputs: [],
+    outputs: [{ id: 'out', label: t('Ability', 'ความสามารถ'), type: 'hit' }],
+    props: [
+      {
+        key: 'ability',
+        label: t('Ability', 'ความสามารถ'),
+        kind: 'select',
+        default: 'fire',
+        options: [
+          opt('fire', 'Set on fire', 'ติดไฟ'),
+          opt('lightning', 'Summon lightning', 'เรียกสายฟ้า'),
+          opt('freeze', 'Freeze like powder snow (frost + slowness, 1.18+)', 'แช่แข็งแบบหิมะผง (หนาวสั่น + ช้าลง, 1.18+)'),
+          opt('teleport', 'Random teleport (like a chorus fruit)', 'วาร์ปสุ่ม (แบบผลคอรัส)'),
+          opt('clear', 'Clear all effects (like milk)', 'ล้างเอฟเฟกต์ทั้งหมด (แบบนม)')
+        ]
+      },
+      {
+        key: 'seconds',
+        label: t('Duration (seconds)', 'ระยะเวลา (วินาที)'),
+        kind: 'float',
+        default: 4,
+        min: 0.5,
+        max: 600,
+        step: 0.5,
+        showIf: (d) => d.ability === 'fire' || d.ability === 'freeze' || d.ability === undefined
+      },
+      { key: 'chance', label: t('Chance', 'โอกาส'), kind: 'float', default: 1, min: 0, max: 1, step: 0.05 }
     ]
   },
 
@@ -949,6 +1452,129 @@ export const NODE_DEFS: NodeDef[] = [
     ]
   },
 
+  // ───────────── Mobs ─────────────
+  {
+    type: 'mob',
+    category: 'mob',
+    title: t('Mob / Monster', 'ม็อบ / มอนสเตอร์'),
+    description: t(
+      'A creature with its own spawn egg: a game body (zombie, skeleton, spider, cow, pig) with your skin, or a 3D Blockbench model with animations (GeckoLib, 1.20.1 and 1.21.1). Health, damage, speed, natural spawning and drops can be set.',
+      'สิ่งมีชีวิตพร้อมไข่เกิด: ใช้ร่างจากเกม (ซอมบี้ โครงกระดูก แมงมุม วัว หมู) กับสกินของเรา หรือโมเดล 3D จาก Blockbench พร้อมอนิเมชัน (GeckoLib, 1.20.1 และ 1.21.1) ตั้งเลือด ดาเมจ ความเร็ว การเกิดตามธรรมชาติ และของดรอปได้'
+    ),
+    icon: '👾',
+    registers: true,
+    inputs: [
+      texIn('skin', 'Skin (game body)', 'สกิน (ร่างจากเกม)', true),
+      { id: 'geo', label: t('3D model (Blockbench)', 'โมเดล 3D (Blockbench)'), type: 'geo', optional: true },
+      ...slots(3, 'drop', 'Drop', 'ของดรอป', 'item', { group: 'drop' })
+    ],
+    outputs: [{ id: 'out', label: t('Spawn egg', 'ไข่เกิด'), type: 'item' }],
+    props: [
+      ...nameProps('my_mob', 'My Mob'),
+      {
+        key: 'body',
+        label: t('Body', 'ร่าง'),
+        kind: 'select',
+        default: 'zombie',
+        options: [
+          opt('zombie', 'Zombie (people shape, hostile)', 'ซอมบี้ (ร่างคน, ดุร้าย)'),
+          opt('skeleton', 'Skeleton (hostile)', 'โครงกระดูก (ดุร้าย)'),
+          opt('spider', 'Spider (hostile)', 'แมงมุม (ดุร้าย)'),
+          opt('cow', 'Cow (friendly)', 'วัว (เป็นมิตร)'),
+          opt('pig', 'Pig (friendly)', 'หมู (เป็นมิตร)'),
+          opt('model3d', '3D model (wire a 3D Armor Model node)', 'โมเดล 3D (ต่อโหนดโมเดลเกราะ 3D)')
+        ],
+        hint: t(
+          'Game bodies use the skin layout of that mob (a 64×64 zombie / skeleton, 64×32 spider, 64×64 cow, 64×64 pig).',
+          'ร่างจากเกมใช้รูปแบบสกินของม็อบนั้น (ซอมบี้/โครงกระดูก 64×64, แมงมุม 64×32, วัว 64×64, หมู 64×64)'
+        )
+      },
+      {
+        key: 'behavior',
+        label: t('Behavior', 'นิสัย'),
+        kind: 'select',
+        default: 'hostile',
+        options: [
+          opt('hostile', 'Hostile: attacks players', 'ดุร้าย: โจมตีผู้เล่น'),
+          opt('neutral', 'Neutral: fights back when hit', 'เฉย ๆ: สู้กลับเมื่อโดนตี'),
+          opt('passive', 'Friendly: wanders, runs when hit', 'เป็นมิตร: เดินเล่น วิ่งหนีเมื่อโดนตี')
+        ],
+        showIf: (d) => d.body === 'model3d'
+      },
+      { key: 'health', label: t('Health (2 = 1 heart)', 'เลือด (2 = 1 หัวใจ)'), kind: 'float', default: 20, min: 1, max: 1024, step: 1 },
+      { key: 'attack', label: t('Attack damage', 'พลังโจมตี'), kind: 'float', default: 3, min: 0, max: 1000, step: 0.5 },
+      { key: 'speed', label: t('Speed (zombie 0.23, player 0.1 walk)', 'ความเร็ว (ซอมบี้ 0.23)'), kind: 'float', default: 0.25, min: 0.01, max: 2, step: 0.01 },
+      { key: 'armor', label: t('Armor', 'เกราะ'), kind: 'float', default: 0, min: 0, max: 30, step: 1 },
+      {
+        key: 'width',
+        label: t('Hitbox width (blocks)', 'ความกว้าง hitbox (บล็อก)'),
+        kind: 'float',
+        default: 0.6,
+        min: 0.1,
+        max: 8,
+        step: 0.1,
+        showIf: (d) => d.body === 'model3d'
+      },
+      {
+        key: 'height',
+        label: t('Hitbox height (blocks)', 'ความสูง hitbox (บล็อก)'),
+        kind: 'float',
+        default: 1.8,
+        min: 0.1,
+        max: 16,
+        step: 0.1,
+        showIf: (d) => d.body === 'model3d'
+      },
+      { key: 'idleAnim', label: t('Idle animation', 'อนิเมชันยืนนิ่ง'), kind: 'text', default: '', showIf: (d) => d.body === 'model3d' },
+      { key: 'walkAnim', label: t('Walk animation', 'อนิเมชันเดิน'), kind: 'text', default: '', showIf: (d) => d.body === 'model3d' },
+      { key: 'attackAnim', label: t('Attack animation', 'อนิเมชันโจมตี'), kind: 'text', default: '', showIf: (d) => d.body === 'model3d' },
+      {
+        key: 'spawn',
+        label: t('Spawns naturally in', 'เกิดเองตามธรรมชาติใน'),
+        kind: 'select',
+        default: 'none',
+        options: [
+          opt('none', 'Nowhere (spawn egg / command only)', 'ไม่เกิดเอง (ไข่เกิด / คำสั่งเท่านั้น)'),
+          opt('overworld', 'The Overworld', 'โลกปกติ'),
+          opt('nether', 'The Nether', 'เนเธอร์'),
+          opt('end', 'The End', 'ดิเอนด์')
+        ],
+        hint: t('Natural spawning needs Minecraft 1.19.2 or newer.', 'การเกิดตามธรรมชาติใช้ได้ใน Minecraft 1.19.2 ขึ้นไป')
+      },
+      {
+        key: 'weight',
+        label: t('Spawn weight (zombie 100)', 'โอกาสเกิด (ซอมบี้ 100)'),
+        kind: 'int',
+        default: 40,
+        min: 1,
+        max: 1000,
+        showIf: (d) => d.spawn !== 'none' && d.spawn !== undefined
+      },
+      {
+        key: 'groupMin',
+        label: t('Group size min', 'จำนวนต่อกลุ่มต่ำสุด'),
+        kind: 'int',
+        default: 1,
+        min: 1,
+        max: 16,
+        showIf: (d) => d.spawn !== 'none' && d.spawn !== undefined
+      },
+      {
+        key: 'groupMax',
+        label: t('Group size max', 'จำนวนต่อกลุ่มสูงสุด'),
+        kind: 'int',
+        default: 3,
+        min: 1,
+        max: 16,
+        showIf: (d) => d.spawn !== 'none' && d.spawn !== undefined
+      },
+      { key: 'dropMin', label: t('Each drop: count min', 'ของดรอปแต่ละอย่าง: ต่ำสุด'), kind: 'int', default: 0, min: 0, max: 64 },
+      { key: 'dropMax', label: t('Each drop: count max', 'ของดรอปแต่ละอย่าง: สูงสุด'), kind: 'int', default: 2, min: 0, max: 64 },
+      { key: 'eggColor', label: t('Spawn egg colour', 'สีไข่เกิด'), kind: 'color', default: '#4b7f52' },
+      { key: 'eggSpots', label: t('Spawn egg spots', 'สีจุดไข่เกิด'), kind: 'color', default: '#e11d48' }
+    ]
+  },
+
   // ───────────── Scripts ─────────────
   {
     type: 'script',
@@ -973,6 +1599,43 @@ export const NODE_DEFS: NodeDef[] = [
         )
       },
       { key: 'code', label: t('Code', 'โค้ด'), kind: 'code', default: SCRIPT_STARTER }
+    ]
+  },
+
+  // ───────────── Add-ons (other mods) ─────────────
+  {
+    type: 'thirst',
+    category: 'addon',
+    title: t('Thirst (add-on)', 'ค่าน้ำ (ส่วนเสริม)'),
+    description: t(
+      'Water value for thirst mods. Wire it into a Food node. The mod does not need any of them: when a player has Tough As Nails, Thirst Was Taken, Thirst Was Taken 2, Legendary Survival Overhaul or Thirsty installed, eating / drinking the food also restores thirst.',
+      'ค่าน้ำสำหรับม็อดความกระหายน้ำ ต่อเข้าโหนดอาหาร — ม็อดเราไม่ต้องพึ่งม็อดพวกนี้ ถ้าผู้เล่นลง Tough As Nails, Thirst Was Taken, Thirst Was Taken 2, Legendary Survival Overhaul หรือ Thirsty ไว้ กิน/ดื่มอาหารนี้แล้วจะได้ค่าน้ำด้วย'
+    ),
+    icon: '💧',
+    inputs: [],
+    outputs: [{ id: 'out', label: t('Thirst', 'ค่าน้ำ'), type: 'thirst' }],
+    props: [
+      {
+        key: 'thirst',
+        label: t('Thirst restored (½ drop each)', 'ฟื้นค่าน้ำ (ครึ่งหยดต่อ 1)'),
+        kind: 'int',
+        default: 6,
+        min: 1,
+        max: 20,
+        hint: t('20 = a full thirst bar, like hunger points. A water bottle is about 6.', '20 = เต็มหลอด เหมือนค่าความหิว — ขวดน้ำประมาณ 6')
+      },
+      {
+        key: 'hydration',
+        label: t('Hydration (stays quenched longer)', 'ความชุ่มชื้น (อิ่มน้ำนานขึ้น)'),
+        kind: 'int',
+        default: 4,
+        min: 0,
+        max: 20,
+        hint: t(
+          'Works like food saturation: hidden water that is used up before the bar drops. Called "quenched" in Thirst Was Taken.',
+          'คล้ายความอิ่มของอาหาร: ค่าน้ำสำรองที่ถูกใช้ก่อนหลอดลด (ใน Thirst Was Taken เรียกว่า quenched)'
+        )
+      }
     ]
   },
 

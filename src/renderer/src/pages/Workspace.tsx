@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import { LOADER_LABEL, type Target } from '@core/project'
@@ -12,8 +12,15 @@ import { Inspector } from '../graph/Inspector'
 import { Dock, type DockTab } from '../graph/Dock'
 import { VanillaPanel } from '../graph/VanillaPanel'
 import { DEFAULT_LAYOUT, Resizer, useLayout } from '../components/Resizer'
-import { IDownload, IFolder, IHome, IPlay, IRedo, ISettings, IStop, IUndo, Logo } from '../components/Icons'
-import { SettingsDialog } from './SettingsDialog'
+import { IDownload, IFolder, IHome, ILayout, IPlay, IRedo, ISettings, IStop, IUndo, Logo } from '../components/Icons'
+import { SettingsDialog, type SettingsSection } from './SettingsDialog'
+import { useIde, watchGeneratedFiles } from '../ide/ideStore'
+import { ActivityBar, EditorTabs, StatusBar } from '../ide/Chrome'
+import { CodeExplorer } from '../ide/CodeExplorer'
+import { CodeView } from '../ide/CodeView'
+import { CommandPalette } from '../ide/CommandPalette'
+import { ModelEditor } from '../ide/ModelEditor'
+import { ControlsJsonPage } from '../ide/SettingsPage'
 
 /** Validation in a worker, debounced, always against the active target. */
 function useValidation() {
@@ -50,7 +57,15 @@ function useAutosave() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
     const unsub = useStore.subscribe((s, prev) => {
-      if (s.dirty && (s.nodes !== prev.nodes || s.edges !== prev.edges || s.meta !== prev.meta || s.targets !== prev.targets || !prev.dirty)) {
+      if (
+        s.dirty &&
+        (s.nodes !== prev.nodes ||
+          s.edges !== prev.edges ||
+          s.meta !== prev.meta ||
+          s.targets !== prev.targets ||
+          s.overrides !== prev.overrides ||
+          !prev.dirty)
+      ) {
         clearTimeout(timer)
         timer = setTimeout(() => void useStore.getState().save(), 1200)
       }
@@ -100,7 +115,7 @@ function progressText(msg: string, th: boolean): string {
     .replace(/^Extracting /, 'กำลังแตกไฟล์ ')
 }
 
-function Toolbar({ onSettings }: { onSettings: () => void }) {
+function Toolbar({ onSettings }: { onSettings: (section?: SettingsSection) => void }) {
   const { t, i18n } = useTranslation()
   const meta = useStore((s) => s.meta)!
   const dirty = useStore((s) => s.dirty)
@@ -135,6 +150,29 @@ function Toolbar({ onSettings }: { onSettings: () => void }) {
   }
 
   const pct = build.progress?.total ? Math.round(((build.progress.done ?? 0) / build.progress.total) * 100) : null
+  const ide = useIde((s) => s.ide)
+
+  // commands from the command palette
+  const runRef = useRef(run)
+  runRef.current = run
+  useEffect(() => {
+    const h = (e: Event) => {
+      const cmd = (e as CustomEvent<string>).detail
+      const s = useStore.getState()
+      if (cmd === 'test' && !s.build.running) void runRef.current('runClient')
+      else if (cmd === 'export' && !s.build.running) void runRef.current('build')
+      else if (cmd === 'openBuild' && target) void api.openBuildFolder(target)
+      else if (cmd === 'settings') onSettings()
+      else if (cmd === 'settings:model') onSettings('model')
+      else if (cmd === 'clean' && target && !s.build.running)
+        void api.cleanBuild(target).then(
+          () => s.toast(t('ws.cleaned')),
+          (err: Error) => s.toast(err.message, true)
+        )
+    }
+    window.addEventListener('nkw:cmd', h)
+    return () => window.removeEventListener('nkw:cmd', h)
+  }, [target, onSettings, t])
 
   return (
     <div className="titlebar">
@@ -192,10 +230,17 @@ function Toolbar({ onSettings }: { onSettings: () => void }) {
           </button>
         </>
       )}
+      <button
+        className={`btn ghost icon${ide ? ' on' : ''}`}
+        title={ide ? t('ide.classic') : t('ide.layoutIde')}
+        onClick={() => useIde.getState().setPrefs({ ide: !ide })}
+      >
+        <ILayout />
+      </button>
       <button className="btn ghost icon" title={t('ws.openBuild')} onClick={() => target && void api.openBuildFolder(target)}>
         <IFolder />
       </button>
-      <button className="btn ghost icon" title={t('home.settings')} onClick={onSettings}>
+      <button className="btn ghost icon" title={t('home.settings')} onClick={() => onSettings()}>
         <ISettings />
       </button>
     </div>
@@ -222,23 +267,70 @@ function Shortcuts({ quickAdd }: { quickAdd: React.MutableRefObject<((x: number,
         ;(document.querySelector('.titlebar .btn.primary') as HTMLButtonElement | null)?.click()
         return
       }
-      if (typing) return
+      if (typing || useIde.getState().active !== 'graph' || useIde.getState().palette) return
       if (ctrl && e.key.toLowerCase() === 'z' && !e.shiftKey) (e.preventDefault(), s.undo())
       else if (ctrl && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) (e.preventDefault(), s.redo())
       else if (ctrl && e.key.toLowerCase() === 'c') s.copy()
-      else if (ctrl && e.key.toLowerCase() === 'v') s.paste(rf.screenToFlowPosition(mouse.current))
-      else if (ctrl && e.key.toLowerCase() === 'd') (e.preventDefault(), s.duplicate())
+      else if (ctrl && e.key.toLowerCase() === 'v') {
+        // the paste event below normally handles it (with the system clipboard); this is the fallback
+        pasteSeen = false
+        const at = rf.screenToFlowPosition(mouse.current)
+        setTimeout(() => {
+          if (!pasteSeen) useStore.getState().paste(at)
+        }, 80)
+      } else if (ctrl && e.key.toLowerCase() === 'd') (e.preventDefault(), s.duplicate())
       else if (ctrl && e.key.toLowerCase() === 'e') (e.preventDefault(), s.toggleDisabled())
       else if (ctrl && e.key.toLowerCase() === 'a') (e.preventDefault(), useStore.setState({ nodes: s.nodes.map((n) => ({ ...n, selected: true })) }))
       else if (e.key === ' ' && !ctrl) (e.preventDefault(), quickAdd.current?.(mouse.current.x, mouse.current.y))
       else if (e.key.toLowerCase() === 'f' && !ctrl)
         void rf.fitView({ padding: 0.2, duration: 300, nodes: s.nodes.some((n) => n.selected) ? s.nodes.filter((n) => n.selected) : undefined })
     }
+    // copy / cut / paste go through the clipboard events: they also come from the app's Edit menu
+    // keys, and put the nodes on the system clipboard (paste into another project or window)
+    let pasteSeen = false
+    const inGraph = () => {
+      const el = document.activeElement as HTMLElement | null
+      const typing = !!el && typeof el.closest === 'function' && !!el.closest('input, textarea, select, [contenteditable="true"], .cm-editor')
+      return !typing && useIde.getState().active === 'graph' && !useIde.getState().palette
+    }
+    const onCopy = (e: ClipboardEvent) => {
+      if (!inGraph()) return
+      const text = e.type === 'cut' ? useStore.getState().cut() : useStore.getState().copy()
+      if (!text) return
+      e.clipboardData?.setData('text/plain', text)
+      e.preventDefault()
+    }
+    const onPaste = (e: ClipboardEvent) => {
+      if (!inGraph()) return
+      pasteSeen = true
+      e.preventDefault()
+      const at = rf.screenToFlowPosition(mouse.current)
+      const text = e.clipboardData?.getData('text/plain') ?? ''
+      if (!useStore.getState().paste(at, text)) useStore.getState().paste(at)
+    }
+    const cmd = (e: Event) => {
+      const name = (e as CustomEvent<string>).detail
+      if (name === 'fit') {
+        useIde.getState().setActive('graph')
+        void rf.fitView({ padding: 0.2, duration: 300 })
+      } else if (name === 'addNode') {
+        useIde.getState().setActive('graph')
+        setTimeout(() => quickAdd.current?.(window.innerWidth / 2, window.innerHeight / 2), 0)
+      }
+    }
     window.addEventListener('mousemove', move)
     window.addEventListener('keydown', key)
+    window.addEventListener('nkw:cmd', cmd)
+    document.addEventListener('copy', onCopy)
+    document.addEventListener('cut', onCopy)
+    document.addEventListener('paste', onPaste)
     return () => {
+      document.removeEventListener('copy', onCopy)
+      document.removeEventListener('cut', onCopy)
+      document.removeEventListener('paste', onPaste)
       window.removeEventListener('mousemove', move)
       window.removeEventListener('keydown', key)
+      window.removeEventListener('nkw:cmd', cmd)
     }
   }, [rf, quickAdd])
   return null
@@ -246,11 +338,20 @@ function Shortcuts({ quickAdd }: { quickAdd: React.MutableRefObject<((x: number,
 
 function WorkspaceInner() {
   const { t } = useTranslation()
-  const [leftTab, setLeftTab] = useState<'library' | 'vanilla' | 'assets'>('library')
   const [layout, setLayout] = useLayout()
+  const ide = useIde((s) => s.ide)
+  const sideView = useIde((s) => s.side)
+  const showRight = useIde((s) => s.right)
+  const tabs = useIde((s) => s.tabs)
+  const activeTab = useIde((s) => s.tabs.find((x) => x.id === s.active))
+  // the classic layout always shows a side bar
+  const leftTab = sideView ?? 'library'
+  const showLeft = !ide || sideView !== null
+  const setLeftTab = (v: typeof leftTab) => useIde.getState().setPrefs({ side: v })
   const [dockTab, setDockTab] = useState<DockTab>('problems')
   const [dockOpen, setDockOpen] = useState(true)
-  const [settings, setSettings] = useState(false)
+  const [settings, setSettings] = useState<SettingsSection | false>(false)
+  const openSettings = useCallback((section: SettingsSection = 'app') => setSettings(section), [])
   const quickAdd = useRef<((x: number, y: number) => void) | null>(null)
 
   useValidation()
@@ -267,45 +368,113 @@ function WorkspaceInner() {
     window.addEventListener('nkw:dock', h)
     return () => window.removeEventListener('nkw:dock', h)
   }, [])
+  useEffect(() => watchGeneratedFiles(), [])
+  // IDE keys (work everywhere, also while typing)
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey
+      if (!ctrl) return
+      const k = e.key.toLowerCase()
+      const i = useIde.getState()
+      if (e.shiftKey && k === 'p') (e.preventDefault(), useIde.setState({ palette: 'commands' }))
+      else if (!e.shiftKey && !e.altKey && k === 'p') (e.preventDefault(), useIde.setState({ palette: 'files' }))
+      else if (e.altKey && k === 'b') (e.preventDefault(), i.setPrefs({ right: !i.right }))
+      else if (!e.altKey && k === 'b') (e.preventDefault(), i.setPrefs({ side: i.side ? null : 'library' }))
+      else if (k === 'j') (e.preventDefault(), setDockOpen((o) => !o))
+      else if (k === 'w' && i.active !== 'graph') (e.preventDefault(), i.close(i.active))
+      else if (e.key === 'Tab') {
+        e.preventDefault()
+        const n = i.tabs.findIndex((x) => x.id === i.active)
+        i.setActive(i.tabs[(n + (e.shiftKey ? -1 : 1) + i.tabs.length) % i.tabs.length].id)
+      }
+    }
+    const cmd = (e: Event) => (e as CustomEvent<string>).detail === 'togglePanel' && setDockOpen((o) => !o)
+    window.addEventListener('keydown', key)
+    window.addEventListener('nkw:cmd', cmd)
+    return () => {
+      window.removeEventListener('keydown', key)
+      window.removeEventListener('nkw:cmd', cmd)
+    }
+  }, [])
 
   return (
-    <div className="ws">
-      <Toolbar onSettings={() => setSettings(true)} />
+    <div className={`ws${ide ? ' ide' : ''}`}>
+      <Toolbar onSettings={openSettings} />
       <div className="ws-main">
-        <aside className="side" style={{ width: layout.left }}>
-          <div className="side-tabs">
-            <button className={leftTab === 'library' ? 'on' : ''} onClick={() => setLeftTab('library')}>
-              {t('ws.library')}
-            </button>
-            <button className={leftTab === 'vanilla' ? 'on' : ''} onClick={() => setLeftTab('vanilla')}>
-              {t('ws.vanilla')}
-            </button>
-            <button className={leftTab === 'assets' ? 'on' : ''} onClick={() => setLeftTab('assets')}>
-              {t('ws.assets')}
-            </button>
-          </div>
-          <div className="side-body">{leftTab === 'library' ? <Library /> : leftTab === 'vanilla' ? <VanillaPanel /> : <AssetTree />}</div>
-        </aside>
-        <Resizer dir="x" value={layout.left} onChange={(v) => setLayout('left', v)} onReset={() => setLayout('left', DEFAULT_LAYOUT.left)} />
+        {ide && <ActivityBar onSettings={() => openSettings()} />}
+        {showLeft && (
+          <>
+            <aside className="side" style={{ width: layout.left }}>
+              {ide ? (
+                <div className="side-title">
+                  {leftTab === 'library' ? t('ws.library') : leftTab === 'vanilla' ? t('ws.vanilla') : leftTab === 'assets' ? t('ws.assets') : t('ide.code')}
+                </div>
+              ) : (
+                <div className="side-tabs">
+                  <button className={leftTab === 'library' ? 'on' : ''} onClick={() => setLeftTab('library')}>
+                    {t('ws.library')}
+                  </button>
+                  <button className={leftTab === 'vanilla' ? 'on' : ''} onClick={() => setLeftTab('vanilla')}>
+                    {t('ws.vanilla')}
+                  </button>
+                  <button className={leftTab === 'assets' ? 'on' : ''} onClick={() => setLeftTab('assets')}>
+                    {t('ws.assets')}
+                  </button>
+                  <button className={leftTab === 'code' ? 'on' : ''} onClick={() => setLeftTab('code')}>
+                    {t('ide.code')}
+                  </button>
+                </div>
+              )}
+              <div className="side-body">
+                {leftTab === 'library' ? <Library /> : leftTab === 'vanilla' ? <VanillaPanel /> : leftTab === 'assets' ? <AssetTree /> : <CodeExplorer />}
+              </div>
+            </aside>
+            <Resizer dir="x" value={layout.left} onChange={(v) => setLayout('left', v)} onReset={() => setLayout('left', DEFAULT_LAYOUT.left)} />
+          </>
+        )}
         <main className="center">
-          <Canvas quickAddRef={quickAdd} />
+          {(ide || tabs.length > 1) && <EditorTabs />}
+          <div className="editor-body">
+            <div className="editor-pane" style={{ display: activeTab?.kind === 'graph' ? undefined : 'none' }}>
+              <Canvas quickAddRef={quickAdd} />
+            </div>
+            {activeTab?.kind === 'code' && <CodeView path={activeTab.path!} />}
+            {activeTab?.kind === 'controls' && <ControlsJsonPage />}
+            {tabs
+              .filter((x) => x.kind === 'model')
+              .map((x) => (
+                <div key={x.id} className="editor-pane" style={{ display: activeTab?.id === x.id ? undefined : 'none' }}>
+                  <ModelEditor path={x.path!} wired={x.wired} />
+                </div>
+              ))}
+          </div>
           {dockOpen && (
             <Resizer dir="y" sign={-1} value={layout.dock} onChange={(v) => setLayout('dock', v)} onReset={() => setLayout('dock', DEFAULT_LAYOUT.dock)} />
           )}
           <Dock tab={dockTab} setTab={setDockTab} open={dockOpen} setOpen={setDockOpen} height={layout.dock} />
         </main>
-        <Resizer dir="x" sign={-1} value={layout.right} onChange={(v) => setLayout('right', v)} onReset={() => setLayout('right', DEFAULT_LAYOUT.right)} />
-        <aside className="side right" style={{ width: layout.right }}>
-          <div className="side-tabs">
-            <button className="on">{t('ws.inspector')}</button>
-          </div>
-          <div className="side-body">
-            <Inspector />
-          </div>
-        </aside>
+        {(!ide || showRight) && (
+          <>
+            <Resizer dir="x" sign={-1} value={layout.right} onChange={(v) => setLayout('right', v)} onReset={() => setLayout('right', DEFAULT_LAYOUT.right)} />
+            <aside className="side right" style={{ width: layout.right }}>
+              {ide ? (
+                <div className="side-title">{t('ws.inspector')}</div>
+              ) : (
+                <div className="side-tabs">
+                  <button className="on">{t('ws.inspector')}</button>
+                </div>
+              )}
+              <div className="side-body">
+                <Inspector />
+              </div>
+            </aside>
+          </>
+        )}
       </div>
+      {ide && <StatusBar />}
       <Shortcuts quickAdd={quickAdd} />
-      {settings && <SettingsDialog onClose={() => setSettings(false)} />}
+      <CommandPalette />
+      {settings && <SettingsDialog section={settings} onClose={() => setSettings(false)} />}
     </div>
   )
 }

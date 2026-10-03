@@ -1,4 +1,5 @@
 import type { BlockIR, ModelRef } from '../ir'
+import { usesHarvest } from './harvest'
 import { armorIconModel, fitAnimation, geoLoopName, javaModelToGeo, prepareArmorGeo, type GeoFile } from './geo'
 import { textureKeys, type JavaModel } from './model'
 import { parseJavaModel, remapTextures } from './model'
@@ -99,6 +100,32 @@ export function genAssets(ctx: GenCtx): void {
 
   // ── blocks ──
   for (const b of ir.blocks) genBlock(ctx, b, tex, modelFile)
+  // ── mobs: skin, spawn egg model ──
+  for (const m of ir.mobs) {
+    if (ctx.gecko && m.body === 'model3d' && m.geo) {
+      // GeckoLib: geo/entity, textures/entity, animations/entity (DefaultedEntityGeoModel paths)
+      files.push({ path: `${A}/geo/entity/${m.id}.geo.json`, copy: m.geo.asset })
+      tex(m.geo.texture, 'entity', m.id)
+      const animPath = `${A}/animations/entity/${m.id}.animation.json`
+      if (m.geo.animation) files.push({ path: animPath, copy: m.geo.animation.asset })
+      else files.push({ path: animPath, text: json({ format_version: '1.8.0', animations: {}, geckolib_format_version: 2 }) })
+    } else if (m.skin ?? m.geo?.texture) tex((m.skin ?? m.geo?.texture)!, 'entity', m.id)
+    const egg = `${m.id}_spawn_egg`
+    if (p.itemDefinitions) {
+      // 1.21.4: the colours live in the item model (as signed ARGB)
+      const argb = (rgb: number) => 0xff000000 | rgb | 0
+      files.push({
+        path: `${A}/items/${egg}.json`,
+        text: json({
+          model: {
+            type: 'minecraft:model',
+            model: 'minecraft:item/template_spawn_egg',
+            tints: m.egg.map((c) => ({ type: 'minecraft:constant', value: argb(c) }))
+          }
+        })
+      })
+    } else files.push({ path: `${A}/models/item/${egg}.json`, text: json({ parent: 'minecraft:item/template_spawn_egg' }) })
+  }
   for (const b of ir.blocks) if (b.hasItem) itemDefinition(b.id, `${ns}:block/${b.id}`)
 
   // ── armor textures ──
@@ -207,7 +234,33 @@ export function genAssets(ctx: GenCtx): void {
     put(`block.${ns}.${b.id}`, b.name, b.nameTh)
     put(`item.${ns}.${b.id}`, b.name, b.nameTh)
   }
+  for (const m of ir.mobs) {
+    put(`entity.${ns}.${m.id}`, m.name, m.nameTh)
+    put(`item.${ns}.${m.id}_spawn_egg`, `${m.name} Spawn Egg`, `ไข่เกิด${m.nameTh || m.name}`)
+  }
   if (ir.items.some((i) => i.headwear)) put(`tooltip.${ns}.wearable_head`, 'Can be worn on the head', 'สวมบนหัวได้')
+  // crop harvest timer
+  if (usesHarvest(ir)) {
+    put(`message.${ns}.harvest`, 'Harvesting %s %s s', 'กำลังเก็บ %s %s วิ')
+    put(`message.${ns}.harvest_notime`, 'Harvesting %s', 'กำลังเก็บ %s')
+    put(`message.${ns}.harvest_seconds`, '%s s', '%s วิ')
+    put(`message.${ns}.harvest_done`, 'Harvested!', 'เก็บแล้ว!')
+    put(`message.${ns}.harvest_moved`, 'You moved: right-click again to harvest', 'ขยับแล้ว: คลิกขวาใหม่เพื่อเก็บ')
+    put(`message.${ns}.harvest_released`, 'Keep holding right-click to harvest', 'กดคลิกขวาค้างไว้เพื่อเก็บ')
+  }
+  // stat bonus tooltip headers
+  const when: Record<string, [string, string]> = {
+    mainhand: ['When in Main Hand:', 'เมื่อถือในมือหลัก:'],
+    offhand: ['When in Off Hand:', 'เมื่อถือในมือรอง:'],
+    hand: ['When held:', 'เมื่อถือในมือ:'],
+    head: ['When on Head:', 'เมื่อสวมที่หัว:'],
+    chest: ['When on Body:', 'เมื่อสวมที่ลำตัว:'],
+    legs: ['When on Legs:', 'เมื่อสวมที่ขา:'],
+    feet: ['When on Feet:', 'เมื่อสวมที่เท้า:'],
+    inventory: ['When in Inventory:', 'เมื่ออยู่ในช่องเก็บของ:']
+  }
+  for (const slot of new Set(ir.items.flatMap((i) => (i.attributes ?? []).filter((a) => a.tooltip).map((a) => a.slot))))
+    put(`tooltip.${ns}.when.${slot}`, ...when[slot])
   for (const s of ir.sounds) if (s.subtitle || s.subtitleTh) put(`subtitles.${ns}.${s.id}`, s.subtitle || s.id, s.subtitleTh)
   for (const t of ir.tabs) {
     put(`itemGroup.${ns}.${t.id}`, t.title, t.titleTh)
@@ -247,6 +300,23 @@ function genBlock(
   let modelJson: unknown
   let states: unknown = { variants: { '': { model } } }
 
+  if (b.crop) {
+    const c = b.crop
+    const parent = c.look === 'cross' ? 'minecraft:block/cross' : 'minecraft:block/crop'
+    const key = c.look === 'cross' ? 'cross' : 'crop'
+    const renderType = !fabricLike(ctx.loader) && ctx.p.modelRenderType ? { render_type: 'minecraft:cutout' } : {}
+    c.stages.forEach((s, i) =>
+      files.push({
+        path: `${A}/models/block/${b.id}_stage${i}.json`,
+        text: json({ parent, textures: { [key]: tex(s, 'block', `${b.id}_stage${i}`) }, ...renderType })
+      })
+    )
+    const n = Math.max(1, c.stages.length)
+    const variants: Record<string, { model: string }> = {}
+    for (let age = 0; age <= 7; age++) variants[`age=${age}`] = { model: `${ns}:block/${b.id}_stage${Math.min(n - 1, Math.floor((age * n) / 8))}` }
+    files.push({ path: `${A}/blockstates/${b.id}.json`, text: json({ variants }) })
+    return
+  }
   if (b.kind === 'model' && b.model) {
     modelJson = modelFile(b.model, 'block', b.id, true)
     if (b.rotatable)

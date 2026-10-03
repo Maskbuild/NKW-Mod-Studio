@@ -98,6 +98,8 @@ interface State {
   dir: string | null
   meta: Project['meta'] | null
   targets: Target[]
+  /** generated files edited in the code view (Project.overrides) */
+  overrides: Record<string, string>
   activeTarget: number
   nodes: FlowNode[]
   edges: Edge[]
@@ -127,6 +129,8 @@ interface State {
   addNode(type: string, pos: XYPosition, data?: NodeData): string
   updateData(id: string, patch: NodeData): void
   setMeta(meta: Project['meta']): void
+  /** edits (text) or reverts (null) a generated file of a target */
+  setOverride(key: string, text: string | null): void
   setTargets(t: Target[], active?: number): void
   setDiagnostics(d: Diagnostic[]): void
   refreshAssets(): Promise<void>
@@ -135,8 +139,9 @@ interface State {
   /** clears node references to deleted assets */
   dropAssets(paths: string[]): void
   save(): Promise<void>
-  copy(): void
-  paste(at?: XYPosition): void
+  copy(): string | null
+  paste(at?: XYPosition, text?: string): boolean
+  cut(): string | null
   duplicate(): void
   /** disables the selected nodes (or the given ones), or enables them when all are already disabled */
   toggleDisabled(ids?: string[]): void
@@ -154,6 +159,7 @@ export const useStore = create<State>((set, get) => ({
   dir: null,
   meta: null,
   targets: [],
+  overrides: {},
   activeTarget: 0,
   nodes: [],
   edges: [],
@@ -184,6 +190,7 @@ export const useStore = create<State>((set, get) => ({
       dir,
       meta: p.meta,
       targets: p.targets,
+      overrides: p.overrides ?? {},
       activeTarget: Math.min(p.activeTarget, p.targets.length - 1),
       nodes: f.nodes,
       edges: f.edges,
@@ -205,7 +212,14 @@ export const useStore = create<State>((set, get) => ({
   project() {
     const s = get()
     if (!s.meta) return null
-    return { schemaVersion: 1, meta: s.meta, targets: s.targets, activeTarget: s.activeTarget, graph: fromFlow(s.nodes, s.edges) }
+    return {
+      schemaVersion: 1,
+      meta: s.meta,
+      targets: s.targets,
+      activeTarget: s.activeTarget,
+      graph: fromFlow(s.nodes, s.edges),
+      ...(Object.keys(s.overrides).length ? { overrides: s.overrides } : {})
+    }
   },
   setGraph(nodes, edges, record = false) {
     if (record) get().checkpoint()
@@ -257,6 +271,14 @@ export const useStore = create<State>((set, get) => ({
   setMeta(meta) {
     set({ meta, dirty: true })
   },
+  setOverride(key, text) {
+    set((s) => {
+      const overrides = { ...s.overrides }
+      if (text === null) delete overrides[key]
+      else overrides[key] = text
+      return { overrides, dirty: true }
+    })
+  },
   setTargets(targets, active) {
     set((s) => ({ targets, activeTarget: Math.min(active ?? s.activeTarget, targets.length - 1), dirty: true }))
   },
@@ -305,12 +327,48 @@ export const useStore = create<State>((set, get) => ({
   copy() {
     const s = get()
     const nodes = s.nodes.filter((n) => n.selected)
+    if (!nodes.length) return null
     const ids = new Set(nodes.map((n) => n.id))
-    set({ clipboard: { nodes: strip(nodes), edges: s.edges.filter((e) => ids.has(e.source) && ids.has(e.target)) } })
+    const clip = { nodes: strip(nodes), edges: s.edges.filter((e) => ids.has(e.source) && ids.has(e.target)) }
+    set({ clipboard: clip })
+    // also as text on the system clipboard, so nodes paste into other projects too
+    return JSON.stringify({ nkwNodes: 1, ...clip })
   },
-  paste(at) {
-    const clip = get().clipboard
-    if (!clip || !clip.nodes.length) return
+  cut() {
+    const text = get().copy()
+    if (!text) return null
+    const s = get()
+    const ids = new Set(s.nodes.filter((n) => n.selected).map((n) => n.id))
+    s.checkpoint()
+    s.setGraph(
+      s.nodes.filter((n) => !ids.has(n.id)),
+      s.edges.filter((e) => !ids.has(e.source) && !ids.has(e.target))
+    )
+    return text
+  },
+  paste(at, text) {
+    let clip = get().clipboard
+    if (text !== undefined) {
+      // nodes copied as text (this or another project / window); other text is not ours
+      try {
+        const parsed = JSON.parse(text) as { nkwNodes?: number; nodes?: unknown; edges?: unknown }
+        if (parsed?.nkwNodes !== 1 || !Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) return false
+        const known = (parsed.nodes as FlowNode[]).filter(
+          (n) =>
+            n &&
+            typeof n.id === 'string' &&
+            typeof n.type === 'string' &&
+            (NODE_DEF_MAP[n.type] || n.type === 'comment' || n.type === 'reroute') &&
+            n.position &&
+            typeof n.data === 'object'
+        )
+        const keep = new Set(known.map((n) => n.id))
+        clip = { nodes: known, edges: (parsed.edges as Snapshot['edges']).filter((e) => e && keep.has(e.source) && keep.has(e.target)) }
+      } catch {
+        return false
+      }
+    }
+    if (!clip || !clip.nodes.length) return false
     get().checkpoint()
     const minX = Math.min(...clip.nodes.map((n) => n.position.x))
     const minY = Math.min(...clip.nodes.map((n) => n.position.y))
@@ -332,6 +390,7 @@ export const useStore = create<State>((set, get) => ({
       ...clip.edges.map((e) => ({ ...e, id: newId('e'), source: map.get(e.source)!, target: map.get(e.target)!, selected: false }))
     ]
     set({ nodes: all, edges, dirty: true })
+    return true
   },
   disconnect(edgeIds) {
     const s = get()

@@ -32,6 +32,10 @@ export interface ResolvedDeps {
   /** maven coordinates (maven.modrinth:slug:version) */
   farmersDelight?: string | null
   geckolib?: string | null
+  /** AppleSkin (hunger / saturation display) for test runs only */
+  appleSkin?: string | null
+  /** Cloth Config, which AppleSkin needs on Fabric / Quilt (test runs only) */
+  clothConfig?: string | null
 }
 
 export interface AssetReader {

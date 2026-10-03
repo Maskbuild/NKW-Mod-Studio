@@ -1,5 +1,6 @@
 import { NKW_ICON_PNG_BASE64 } from './icon'
 import { scriptAppliesTo } from '../scriptApi'
+import { LINK_RE, shippedCredits, type ProjectMeta } from '../project'
 import { RES, json, type GenCtx } from './types'
 
 const FORGE_LOADER_RANGE: Record<string, string> = {
@@ -83,6 +84,10 @@ export function genBuild(ctx: GenCtx): void {
   const q = (s: string) => JSON.stringify(s)
   const extraDeps: string[] = []
   // mod logo: the project's uploaded texture, else the default NKW logo
+  const license = licenseId(meta)
+  const credits = shippedCredits(meta)
+  const links = modLinks(meta)
+  for (const f of creditFiles(meta)) files.push({ path: `${RES}/${f.name}`, text: f.text })
   const logo = (path: string) => files.push(meta.icon ? { path, copy: meta.icon } : { path, base64: NKW_ICON_PNG_BASE64 })
   logo(`${RES}/assets/${ns}/icon.png`)
   if (loader === 'forge' || loader === 'neoforge') logo(`${RES}/nkw_logo.png`)
@@ -163,6 +168,8 @@ ${
     if (loader === 'quilt') for (const lib of deps.quiltLibraries ?? []) extraDeps.push(`    runtimeOnly '${lib}'`)
     // Mod Menu is added to test runs so the mod list / config screen is available in game
     if (deps.modMenu) extraDeps.push(`    modRuntimeOnly '${deps.modMenu}'`)
+    if (deps.appleSkin) extraDeps.push(`    modRuntimeOnly '${deps.appleSkin}'`)
+    if (deps.appleSkin && deps.clothConfig) extraDeps.push(`    modRuntimeOnly '${deps.clothConfig}'`)
     if (fdDep) extraDeps.push(`    modRuntimeOnly '${fdDep}'`)
     if (geckoDep) extraDeps.push(`    modImplementation '${geckoDep}'`)
     files.push({
@@ -229,7 +236,9 @@ ${toolchain}
                 .map((s) => s.trim())
                 .filter(Boolean)
             : ['Nam Kueap Wan (NKW)'],
-          license: 'All-Rights-Reserved',
+          ...(credits.length ? { contributors: credits.map((c) => (c.link ? { name: creditTitle(c), contact: { homepage: c.link } } : creditTitle(c))) } : {}),
+          ...(links.homepage || links.issues ? { contact: links } : {}),
+          license,
           environment: '*',
           icon: `assets/${ns}/icon.png`,
           entrypoints: { main: [`${pkg}.NkwMod`, ...entry('main')], client: [`${pkg}.NkwClient`, ...entry('client')] },
@@ -261,7 +270,10 @@ ${toolchain}
                   .map((s) => s.trim())
                   .filter(Boolean)
                   .map((a) => [a, 'Owner'])
-              )
+                  .concat(credits.map((c) => [c.name, creditTitle({ ...c, name: '' }) || 'Contributor']))
+              ),
+              ...(links.homepage || links.issues ? { contact: links } : {}),
+              license
             },
             intermediate_mappings: 'net.fabricmc:intermediary',
             entrypoints: { main: [`${pkg}.NkwMod`, ...entry('main')], client: [`${pkg}.NkwClient`, ...entry('client')] },
@@ -275,8 +287,8 @@ ${toolchain}
   // ── Forge / NeoForge metadata ──
   const toml = `modLoader="javafml"
 loaderVersion=${q(loader === 'forge' ? FORGE_LOADER_RANGE[p.mc] : '[1,)')}
-license="All Rights Reserved"
-
+license=${q(license === 'All-Rights-Reserved' ? 'All Rights Reserved' : license)}
+${links.issues ? `issueTrackerURL=${q(links.issues)}\n` : ''}
 [[mods]]
 modId=${q(ns)}
 version=${q(meta.version)}
@@ -284,7 +296,7 @@ displayName=${q(meta.name)}
 authors=${q(meta.authors || 'Nam Kueap Wan (NKW)')}
 description=${q(meta.description || meta.name)}
 logoFile="nkw_logo.png"
-`
+${links.homepage ? `displayURL=${q(links.homepage)}\n` : ''}${credits.length ? `credits=${q('\n' + credits.map(creditLine).join('\n'))}\n` : ''}`
   const tomlName = loader === 'neoforge' && p.mc !== '1.20.4' ? 'neoforge.mods.toml' : 'mods.toml'
   files.push({ path: `${RES}/META-INF/${tomlName}`, text: toml })
   const pack: Record<string, unknown> = { description: `${meta.name} resources`, pack_format: p.dataPack }
@@ -297,6 +309,7 @@ logoFile="nkw_logo.png"
   if (loader === 'forge') {
     const deobf = (c: string) => (p.forgeNoReobf ? `'${c}'` : `fg.deobf('${c}')`)
     if (fdDep) extraDeps.push(`    runtimeOnly ${deobf(fdDep)}`)
+    if (deps.appleSkin) extraDeps.push(`    runtimeOnly ${deobf(deps.appleSkin)}`)
     if (geckoDep) extraDeps.push(`    implementation ${deobf(geckoDep)}`)
     files.push({
       path: 'build.gradle',
@@ -373,6 +386,7 @@ tasks.named('jar', Jar).configure {
 
   // NeoForge (ModDevGradle)
   if (fdDep) extraDeps.push(`    runtimeOnly '${fdDep}'`)
+  if (deps.appleSkin) extraDeps.push(`    runtimeOnly '${deps.appleSkin}'`)
   if (geckoDep) extraDeps.push(`    implementation '${geckoDep}'`)
   files.push({
     path: 'build.gradle',
@@ -424,4 +438,53 @@ ${extraDeps.join('\n')}
 }
 `
   })
+}
+
+/** The mod's license for the metadata files: an SPDX id, a custom name, or All-Rights-Reserved. */
+function licenseId(meta: ProjectMeta): string {
+  return meta.license?.trim() || 'All-Rights-Reserved'
+}
+
+/** Website / Issues links of the mod (web addresses only). */
+function modLinks(meta: ProjectMeta): { homepage?: string; issues?: string } {
+  const ok = (s?: string) => (s && LINK_RE.test(s.trim()) ? s.trim() : undefined)
+  const out: { homepage?: string; issues?: string } = {}
+  if (ok(meta.homepage)) out.homepage = ok(meta.homepage)
+  if (ok(meta.issues)) out.issues = ok(meta.issues)
+  return out
+}
+
+/** "Name - what they made (site.com/page)", like Mod Menu's contributor lines. */
+function creditTitle(c: { name: string; work: string; link: string }): string {
+  const site = c.link.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  return [c.name, c.work].filter(Boolean).join(' - ') + (site ? ` (${site})` : '')
+}
+
+/** "Name - what they made (https://…)" for the Forge mod list, where links are clickable. */
+function creditLine(c: { name: string; work: string; link: string }): string {
+  return [c.name, c.work].filter(Boolean).join(' - ') + (c.link ? ` (${c.link})` : '')
+}
+
+/** LICENSE.txt (the license text, or a short notice) and CREDITS.txt, placed at the root of the jar. */
+function creditFiles(meta: ProjectMeta): { name: string; text: string }[] {
+  const out: { name: string; text: string }[] = []
+  const license = licenseId(meta)
+  const text = meta.licenseText?.trim()
+  if (text) out.push({ name: 'LICENSE.txt', text: text + '\n' })
+  else if (license !== 'All-Rights-Reserved') {
+    const spdx = /^[A-Za-z0-9.+-]+$/.test(license) ? `\nhttps://spdx.org/licenses/${license}.html` : ''
+    out.push({ name: 'LICENSE.txt', text: `${meta.name} is licensed under ${license}.${spdx}\n` })
+  }
+  const credits = shippedCredits(meta)
+  if (credits.length) {
+    const lines = [`${meta.name} — credits`, '']
+    for (const c of credits) {
+      lines.push(c.work ? `${c.name}: ${c.work}` : c.name)
+      if (c.folders?.length) lines.push(`  folders: ${c.folders.map((d) => d + '/').join(', ')}`)
+      if (c.assets?.length) lines.push(`  files: ${c.assets.join(', ')}`)
+      if (c.link) lines.push(`  ${c.link}`)
+    }
+    out.push({ name: 'CREDITS.txt', text: lines.join('\n') + '\n' })
+  }
+  return out
 }

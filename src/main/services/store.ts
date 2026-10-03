@@ -1,4 +1,6 @@
 import { existsSync } from 'node:fs'
+import { GameOptionsSchema } from '@core/gameOptions'
+import { ModelControlsSchema } from '@core/modelControls'
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { z } from 'zod'
@@ -22,7 +24,11 @@ export const SettingsSchema = z.object({
   recent: z
     .array(z.object({ dir: z.string().max(1024), name: z.string().max(64), modId: z.string().max(64), at: z.number() }))
     .max(20)
-    .default([])
+    .default([]),
+  /** Minecraft settings for test runs (options.txt) */
+  game: GameOptionsSchema.catch(() => GameOptionsSchema.parse({})).prefault({}),
+  /** mouse / keys of the model editor */
+  modelControls: ModelControlsSchema.catch(() => ModelControlsSchema.parse({})).prefault({})
 })
 export type Settings = z.infer<typeof SettingsSchema>
 

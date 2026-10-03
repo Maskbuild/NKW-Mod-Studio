@@ -5,7 +5,9 @@ import { api, assetUrl, type AssetEntry, type AssetKind, type AudioOptions } fro
 import { useStore } from '../store'
 import { hasFiles, importDropped, NODE_FOR_KIND } from '../drop'
 import { useAddCentered } from './Library'
-import { IChevron, IFolder, IPlus, ITrash, IUpload } from '../components/Icons'
+import { IChevron, ICube, IFolder, IPlus, ITrash, IUpload } from '../components/Icons'
+import { useIde } from '../ide/ideStore'
+import { createModel } from '../ide/models'
 
 const ROOTS: { path: string; kind: AssetKind; icon: string; en: string; th: string }[] = [
   { path: 'textures', kind: 'texture', icon: '🖼', en: 'Textures', th: 'รูป / เท็กซ์เจอร์' },
@@ -290,6 +292,9 @@ export function AssetTree() {
         <button className="btn" onClick={() => void newFolder()} title={t('ws.newFolder')}>
           <IPlus size={13} /> <IFolder size={13} />
         </button>
+        <button className="btn" onClick={() => void createModel(selFolder()?.startsWith('models') ? selFolder() : 'models')} title={t('model.new')}>
+          <ICube size={13} /> {t('model.newShort')}
+        </button>
         <button className="btn" onClick={() => setConvert(true)} title={t('ws.convertAudio')}>
           🎵 {t('ws.convertShort')}
         </button>
@@ -308,6 +313,11 @@ export function AssetTree() {
             {!menu.node.folder && (
               <div className="qa-item" onMouseDown={() => (addNode(menu.node.entry), setMenu(null))}>
                 <IPlus size={14} /> {t('ws.addToCanvas')}
+              </div>
+            )}
+            {!menu.node.folder && menu.node.path.startsWith('models/') && menu.node.path.endsWith('.json') && (
+              <div className="qa-item" onMouseDown={() => (useIde.getState().openModel(menu.node.path), setMenu(null))}>
+                <ICube size={14} /> {t('model.edit')}
               </div>
             )}
             {menu.node.folder && (

@@ -34,7 +34,7 @@ import { tags } from '@lezer/highlight'
 import { scriptBracketProblem } from '@core/compile/compile'
 import {
   JAVA_KEYWORDS,
-  RESERVED_CLASSES,
+  isReservedClass,
   SCRIPT_PRESETS,
   importInsertPos,
   javaClassCatalog,
@@ -48,7 +48,7 @@ import { L } from '../i18n'
 import { useStore, type FlowNode } from '../store'
 
 /** VS Code-like colours, defined as CSS variables (light/dark) in theme.css. */
-const highlight = HighlightStyle.define([
+export const highlight = HighlightStyle.define([
   { tag: [tags.keyword, tags.controlKeyword, tags.modifier, tags.operatorKeyword, tags.definitionKeyword, tags.moduleKeyword], color: 'var(--cm-keyword)' },
   { tag: [tags.typeName, tags.className, tags.annotation], color: 'var(--cm-type)' },
   { tag: [tags.string, tags.special(tags.string)], color: 'var(--cm-string)' },
@@ -227,7 +227,7 @@ function javaLinter(th: boolean, javaErrors: () => { line: number; message: stri
           severity: 'error',
           message: th ? 'ต้องมี public class (เช่น public class MyScript { … })' : 'Declare a public class (e.g. public class MyScript { … })'
         })
-      else if (RESERVED_CLASSES.has(cls)) {
+      else if (isReservedClass(cls)) {
         const at = text.indexOf(cls)
         out.push({
           from: at,

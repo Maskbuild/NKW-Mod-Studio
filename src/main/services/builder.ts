@@ -6,8 +6,10 @@ import { existsSync, readFileSync } from 'node:fs'
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import { compile } from '@core/compile/compile'
-import { generate, gradleJvmFor } from '@core/gen/index'
+import { FALLBACK_DEPS, TOOL_VERSIONS, generate, gradleJvmFor } from '@core/gen/index'
 import { getProfile } from '@core/gen/profiles'
+import { mergeOptionsTxt } from '@core/gameOptions'
+import { applyOverrides } from '@core/gen/overrides'
 import type { GenFile, ResolvedDeps } from '@core/gen/types'
 import { ASSET_RE, type Project, type Target } from '@core/project'
 import { ensureGradle, ensureJdk, findJdks, gradleLaunch, type Progress } from './toolchain'
@@ -92,6 +94,8 @@ export interface BuildOptions {
   log: (line: string) => void
   progress: Progress
   memoryMb?: number
+  /** options.txt entries for test runs (window size, fps, keys …) */
+  gameOptions?: Record<string, string>
 }
 
 export interface RunningBuild {
@@ -110,9 +114,11 @@ export async function startBuild(o: BuildOptions): Promise<RunningBuild> {
   o.progress('Resolving versions')
   const deps: ResolvedDeps = await resolveDeps(o.target, o.toolsDir)
   const outDir = buildDir(o.projectDir, o.target)
-  const files = generate(ir, o.target, deps, { readText: (a) => readFileSyncUtf8(assetPath(o.projectDir, a)) })
+  const generated = generate(ir, o.target, deps, { readText: (a) => readFileSyncUtf8(assetPath(o.projectDir, a)) })
+  const { files, edited } = applyOverrides(generated, o.project, o.target)
   const changed = await writeGenerated(o.projectDir, outDir, files)
   o.log(`[NKW] Generated ${files.length} files (${changed} changed) → ${outDir}`)
+  if (edited.size) o.log(`[NKW] Using ${edited.size} file(s) edited in the code view: ${[...edited].join(', ')}`)
 
   const gradleJdk = await ensureJdk(o.toolsDir, gradleJvmFor(deps.gradle), o.progress, o.allowDownload)
   const targetJdk = profile.java === gradleJdk.major ? gradleJdk : await ensureJdk(o.toolsDir, profile.java, o.progress, o.allowDownload)
@@ -137,6 +143,12 @@ export async function startBuild(o: BuildOptions): Promise<RunningBuild> {
     GRADLE_USER_HOME: join(o.toolsDir, 'gradle-home')
   }
   delete env.ELECTRON_RUN_AS_NODE
+  if (o.task === 'runClient' && o.gameOptions) {
+    const file = join(outDir, 'run', 'options.txt')
+    await mkdir(dirname(file), { recursive: true })
+    const old = existsSync(file) ? await readFile(file, 'utf8') : ''
+    await writeFile(file, mergeOptionsTxt(old, o.gameOptions))
+  }
   if (o.task === 'runClient' && profile.smithingTransform && !existsSync(join(outDir, 'run', 'saves', 'NKW Test')))
     o.log(
       '[NKW] Tip: create a world named "NKW Test" once — later tests will open it automatically. / สร้างโลกชื่อ "NKW Test" ครั้งเดียว ครั้งต่อไประบบจะเข้าโลกนี้ให้อัตโนมัติ'
@@ -178,6 +190,36 @@ export async function startBuild(o: BuildOptions): Promise<RunningBuild> {
     else child.kill('SIGTERM')
   }
   return { done, stop, outDir }
+}
+
+/** A generated file for the code view: text, or null for binary files (images, sounds). */
+export interface PreviewFile {
+  path: string
+  text: string | null
+  /** the generator's own text when the file was edited in the code view */
+  generated?: string
+}
+
+/**
+ * The files "Test in game" would write for `target`, without building (code view). Uses the built-in
+ * fallback versions, so it is instant and works offline.
+ */
+export function previewFiles(projectDir: string, project: Project, target: Target): PreviewFile[] {
+  const { ir } = compile(project, target)
+  const deps = { ...TOOL_VERSIONS, ...(FALLBACK_DEPS[target.mc] ?? {}) } as ResolvedDeps
+  const files = generate(ir, target, deps, {
+    readText: (a) => {
+      try {
+        return readFileSyncUtf8(assetPath(projectDir, a))
+      } catch {
+        return ''
+      }
+    }
+  })
+  const { files: used, edited } = applyOverrides(files, project, target)
+  return used
+    .map((f, i) => ({ path: f.path, text: f.text ?? null, ...(edited.has(f.path) ? { generated: files[i].text } : {}) }))
+    .sort((a, b) => a.path.localeCompare(b.path))
 }
 
 function readFileSyncUtf8(p: string): string {

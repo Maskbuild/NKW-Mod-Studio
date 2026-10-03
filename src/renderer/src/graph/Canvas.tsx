@@ -194,7 +194,7 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
         return { id: e.id, label: `${pin ? L(pin.label) : '?'} ${incoming ? '←' : '→'} ${oname}${opin ? ` · ${L(opin.label)}` : ''}` }
       })
   }
-  const nodeAction = (action: 'duplicate' | 'delete' | 'disconnect' | 'disable') => {
+  const nodeAction = (action: 'duplicate' | 'delete' | 'disconnect' | 'disable' | 'copy') => {
     if (!menu) return
     const s = useStore.getState()
     useStore.setState({
@@ -207,7 +207,10 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
         .map((n) => n.id)
     )
     if (action === 'duplicate') s.duplicate()
-    else if (action === 'disable') s.toggleDisabled([...ids])
+    // like Ctrl+C: the copy event also puts the nodes on the system clipboard
+    else if (action === 'copy') {
+      if (!document.execCommand('copy')) s.copy()
+    } else if (action === 'disable') s.toggleDisabled([...ids])
     else {
       s.checkpoint()
       const st = useStore.getState()
@@ -284,8 +287,27 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
           </ControlButton>
         </Controls>
       </ReactFlow>
-      <div className={`canvas-tip${nodes.length < 3 ? '' : ' fade'}`}>{nodes.length < 3 ? t('ws.tips') : t('ws.selTip')}</div>
-      {qa && <QuickAdd x={qa.x} y={qa.y} pending={qa.pending} onPick={pick} onClose={() => setQa(null)} />}
+      {/* each tip shows for a few seconds, then fades out by itself (a new tip starts again) */}
+      <div key={nodes.length < 3 ? 'tips' : 'selTip'} className="canvas-tip fade">
+        {nodes.length < 3 ? t('ws.tips') : t('ws.selTip')}
+      </div>
+      {qa && (
+        <QuickAdd
+          x={qa.x}
+          y={qa.y}
+          pending={qa.pending}
+          onPick={pick}
+          onClose={() => setQa(null)}
+          onPaste={
+            !qa.pending && useStore.getState().clipboard?.nodes.length
+              ? () => {
+                  useStore.getState().paste(rf.screenToFlowPosition({ x: qa.x, y: qa.y }))
+                  setQa(null)
+                }
+              : undefined
+          }
+        />
+      )}
       {menu && (
         <>
           <div
@@ -301,6 +323,9 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
             }}
             role="menu"
           >
+            <div className="qa-item" role="menuitem" onMouseDown={() => nodeAction('copy')}>
+              <ICopy size={14} /> {t('ws.copy')} <small>Ctrl+C</small>
+            </div>
             <div className="qa-item" role="menuitem" onMouseDown={() => nodeAction('duplicate')}>
               <ICopy size={14} /> {t('ws.duplicate')} <small>Ctrl+D</small>
             </div>

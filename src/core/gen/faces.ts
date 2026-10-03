@@ -57,3 +57,15 @@ export const DEFAULT_UV: Record<Face, (a: readonly number[], b: readonly number[
 }
 
 export const isFace = (f: string): f is Face => f in CORNERS
+
+/** Rotates point p around origin o by deg degrees about one axis (Minecraft element rotation). */
+export function rotAxis(p: V3, axis: 'x' | 'y' | 'z', deg: number, o: V3): V3 {
+  const c = Math.cos((deg * Math.PI) / 180)
+  const s = Math.sin((deg * Math.PI) / 180)
+  const x = p[0] - o[0]
+  const y = p[1] - o[1]
+  const z = p[2] - o[2]
+  if (axis === 'x') return [x + o[0], y * c - z * s + o[1], y * s + z * c + o[2]]
+  if (axis === 'y') return [x * c + z * s + o[0], y + o[1], -x * s + z * c + o[2]]
+  return [x * c - y * s + o[0], x * s + y * c + o[1], z + o[2]]
+}

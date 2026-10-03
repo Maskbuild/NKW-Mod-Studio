@@ -2,8 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from 'react-i18next'
 import { shallow } from 'zustand/shallow'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
-import { CATEGORY_LABEL, NODE_DEF_MAP, PIN_COLORS, type NodeDef, type PropDef } from '@core/nodes/defs'
-import { ID_RE, MetaSchema, NSID_RE, toId } from '@core/project'
+import { CATEGORY_LABEL, NODE_DEF_MAP, PIN_COLORS, gameCropIds, type NodeDef, type PropDef } from '@core/nodes/defs'
+import { ASSET_RE, FOLDER_RE, ID_RE, LICENSES, LINK_RE, MetaSchema, NSID_RE, toId, type Credit } from '@core/project'
 import { L } from '../i18n'
 import { api, assetUrl, vanillaIconUrl, type AssetKind, type ImportedAsset } from '../api'
 import { hasFiles, importDropped } from '../drop'
@@ -13,9 +13,11 @@ import { TargetPicker } from '../components/TargetPicker'
 import { IAlert, IUpload, Logo } from '../components/Icons'
 
 import { CraftGrid } from './CraftGrid'
+import { useIde } from '../ide/ideStore'
 import { ArmorFitField } from './ArmorFit'
 import { TabOrder } from './TabOrder'
 import { ScriptEditor, ScriptTargets } from './ScriptEditor'
+import { HarvestUiPreview } from './HarvestUiPreview'
 
 const ModelPreview = lazy(() => import('./ModelPreview'))
 
@@ -312,6 +314,7 @@ function NsidField({ node, p }: { node: FlowNode; p: PropDef }) {
 }
 
 function Preview({ node }: { node: FlowNode }) {
+  const { t } = useTranslation()
   const asset = typeof node.data.asset === 'string' ? node.data.asset : ''
   const texKey = useStoreWithEqualityFn(
     useStore,
@@ -327,6 +330,7 @@ function Preview({ node }: { node: FlowNode }) {
     shallow
   )
   if (node.type === 'soundEvent') return <SoundEventPreview node={node} />
+  if (node.type === 'harvestUi') return <HarvestUiPreview data={node.data} />
   if (!asset) return null
   if (node.type === 'texture')
     return (
@@ -337,11 +341,18 @@ function Preview({ node }: { node: FlowNode }) {
   if (node.type === 'soundFile') return <audio controls src={assetUrl(asset)} style={{ width: '100%', marginBottom: 10 }} />
   if (node.type === 'model')
     return (
-      <div className="preview-box">
-        <Suspense fallback={<div className="preview3d" />}>
-          <ModelPreview asset={asset} textures={texKey} />
-        </Suspense>
-      </div>
+      <>
+        <div className="preview-box">
+          <Suspense fallback={<div className="preview3d" />}>
+            <ModelPreview asset={asset} textures={texKey} />
+          </Suspense>
+        </div>
+        {asset.endsWith('.json') && (
+          <button className="btn small edit-model" onClick={() => useIde.getState().openModel(asset, texKey)}>
+            🧊 {t('model.edit')}
+          </button>
+        )}
+      </>
     )
   return null
 }
@@ -522,6 +533,37 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
           {p.hint && <span className="hint">{L(p.hint)}</span>}
         </div>
       )
+    case 'multi': {
+      const list = Array.isArray(value)
+        ? (value as string[])
+        : def.type === 'gameCrop'
+          ? gameCropIds(node.data).filter((v) => p.options?.some((o) => o.value === v))
+          : (p.default as string[])
+      const toggle = (v: string) => {
+        const next = list.includes(v) ? list.filter((x) => x !== v) : [...list, v]
+        const patch: Record<string, unknown> = { [p.key]: next }
+        // older single-crop nodes: keep a typed id when switching to the list
+        if (def.type === 'gameCrop' && node.data.crop === 'custom' && typeof node.data.block === 'string' && node.data.others === undefined)
+          patch.others = node.data.block
+        useStore.getState().updateData(node.id, patch)
+      }
+      return (
+        <div className="field">
+          <label>
+            {L(p.label)} <span className="faint">({list.length})</span>
+          </label>
+          <div className="multi-pick">
+            {p.options?.map((o) => (
+              <label key={o.value} className={`multi-opt${list.includes(o.value) ? ' on' : ''}`}>
+                <input type="checkbox" checked={list.includes(o.value)} onChange={() => toggle(o.value)} />
+                {L(o.label)}
+              </label>
+            ))}
+          </div>
+          {p.hint && <span className="hint">{L(p.hint)}</span>}
+        </div>
+      )
+    }
     case 'asset':
       return (
         <div className="field">
@@ -717,8 +759,208 @@ function ProjectSettings() {
           <option value="main">{t('ws.looseMain')}</option>
         </select>
       </div>
+      <div className="field">
+        <label>{t('ws.homepage')}</label>
+        <input
+          className={`input${meta.homepage?.trim() && !LINK_RE.test(meta.homepage.trim()) ? ' invalid' : ''}`}
+          placeholder="https://…"
+          value={meta.homepage ?? ''}
+          maxLength={300}
+          onChange={(e) => set({ homepage: e.target.value || undefined })}
+        />
+      </div>
+      <div className="field">
+        <label>{t('ws.issues')}</label>
+        <input
+          className={`input${meta.issues?.trim() && !LINK_RE.test(meta.issues.trim()) ? ' invalid' : ''}`}
+          placeholder="https://…/issues"
+          value={meta.issues ?? ''}
+          maxLength={300}
+          onChange={(e) => set({ issues: e.target.value || undefined })}
+        />
+        <span className="hint">{t('ws.linksHint')}</span>
+      </div>
+      <LicenseField />
+      <CreditsField />
       <div className="insp-sec">{t('wizard.targets')}</div>
       <TargetPicker value={targets} onChange={(v) => v.length && useStore.getState().setTargets(v)} />
+    </>
+  )
+}
+
+/** The mod's license: a common one from the list or a custom name, plus optional full text for the jar. */
+function LicenseField() {
+  const { t } = useTranslation()
+  const meta = useStore((s) => s.meta)!
+  const set = (patch: Partial<typeof meta>) => useStore.getState().setMeta({ ...meta, ...patch })
+  const value = meta.license?.trim() || 'All-Rights-Reserved'
+  const known = (LICENSES as readonly string[]).includes(value)
+  const [custom, setCustom] = useState(!known)
+  const [showText, setShowText] = useState(!!meta.licenseText)
+  return (
+    <>
+      <div className="insp-sec">{t('license.title')}</div>
+      <div className="field">
+        <select
+          className="input"
+          value={custom ? '__custom' : value}
+          onChange={(e) => {
+            if (e.target.value === '__custom') {
+              setCustom(true)
+              set({ license: '' })
+            } else {
+              setCustom(false)
+              set({ license: e.target.value === 'All-Rights-Reserved' ? undefined : e.target.value })
+            }
+          }}
+        >
+          {LICENSES.map((l) => (
+            <option key={l} value={l}>
+              {t(`license.names.${l.replaceAll('.', '_')}`, { defaultValue: l })}
+            </option>
+          ))}
+          <option value="__custom">{t('license.custom')}</option>
+        </select>
+        {custom && (
+          <input
+            className="input"
+            placeholder={t('license.customName')}
+            value={meta.license ?? ''}
+            maxLength={64}
+            onChange={(e) => set({ license: e.target.value })}
+          />
+        )}
+        <span className="hint">{t('license.hint')}</span>
+      </div>
+      {showText ? (
+        <div className="field">
+          <label>{t('license.text')}</label>
+          <textarea
+            className="input mono license-text"
+            value={meta.licenseText ?? ''}
+            maxLength={50000}
+            placeholder={t('license.textHint')}
+            onChange={(e) => set({ licenseText: e.target.value || undefined })}
+          />
+        </div>
+      ) : (
+        <button className="btn ghost small" onClick={() => setShowText(true)}>
+          + {t('license.addText')}
+        </button>
+      )}
+    </>
+  )
+}
+
+/** People who made the mod's assets (or anything else), with an optional web link and the files they made. */
+function CreditsField() {
+  const { t } = useTranslation()
+  const meta = useStore((s) => s.meta)!
+  const assets = useStore((s) => s.assets)
+  const allFiles = assets.filter((a) => a.kind !== 'folder' && ASSET_RE.test(a.asset)).map((a) => a.asset)
+  // every folder: the kind roots, folders from the tree, and the folders the files are in
+  const allFolders = [
+    ...new Set([
+      ...assets.filter((a) => a.kind === 'folder').map((a) => a.asset),
+      ...allFiles.flatMap((a) =>
+        a
+          .split('/')
+          .slice(0, -1)
+          .map((_, i, parts) => parts.slice(0, i + 1).join('/'))
+      )
+    ])
+  ]
+    .filter((d) => FOLDER_RE.test(d))
+    .sort()
+  const credits = meta.credits ?? []
+  const save = (list: Credit[]) => useStore.getState().setMeta({ ...meta, credits: list.length ? list : undefined })
+  const patch = (i: number, p: Partial<Credit>) => save(credits.map((c, k) => (k === i ? { ...c, ...p } : c)))
+  return (
+    <>
+      <div className="insp-sec">{t('credits.title')}</div>
+      <div className="field">
+        <span className="hint">{t('credits.hint')}</span>
+      </div>
+      {credits.map((c, i) => {
+        const badLink = c.link.trim() !== '' && !LINK_RE.test(c.link.trim())
+        const files = c.assets ?? []
+        const folders = c.folders ?? []
+        return (
+          <div key={i} className="credit">
+            <div className="row">
+              <input
+                className={`input grow${c.name.trim() ? '' : ' invalid'}`}
+                placeholder={t('credits.name')}
+                value={c.name}
+                maxLength={80}
+                onChange={(e) => patch(i, { name: e.target.value })}
+              />
+              <button className="btn ghost icon" title={t('credits.remove')} onClick={() => save(credits.filter((_, k) => k !== i))}>
+                ×
+              </button>
+            </div>
+            <input className="input" placeholder={t('credits.work')} value={c.work} maxLength={200} onChange={(e) => patch(i, { work: e.target.value })} />
+            <input
+              className={`input${badLink ? ' invalid' : ''}`}
+              placeholder="https://…"
+              value={c.link}
+              maxLength={300}
+              onChange={(e) => patch(i, { link: e.target.value })}
+            />
+            {badLink && <span className="hint warn">{t('credits.badLink')}</span>}
+            <div className="credit-files">
+              {folders.map((d) => (
+                <span key={d} className="chip" title={t('credits.folderHint', { folder: d })}>
+                  📁 {d}/
+                  <button onClick={() => patch(i, { folders: folders.filter((x) => x !== d) })} aria-label={t('credits.remove')}>
+                    ×
+                  </button>
+                </span>
+              ))}
+              {files.map((a) => (
+                <span key={a} className="chip" title={a}>
+                  {a.split('/').pop()}
+                  <button onClick={() => patch(i, { assets: files.filter((x) => x !== a) })} aria-label={t('credits.remove')}>
+                    ×
+                  </button>
+                </span>
+              ))}
+              <select
+                className="input small"
+                value=""
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (v.startsWith('dir:')) patch(i, { folders: [...folders, v.slice(4)] })
+                  else if (v) patch(i, { assets: [...files, v] })
+                }}
+              >
+                <option value="">+ {t('credits.addFile')}</option>
+                <optgroup label={t('credits.folders')}>
+                  {allFolders
+                    .filter((d) => !folders.includes(d))
+                    .map((d) => (
+                      <option key={d} value={`dir:${d}`}>
+                        📁 {d}/
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label={t('credits.files')}>
+                  {allFiles
+                    .filter((a) => !files.includes(a))
+                    .map((a) => (
+                      <option key={a} value={a}>
+                        {a}
+                      </option>
+                    ))}
+                </optgroup>
+              </select>
+            </div>
+          </div>
+        )
+      })}
+      <button className="btn ghost small" onClick={() => save([...credits, { name: '', work: '', link: '' }])}>
+        + {t('credits.add')}
+      </button>
     </>
   )
 }

@@ -1,10 +1,11 @@
-import type { ArmorMatIR, ArmorSlot, BlockIR, EffectIR, ItemIR, ToolMatIR, ToolType } from '../ir'
+import type { ArmorMatIR, ArmorSlot, AttributeIR, BlockIR, EffectIR, HitIR, ItemIR, MobIR, ToolMatIR, ToolType } from '../ir'
 import { scriptAppliesTo, scriptSource } from '../scriptApi'
 import { geoLoopName } from './geo'
 import { geckoArmorSource } from './gecko'
+import { genHarvest, harvestUiIndex, usesHarvest } from './harvest'
 import { toMcp1165 } from './mcp'
 import { parseJavaModel, rotateBoxes, shapeBoxes, type Box } from './model'
-import type { VersionProfile } from './profiles'
+import { mcAtLeast, type VersionProfile } from './profiles'
 import { fabricLike, type GenCtx } from './types'
 
 /**
@@ -16,7 +17,7 @@ const C = (id: string) => id.toUpperCase()
 const f = (n: number) => `${Number.isInteger(n) ? n.toFixed(1) : String(n)}F`
 const d = (n: number) => (Number.isInteger(n) ? n.toFixed(1) : String(n))
 
-class JavaFile {
+export class JavaFile {
   imports = new Set<string>()
   constructor(
     readonly pkg: string,
@@ -32,7 +33,7 @@ class JavaFile {
   }
 }
 
-const MC = {
+export const MC = {
   RL: 'net.minecraft.resources.ResourceLocation',
   RK: 'net.minecraft.resources.ResourceKey',
   Registry: 'net.minecraft.core.Registry',
@@ -56,6 +57,7 @@ const MC = {
   RecordItem: 'net.minecraft.world.item.RecordItem',
   CreativeModeTab: 'net.minecraft.world.item.CreativeModeTab',
   FoodProperties: 'net.minecraft.world.food.FoodProperties',
+  UseAnim: 'net.minecraft.world.item.UseAnim',
   Consumables: 'net.minecraft.world.item.component.Consumables',
   Ingredient: 'net.minecraft.world.item.crafting.Ingredient',
   SoundEvent: 'net.minecraft.sounds.SoundEvent',
@@ -96,6 +98,20 @@ const MC = {
   MobEffectInstance: 'net.minecraft.world.effect.MobEffectInstance',
   LivingEntity: 'net.minecraft.world.entity.LivingEntity',
   Entity: 'net.minecraft.world.entity.Entity',
+  EntityType: 'net.minecraft.world.entity.EntityType',
+  CropBlock: 'net.minecraft.world.level.block.CropBlock',
+  ItemLike: 'net.minecraft.world.level.ItemLike',
+  Blocks: 'net.minecraft.world.level.block.Blocks',
+  ServerLevel: 'net.minecraft.server.level.ServerLevel',
+  SoundSource: 'net.minecraft.sounds.SoundSource',
+  Player: 'net.minecraft.world.entity.player.Player',
+  EntitySpawnReason: 'net.minecraft.world.entity.EntitySpawnReason',
+  Attribute: 'net.minecraft.world.entity.ai.attributes.Attribute',
+  Attributes: 'net.minecraft.world.entity.ai.attributes.Attributes',
+  AttributeModifier: 'net.minecraft.world.entity.ai.attributes.AttributeModifier',
+  AttributeInstance: 'net.minecraft.world.entity.ai.attributes.AttributeInstance',
+  DataComponents: 'net.minecraft.core.component.DataComponents',
+  Unbreakable: 'net.minecraft.world.item.component.Unbreakable',
   Level: 'net.minecraft.world.level.Level',
   ApplyEffects: 'net.minecraft.world.item.consume_effects.ApplyStatusEffectsConsumeEffect',
   BlockEntity: 'net.minecraft.world.level.block.entity.BlockEntity',
@@ -110,6 +126,10 @@ function effectTicks(e: EffectIR, p: VersionProfile): string {
   if (!e.infinite) return String(e.ticks)
   return p.smithingTransform ? '-1' : 'Integer.MAX_VALUE'
 }
+const HIT_ACTION = { fire: 'FIRE', lightning: 'LIGHTNING', freeze: 'FREEZE', teleport: 'TELEPORT', clear: 'CLEAR' } as const
+/** `new NkwEffect(NkwEffect.FIRE, …)` arguments for a tool's on-hit abilities. */
+const hitArgs = (list: HitIR[]) => list.map((h) => `, new NkwEffect(NkwEffect.${HIT_ACTION[h.ability]}, ${h.ticks}, ${f(h.chance)})`).join('')
+
 /** `new NkwEffect(...)` expression for one effect. */
 function effectExpr(e: EffectIR, p: VersionProfile): string {
   return `new NkwEffect(MobEffects.${e.effect}, ${effectTicks(e, p)}, ${e.amplifier}, ${f(e.chance)}, ${e.particles}, ${e.showIcon})`
@@ -189,9 +209,10 @@ export function genJava(ctx: GenCtx): void {
 
   const blockItems = ir.blocks.filter((b) => b.hasItem).map((b) => b.id)
   const tabIcons = tabIconItems(ctx)
-  const allItemIds = [...ir.items.map((i) => i.id), ...blockItems, ...tabIcons.map((t) => t.id)]
+  const allItemIds = [...ir.items.map((i) => i.id), ...blockItems, ...tabIcons.map((t) => t.id), ...ir.mobs.map((m) => `${m.id}_spawn_egg`)]
   const modelBlocks = ir.blocks.filter((b) => b.kind === 'model')
-  const needsRenderLayer = modelBlocks.length > 0
+  const cutoutBlocks = ir.blocks.filter((b) => b.kind === 'model' || b.kind === 'crop')
+  const needsRenderLayer = cutoutBlocks.length > 0
   const hasGeo = ctx.gecko && ir.items.some((i) => i.armor?.geo)
 
   // ───────── NkwTags ─────────
@@ -255,16 +276,73 @@ public class NkwFoilItem extends Item {
   }
 
   const toolTypes = new Set(ir.items.filter((i) => i.tool).map((i) => i.tool!.type))
-  const needsEffects = toolTypes.size > 0 || ir.items.some((i) => i.armor)
+  const needsEffects = toolTypes.size > 0 || ir.items.some((i) => i.armor || i.food?.hits.length)
   if (needsEffects) {
     const j = new JavaFile(pkg, 'NkwEffect').use(MC.MobEffect, MC.MobEffects, MC.MobEffectInstance, MC.LivingEntity)
     const type = p.stackId ? 'Holder<MobEffect>' : 'MobEffect'
     if (p.stackId) j.use(MC.Holder)
+    const hasHits = ir.items.some((i) => i.tool?.hits.length || i.food?.hits.length)
+    let hitCode = ''
+    if (hasHits) {
+      j.use(MC.Entity, MC.EntityType, MC.Level)
+      const level = mcAtLeast(p.mc, '1.20.1') ? 'target.level()' : 'target.level'
+      const fire = p.stackId ? 'target.igniteForSeconds(ticks / 20F);' : 'target.setSecondsOnFire(Math.max(1, ticks / 20));'
+      const create = p.propertiesId
+        ? (j.use(MC.EntitySpawnReason), 'EntityType.LIGHTNING_BOLT.create(level, EntitySpawnReason.TRIGGERED)')
+        : 'EntityType.LIGHTNING_BOLT.create(level)'
+      // freezing (powder snow) exists from 1.17; it wears off 2 ticks per tick outside powder snow
+      const freeze =
+        p.mc === '1.16.5' ? '' : '\n            target.setTicksFrozen(Math.max(target.getTicksFrozen(), target.getTicksRequiredToFreeze() + ticks * 2));'
+      hitCode = `
+    /** Abilities (no status effect), on the target that is hit or on whoever eats: fire, lightning, freeze, teleport, clear effects. */
+    public static final int FIRE = 1;
+    public static final int LIGHTNING = 2;
+    public static final int FREEZE = 3;
+    public static final int TELEPORT = 4;
+    public static final int CLEAR = 5;
+
+    public NkwEffect(int action, int ticks, float chance) {
+        this.action = action;
+        this.effect = null;
+        this.ticks = ticks;
+        this.amplifier = 0;
+        this.chance = chance;
+        this.particles = true;
+        this.showIcon = true;
+    }
+
+    private void hit(LivingEntity target) {
+        if (action == FIRE) {
+            ${fire}
+        } else if (action == LIGHTNING) {
+            Level level = ${level};
+            if (level.isClientSide) return;
+            Entity bolt = ${create};
+            if (bolt == null) return;
+            bolt.setPos(target.getX(), target.getY(), target.getZ());
+            level.addFreshEntity(bolt);
+        } else if (action == FREEZE) {${freeze}
+            target.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, ticks, 1, false, true, true));
+        } else if (action == TELEPORT) {
+            // like a chorus fruit: up to 16 tries within 8 blocks
+            if (target.isPassenger()) target.stopRiding();
+            for (int i = 0; i < 16; i++) {
+                double x = target.getX() + (target.getRandom().nextDouble() - 0.5) * 16.0;
+                double y = target.getY() + (target.getRandom().nextInt(16) - 8);
+                double z = target.getZ() + (target.getRandom().nextDouble() - 0.5) * 16.0;
+                if (target.randomTeleport(x, y, z, true)) break;
+            }
+        } else if (action == CLEAR) {
+            target.removeAllEffects();
+        }
+    }
+`
+    }
     out(
       'NkwEffect',
       j.render(`
-/** A status effect given by an item: on hit (tools) or while worn (armor). */
-public final class NkwEffect {
+/** A status effect or ability given by an item: on hit (tools), while worn (armor) or when eaten (food). */
+public final class NkwEffect {${hasHits ? '\n    private final int action;' : ''}
     private final ${type} effect;
     private final int ticks;
     private final int amplifier;
@@ -272,7 +350,7 @@ public final class NkwEffect {
     private final boolean particles;
     private final boolean showIcon;
 
-    public NkwEffect(${type} effect, int ticks, int amplifier, float chance, boolean particles, boolean showIcon) {
+    public NkwEffect(${type} effect, int ticks, int amplifier, float chance, boolean particles, boolean showIcon) {${hasHits ? '\n        this.action = 0;' : ''}
         this.effect = effect;
         this.ticks = ticks;
         this.amplifier = amplifier;
@@ -282,8 +360,10 @@ public final class NkwEffect {
     }
 
     public void apply(LivingEntity target) {
-        if (target.getRandom().nextFloat() < chance) target.addEffect(new MobEffectInstance(effect, ticks, amplifier, false, particles, showIcon));
+        if (target.getRandom().nextFloat() >= chance) return;${hasHits ? '\n        if (action != 0) {\n            hit(target);\n            return;\n        }' : ''}
+        target.addEffect(new MobEffectInstance(effect, ticks, amplifier, false, particles, showIcon));
     }
+${hitCode}
 
     public void applyWorn(LivingEntity wearer) {
         int duration = effect == MobEffects.NIGHT_VISION ? 260 : 60;
@@ -345,6 +425,10 @@ ${wornEffectsMethod()}
 }`)
     )
   }
+
+  if (ir.blocks.some((b) => b.crop)) genCropBlock(ctx, out)
+  if (ir.mobs.length) genMobs(ctx, out)
+  if (usesHarvest(ir)) genHarvest(ctx, out)
 
   if (fab && !p.jukeboxSongs && ir.items.some((i) => i.disc)) {
     const j = new JavaFile(pkg, 'NkwDiscItem').use(MC.RecordItem, MC.SoundEvent, MC.Item)
@@ -603,6 +687,10 @@ ${accept(tb, '            ')}
   if (endDiscs.length) genJukebox(ctx, endDiscs, get, out)
   const headItems = p.propertiesId ? [] : ir.items.filter((i) => i.headwear && i.headwearRightClick !== false)
   if (headItems.length) genHeadwear(ctx, headItems, get, out)
+  const thirstMod = genThirst(ctx, get, out)
+  if (ir.items.some((i) => (i.tool?.durability ?? 0) > 0) && p.toolApi !== 'tierLevel') genTiers(ctx, out)
+  const attrItems = ir.items.filter((i) => i.attributes?.length)
+  if (attrItems.length) genAttributes(ctx, attrItems, get, out)
   // Script nodes: the user's own Java files, in the mod's package (Forge/NeoForge find @EventBusSubscriber
   // classes themselves; Fabric/Quilt entrypoints are added to the mod metadata)
   for (const s of ir.scripts) if (scriptAppliesTo(s.targets, ctx.target)) out(s.className, scriptSource(s.code, pkg))
@@ -630,11 +718,12 @@ public class NkwMod implements ModInitializer {
         ModBlocks.init();
         ModItems.init();
         ModTabs.init();
-${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${ir.mobs.length ? '        ModEntities.init();\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}${thirstMod ? '        NkwThirst.init();\n' : ''}${usesHarvest(ir) ? '        NkwHarvest.init();\n' : ''}${attrItems.length ? '        NkwAttributes.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 }`
     } else {
       const regs = [
+        ...(ir.mobs.length ? ['ModEntities.ENTITIES'] : []),
         'ModSounds.SOUNDS',
         ...(p.armorApi === 'holder' && neo && ir.armorMats.length ? ['ModArmorMaterials.ARMOR_MATERIALS'] : []),
         'ModBlocks.BLOCKS',
@@ -642,6 +731,11 @@ ${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '  
         ...(p.tabRegistry ? ['ModTabs.TABS'] : [])
       ]
       const clientSetup = needsRenderLayer && !p.modelRenderType
+      if (ir.mobs.length || usesHarvest(ir))
+        j.use(
+          neo ? 'net.neoforged.fml.loading.FMLEnvironment' : 'net.minecraftforge.fml.loading.FMLEnvironment',
+          neo ? 'net.neoforged.api.distmarker.Dist' : 'net.minecraftforge.api.distmarker.Dist'
+        )
       if (neo) j.use('net.neoforged.bus.api.IEventBus', 'net.neoforged.fml.common.Mod')
       else j.use('net.minecraftforge.eventbus.api.IEventBus', 'net.minecraftforge.fml.common.Mod', 'net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext')
       if (clientSetup) j.use('net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent', MC.ItemBlockRenderTypes, MC.RenderType)
@@ -655,7 +749,8 @@ public class NkwMod {
     ${ctor}
         NkwTags.init();
 ${regs.map((r) => `        ${r}.register(bus);`).join('\n')}
-${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${ir.mobs.length ? `        ModEntities.init(bus);\n        if (FMLEnvironment.dist == Dist.CLIENT) NkwMobsClient.init(bus);\n` : ''}${usesHarvest(ir) ? '        if (FMLEnvironment.dist == Dist.CLIENT) NkwHarvestHud.init(bus);\n' : ''}
+${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}${thirstMod ? '        NkwThirst.init();\n' : ''}${usesHarvest(ir) ? '        NkwHarvest.init();\n' : ''}${attrItems.length ? '        NkwAttributes.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 
     ${idFn}
@@ -664,7 +759,7 @@ ${
     ? `
     private static void clientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
-${modelBlocks.map((b) => `            ItemBlockRenderTypes.setRenderLayer(ModBlocks.${C(b.id)}.get(), RenderType.cutout());`).join('\n')}
+${cutoutBlocks.map((b) => `            ItemBlockRenderTypes.setRenderLayer(ModBlocks.${C(b.id)}.get(), RenderType.cutout());`).join('\n')}
         });
     }`
     : ''
@@ -677,13 +772,21 @@ ${modelBlocks.map((b) => `            ItemBlockRenderTypes.setRenderLayer(ModBlo
   if (fab) {
     const j = new JavaFile(pkg, 'NkwClient').use('net.fabricmc.api.ClientModInitializer')
     if (needsRenderLayer) j.use('net.fabricmc.fabric.api.blockrenderlayer.v1.BlockRenderLayerMap', MC.RenderType)
+    if (ir.mobs.length)
+      j.use(
+        p.mc === '1.16.5'
+          ? 'net.fabricmc.fabric.api.client.rendereregistry.v1.EntityRendererRegistry'
+          : 'net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry',
+        ...geoMobImports(ctx)
+      )
     out(
       'NkwClient',
       j.render(`
 public class NkwClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
-${modelBlocks.map((b) => `        BlockRenderLayerMap.INSTANCE.putBlock(ModBlocks.${C(b.id)}, RenderType.cutout());`).join('\n')}
+${cutoutBlocks.map((b) => `        BlockRenderLayerMap.INSTANCE.putBlock(ModBlocks.${C(b.id)}, RenderType.cutout());`).join('\n')}
+${usesHarvest(ir) ? '        NkwHarvestHud.init();\n' : ''}${ir.mobs.map((m) => (p.mc === '1.16.5' ? `        EntityRendererRegistry.INSTANCE.register(ModEntities.${C(m.id)}, (manager, context) -> ${mobRenderer(ctx, m, 'manager')});` : `        EntityRendererRegistry.register(ModEntities.${C(m.id)}, context -> ${mobRenderer(ctx, m, 'context')});`)).join('\n')}
     }
 }`)
     )
@@ -990,8 +1093,28 @@ function blocksClass(ctx: GenCtx): string {
     return s
   }
 
+  /** Crops: the vanilla crop block with our settings, seeds from the item that places it. */
+  const cropCtor = (b: BlockIR): string => {
+    const cr = b.crop!
+    let s = p.blockMaterial ? (j.use(MC.Material), 'BlockBehaviour.Properties.of(Material.PLANT)') : 'BlockBehaviour.Properties.of()'
+    if (p.propertiesId) s += `.setId(ResourceKey.create(Registries.BLOCK, NkwMod.id("${b.id}")))`
+    s += '.noCollission().randomTicks().instabreak().sound(SoundType.CROP)'
+    const seed = ir.items.find((i) => i.places === b.id)
+    const input = ['break', 'click', 'hold', 'stand'].indexOf(cr.input)
+    const args = `${s}, ${cr.soil === 'dirt'}, ${cr.growStep}, ${cr.mode === 'regrow'}, ${cr.regrowAge}, ${cr.regrowTicks}, ${input}, ${cr.harvestTicks}, ${harvestUiIndex(ir, cr.ui)}, ${cr.give}`
+    if (!seed) return `new NkwCropBlock(${args})`
+    j.use(MC.ItemLike)
+    const ref = fab ? `ModItems.${C(seed.id)}` : `ModItems.${C(seed.id)}.get()`
+    return `new NkwCropBlock(${args}) {
+            @Override
+            protected ItemLike getBaseSeedId() {
+                return ${ref};
+            }
+        }`
+  }
   const shape = (boxes: Box[]) => `shape(${boxes.map((b) => b.map(d).join(', ')).join(',  ')})`
   const ctorFor = (b: BlockIR): string => {
+    if (b.crop) return cropCtor(b)
     const props = propsFor(b)
     if (b.kind === 'model' && b.model) {
       let boxes: Box[]
@@ -1126,9 +1249,9 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
           )
           if (p.foodApi !== 'consumable') for (const e of fd.effects) fb += `.effect(${inst(e)}, ${f(e.chance)})`
           fb += '.build()'
-          if (p.foodApi === 'consumable' && (fd.fast || fd.effects.length)) {
+          if (p.foodApi === 'consumable' && (fd.fast || fd.effects.length || fd.drink)) {
             j.use(MC.Consumables)
-            let cons = 'Consumables.defaultFood()'
+            let cons = fd.drink ? 'Consumables.defaultDrink()' : 'Consumables.defaultFood()'
             if (fd.fast) cons += '.consumeSeconds(0.8F)'
             for (const e of fd.effects) {
               j.use(MC.ApplyEffects)
@@ -1144,19 +1267,30 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
         const t = it.tool!
         P += common(it)
         const cls = `Nkw${TOOL_CLASS[t.type]}`
-        const tier = `ModToolTiers.${C(t.material)}`
+        let tier = `ModToolTiers.${C(t.material)}`
+        // own durability: ≤1.20.4 keeps a durability set before the tool constructor; newer versions overwrite
+        // it from the tier, so the tier is copied with other uses (NkwTiers)
+        if (t.durability > 0) {
+          if (p.toolApi === 'tierLevel') P += `.durability(${t.durability})`
+          else tier = `NkwTiers.withUses(${tier}, ${t.durability})`
+        }
+        if (t.unbreakable && p.jukeboxSongs) {
+          j.use(MC.DataComponents, MC.Unbreakable)
+          P += '.component(DataComponents.UNBREAKABLE, new Unbreakable(true))'
+        }
+        const extra = effectArgs(t.effects, p) + hitArgs(t.hits)
         if (p.toolApi === 'tierLevel') {
           const intDmg = t.type === 'sword' || t.type === 'pickaxe' || t.type === 'hoe'
-          return `new ${cls}(${tier}, ${intDmg ? Math.round(t.damage) : f(t.damage)}, ${f(t.speed)}, ${P}${effectArgs(t.effects, p)})`
+          return `new ${cls}(${tier}, ${intDmg ? Math.round(t.damage) : f(t.damage)}, ${f(t.speed)}, ${P}${extra})`
         }
         if (p.toolApi === 'tierTag') {
           const attr =
             t.type === 'sword'
               ? (j.use('net.minecraft.world.item.SwordItem'), `SwordItem.createAttributes(${tier}, ${Math.round(t.damage)}, ${f(t.speed)})`)
               : (j.use('net.minecraft.world.item.DiggerItem'), `DiggerItem.createAttributes(${tier}, ${f(t.damage)}, ${f(t.speed)})`)
-          return `new ${cls}(${tier}, ${P}.attributes(${attr})${effectArgs(t.effects, p)})`
+          return `new ${cls}(${tier}, ${P}.attributes(${attr})${extra})`
         }
-        return `new ${cls}(${tier}, ${f(t.damage)}, ${f(t.speed)}, ${P}${effectArgs(t.effects, p)})`
+        return `new ${cls}(${tier}, ${f(t.damage)}, ${f(t.speed)}, ${P}${extra})`
       }
       case 'armor': {
         const a = it.armor!
@@ -1209,35 +1343,125 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
   /**
    * Items worn on the head get a coloured "Can be worn on the head" tooltip line and, on Forge/NeoForge,
    * report the head as their slot so they can be dragged / shift-clicked into the helmet slot.
+   * Drinks (before 1.21.2's consumable component) use the drinking animation and gulping sound.
    */
   const ctorFor = (it: ItemIR): string => {
     const base = rawCtor(it)
     // tool / armor effects refer to MobEffects.X
     if (base.includes('MobEffects.')) j.use(MC.MobEffects)
-    if (!it.headwear || !base.startsWith('new ')) return base
-    j.use(MC.ItemStack, MC.List, MC.Component, 'net.minecraft.world.item.TooltipFlag', 'net.minecraft.ChatFormatting')
-    const line = ['1.16.5', '1.18.2'].includes(p.mc)
-      ? (j.use('net.minecraft.network.chat.TranslatableComponent'), `new TranslatableComponent("tooltip.${ctx.ns}.wearable_head")`)
-      : `Component.translatable("tooltip.${ctx.ns}.wearable_head")`
-    const ctxParam = p.jukeboxSongs ? 'Item.TooltipContext context' : (j.use(MC.Level), 'Level level')
-    const ctxArg = p.jukeboxSongs ? 'context' : 'level'
-    const slot =
-      !fab && !p.propertiesId
-        ? (j.use(MC.EquipmentSlot),
-          `
+    if (!base.startsWith('new ')) return base
+    let body = ''
+    if (it.food?.hits.length) {
+      j.use(MC.ItemStack, MC.Level, MC.LivingEntity)
+      body += `
+            @Override
+            public ItemStack finishUsingItem(ItemStack stack, Level level, LivingEntity entity) {
+                if (!level.isClientSide) {
+${it.food.hits.map((h) => `                    new NkwEffect(NkwEffect.${HIT_ACTION[h.ability]}, ${h.ticks}, ${f(h.chance)}).apply(entity);`).join('\n')}
+                }
+                return super.finishUsingItem(stack, level, entity);
+            }
+`
+    }
+    if (it.food?.drink && p.foodApi !== 'consumable') {
+      j.use(MC.ItemStack, MC.UseAnim, MC.SoundEvent, MC.SoundEvents)
+      body += `
+            @Override
+            public UseAnim getUseAnimation(ItemStack stack) {
+                return UseAnim.DRINK;
+            }
+
+            @Override
+            public SoundEvent getDrinkingSound() {
+                return SoundEvents.GENERIC_DRINK;
+            }
+
+            @Override
+            public SoundEvent getEatingSound() {
+                return SoundEvents.GENERIC_DRINK;
+            }
+`
+    }
+    // before 1.21 (no data components) unbreakable = the stack's "Unbreakable" tag, set once it is in an inventory
+    if (it.tool?.unbreakable && !p.jukeboxSongs) {
+      j.use(MC.ItemStack, MC.Level, MC.Entity)
+      body += `
+            @Override
+            public void inventoryTick(ItemStack stack, Level level, Entity entity, int slot, boolean selected) {
+                super.inventoryTick(stack, level, entity, slot, selected);
+                if (!level.isClientSide && !stack.getOrCreateTag().getBoolean("Unbreakable")) {
+                    stack.getOrCreateTag().putBoolean("Unbreakable", true);
+                    stack.setDamageValue(0);
+                }
+            }
+`
+    }
+    const lines: string[] = []
+    const tr = (key: string, ...args: string[]) => {
+      j.use(MC.Component)
+      const a = args.length ? `, ${args.join(', ')}` : ''
+      return ['1.16.5', '1.18.2'].includes(p.mc)
+        ? (j.use('net.minecraft.network.chat.TranslatableComponent'), `new TranslatableComponent("${key}"${a})`)
+        : `Component.translatable("${key}"${a})`
+    }
+    if (it.headwear) lines.push(`tooltip.add(${tr(`tooltip.${ctx.ns}.wearable_head`)}.withStyle(ChatFormatting.LIGHT_PURPLE));`)
+    // stat bonuses, grouped under "When in Main Hand:" … like vanilla attribute modifiers
+    const shown = (it.attributes ?? []).filter((a) => a.tooltip)
+    for (const slot of [...new Set(shown.map((a) => a.slot))]) {
+      lines.push(`tooltip.add(${tr(`tooltip.${ctx.ns}.when.${slot}`)}.withStyle(ChatFormatting.GRAY));`)
+      for (const a of shown.filter((x) => x.slot === slot)) {
+        j.use(MC.Attributes)
+        const op = a.operation === 'add' ? 0 : a.operation === 'base' ? 1 : 2
+        const shownAmount = Math.abs(a.operation === 'add' ? a.amount : a.amount * 100)
+        const name = tr('').replace('""', `Attributes.${a.field}${p.stackId ? '.value()' : ''}.getDescriptionId()`)
+        const line = tr(`attribute.modifier.${a.amount < 0 ? 'take' : 'plus'}.${op}`, JSON.stringify(String(Number(shownAmount.toFixed(2)))), name)
+        lines.push(`tooltip.add(${line}.withStyle(ChatFormatting.${a.amount < 0 ? 'RED' : 'BLUE'}));`)
+      }
+    }
+    if (it.headwear) {
+      if (!fab && !p.propertiesId) {
+        j.use(MC.EquipmentSlot)
+        body += `
             @Override
             public EquipmentSlot getEquipmentSlot(ItemStack stack) {
                 return EquipmentSlot.HEAD;
             }
-`)
-        : ''
-    return `${base} {${slot}
+`
+      }
+    }
+    if (lines.length) {
+      j.use(MC.ItemStack, MC.List, MC.Component, 'net.minecraft.world.item.TooltipFlag', 'net.minecraft.ChatFormatting')
+      const ctxParam = p.jukeboxSongs ? 'Item.TooltipContext context' : (j.use(MC.Level), 'Level level')
+      const ctxArg = p.jukeboxSongs ? 'context' : 'level'
+      body += `
             @Override
             public void appendHoverText(ItemStack stack, ${ctxParam}, List<Component> tooltip, TooltipFlag flag) {
                 super.appendHoverText(stack, ${ctxArg}, tooltip, flag);
-                tooltip.add(${line}.withStyle(ChatFormatting.LIGHT_PURPLE));
+${lines.map((l) => `                ${l}`).join('\n')}
             }
-        }`
+`
+    }
+    return body ? `${base} {${body}        }` : base
+  }
+  /** Spawn egg of a mob: colours in the item (≤1.21.3) or in its item model (1.21.4). */
+  const eggCtor = (m: MobIR): string => {
+    const P = baseProps(`${m.id}_spawn_egg`)
+    const ref = fab ? `ModEntities.${C(m.id)}` : `ModEntities.${C(m.id)}`
+    if (p.itemDefinitions) {
+      j.use('net.minecraft.world.item.SpawnEggItem')
+      return `new SpawnEggItem(${fab ? ref : `${ref}.get()`}, ${P})`
+    }
+    const colours = `0x${m.egg[0].toString(16).padStart(6, '0')}, 0x${m.egg[1].toString(16).padStart(6, '0')}`
+    if (fab) {
+      j.use('net.minecraft.world.item.SpawnEggItem')
+      return `new SpawnEggItem(${ref}, ${colours}, ${P})`
+    }
+    if (neo) {
+      j.use('net.neoforged.neoforge.common.DeferredSpawnEggItem')
+      return `new DeferredSpawnEggItem(${ref}, ${colours}, ${P})`
+    }
+    j.use('net.minecraftforge.common.ForgeSpawnEggItem')
+    return `new ForgeSpawnEggItem(${ref}, ${colours}, ${P})`
   }
   const blockItem = (id: string) => {
     j.use(MC.BlockItem)
@@ -1260,6 +1484,7 @@ public final class ModItems {
 ${ir.items.map((it) => `    public static final Item ${C(it.id)} = register("${it.id}", ${ctorFor(it)});`).join('\n')}
 ${withItem.map((b) => `    public static final Item ${C(b.id)} = register("${b.id}", ${blockItem(b.id)});`).join('\n')}
 ${icons.map((t) => `    public static final Item ${C(t.id)} = register("${t.id}", new Item(${baseProps(t.id)}));`).join('\n')}
+${ir.mobs.map((m) => `    public static final Item ${C(m.id)}_SPAWN_EGG = register("${m.id}_spawn_egg", ${eggCtor(m)});`).join('\n')}
 
     private ModItems() {}
 
@@ -1281,6 +1506,7 @@ public final class ModItems {
     public static final DeferredRegister<Item> ITEMS = ${create};
 ${ir.items.map((it) => `    public static final ${holder} ${C(it.id)} = ITEMS.register("${it.id}", () -> ${ctorFor(it)});`).join('\n')}
 ${withItem.map((b) => `    public static final ${holder} ${C(b.id)} = ITEMS.register("${b.id}", () -> ${blockItem(b.id)});`).join('\n')}
+${ir.mobs.map((m) => `    public static final ${holder} ${C(m.id)}_SPAWN_EGG = ITEMS.register("${m.id}_spawn_egg", () -> ${eggCtor(m)});`).join('\n')}
 ${icons.map((t) => `    public static final ${holder} ${C(t.id)} = ITEMS.register("${t.id}", () -> new Item(${baseProps(t.id)}));`).join('\n')}
 
     private ModItems() {}
@@ -1291,7 +1517,7 @@ ${propsHelper}}`)
  * The Forge / NeoForge game event bus for a target: which bus, the event package, how the player and
  * level getters are named on that version, and a server level-tick handler that calls tick(level).
  */
-function forgeEvents(ctx: GenCtx, j: JavaFile) {
+export function forgeEvents(ctx: GenCtx, j: JavaFile) {
   const neo = ctx.loader === 'neoforge'
   const old = !neo && (ctx.p.mc === '1.16.5' || ctx.p.mc === '1.18.2')
   const base = neo ? 'net.neoforged.neoforge' : 'net.minecraftforge'
@@ -1457,6 +1683,712 @@ ${discs
             }
         }
     }${ejectFn}
+}`)
+  )
+}
+
+/**
+ * Thirst add-on for the thirst mods that only take values from code. Tough As Nails, Thirst Was Taken 2
+ * and Legendary Survival Overhaul read data files instead (see genData). Everything goes through
+ * reflection, so the mod neither needs nor ships the thirst mod and does nothing when it is absent.
+ * - Thirst Was Taken (Forge 1.18.2–1.20.1, NeoForge 1.21.1): its RegisterThirstValueEvent.
+ * - Thirsty (Fabric 1.20.1): entries added to its item list when a server starts.
+ * Returns whether NkwThirst was written.
+ */
+function genThirst(ctx: GenCtx, get: (cls: string, id: string) => string, out: (cls: string, text: string) => void): boolean {
+  const { ir, pkg, loader, p, ns } = ctx
+  const items = ir.items.filter((it) => it.food?.thirst)
+  if (!items.length) return false
+  const neo = loader === 'neoforge'
+  const twt = (loader === 'forge' && ['1.18.2', '1.19.2', '1.20.1'].includes(p.mc)) || (neo && p.mc === '1.21.1')
+  const thirsty = fabricLike(loader) && p.mc === '1.20.1'
+  if (!twt && !thirsty) return false
+  const j = new JavaFile(pkg, 'NkwThirst')
+  let body: string
+  if (twt) {
+    j.use(MC.Item, 'java.lang.reflect.Method', 'java.util.function.Consumer')
+    j.use(neo ? 'net.neoforged.fml.ModList' : 'net.minecraftforge.fml.ModList')
+    j.use(neo ? 'net.neoforged.bus.api.EventPriority' : 'net.minecraftforge.eventbus.api.EventPriority')
+    const ev = forgeEvents(ctx, j)
+    body = `
+/** Thirst values for Thirst Was Taken, used only when it is installed. */
+public final class NkwThirst {
+    private NkwThirst() {}
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public static void init() {
+        if (!ModList.get().isLoaded("thirst")) return;
+        try {
+            Class event = Class.forName("dev.ghen.thirst.foundation.common.event.RegisterThirstValueEvent");
+            ${ev.bus}.addListener(EventPriority.NORMAL, false, event, (Consumer) NkwThirst::register);
+        } catch (ReflectiveOperationException | LinkageError e) {
+            NkwMod.LOGGER.warn("[NKW] Thirst Was Taken support is off: {}", e.toString());
+        }
+    }
+
+    private static void register(Object event) {
+        try {
+            Method drink = event.getClass().getMethod("addDrink", Item.class, int.class, int.class);
+            Method food = event.getClass().getMethod("addFood", Item.class, int.class, int.class);
+${items.map((it) => `            ${it.food!.drink ? 'drink' : 'food'}.invoke(event, ${get('ModItems', it.id)}, ${it.food!.thirst!.thirst}, ${it.food!.thirst!.hydration});`).join('\n')}
+            NkwMod.LOGGER.info("[NKW] thirst values added for ${items.length} item(s) (Thirst Was Taken)");
+        } catch (ReflectiveOperationException e) {
+            NkwMod.LOGGER.warn("[NKW] Could not add thirst values: {}", e.toString());
+        }
+    }
+}`
+  } else {
+    j.use('java.lang.reflect.Field', MC.List, 'net.fabricmc.loader.api.FabricLoader', 'net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents')
+    body = `
+/** Thirst values for Thirsty, used only when it is installed. */
+public final class NkwThirst {
+    private NkwThirst() {}
+
+    public static void init() {
+        if (FabricLoader.getInstance().isModLoaded("thirsty")) ServerLifecycleEvents.SERVER_STARTING.register(server -> thirsty());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void thirsty() {
+        try {
+            Class<?> config = Class.forName("net.obe107.thirsty.config.ModConfig");
+            Object instance = config.getMethod("getInstance").invoke(null);
+            List<Object> items = (List<Object>) config.getField("customItems").get(instance);
+            // an empty list gets Thirsty's defaults first
+            if (items.isEmpty()) config.getMethod("validatePostLoad").invoke(instance);
+            Class<?> entry = Class.forName("net.obe107.thirsty.config.ModConfig$ItemEntry");
+            Field itemId = entry.getField("itemId");
+${items.map((it) => `            add(items, entry, itemId, "${ns}:${it.id}", ${it.food!.thirst!.thirst}, ${it.food!.thirst!.hydration});`).join('\n')}
+            config.getMethod("validatePostLoad").invoke(instance);
+            NkwMod.LOGGER.info("[NKW] thirst values added for ${items.length} item(s) (Thirsty)");
+        } catch (ReflectiveOperationException | LinkageError | ClassCastException e) {
+            NkwMod.LOGGER.warn("[NKW] Thirsty support is off: {}", e.toString());
+        }
+    }
+
+    private static void add(List<Object> items, Class<?> entry, Field itemId, String id, int thirst, int saturation) throws ReflectiveOperationException {
+        for (Object o : items) if (id.equals(itemId.get(o))) return;
+        items.add(entry.getConstructor(String.class, int.class, int.class).newInstance(id, thirst, saturation));
+    }
+}`
+  }
+  out('NkwThirst', j.render(body))
+  return true
+}
+
+/** Copies of a tool tier / material with other durability (a Tool node's own durability, 1.21+). */
+function genTiers(ctx: GenCtx, out: (cls: string, text: string) => void): void {
+  const { pkg, p } = ctx
+  const j = new JavaFile(pkg, 'NkwTiers')
+  let fn: string
+  if (p.toolApi === 'toolMaterial') {
+    j.use(MC.ToolMaterial)
+    fn = `    public static ToolMaterial withUses(ToolMaterial material, int uses) {
+        return new ToolMaterial(material.incorrectBlocksForDrops(), uses, material.speed(), material.attackDamageBonus(), material.enchantmentValue(), material.repairItems());
+    }`
+  } else {
+    j.use(MC.Tier, MC.TagKey, MC.Block, MC.Ingredient)
+    fn = `    public static Tier withUses(Tier tier, int uses) {
+        return new Tier() {
+            @Override
+            public int getUses() {
+                return uses;
+            }
+
+            @Override
+            public float getSpeed() {
+                return tier.getSpeed();
+            }
+
+            @Override
+            public float getAttackDamageBonus() {
+                return tier.getAttackDamageBonus();
+            }
+
+            @Override
+            public TagKey<Block> getIncorrectBlocksForDrops() {
+                return tier.getIncorrectBlocksForDrops();
+            }
+
+            @Override
+            public int getEnchantmentValue() {
+                return tier.getEnchantmentValue();
+            }
+
+            @Override
+            public Ingredient getRepairIngredient() {
+                return tier.getRepairIngredient();
+            }
+        };
+    }`
+  }
+  out(
+    'NkwTiers',
+    j.render(`
+/** A tier with other durability, for tools that set their own. */
+public final class NkwTiers {
+    private NkwTiers() {}
+
+${fn}
+}`)
+  )
+}
+
+const ATTR_SLOT: Record<AttributeIR['slot'], string> = {
+  mainhand: 'MAINHAND',
+  offhand: 'OFFHAND',
+  hand: 'HAND',
+  head: 'HEAD',
+  chest: 'CHEST',
+  legs: 'LEGS',
+  feet: 'FEET',
+  inventory: 'INVENTORY'
+}
+
+/**
+ * Stat bonuses (Stat Bonus nodes): every few ticks each player gets a transient attribute modifier for
+ * every bonus whose item is held / worn / carried as asked, and loses it otherwise. This works the same
+ * for plain items, food, tools and armor on every version (item attribute components differ a lot).
+ */
+function genAttributes(ctx: GenCtx, items: ItemIR[], get: (cls: string, id: string) => string, out: (cls: string, text: string) => void): void {
+  const { pkg, loader, p, ns } = ctx
+  const fab = fabricLike(loader)
+  const holder = p.stackId
+  const j = new JavaFile(pkg, 'NkwAttributes').use(
+    MC.Item,
+    MC.ItemStack,
+    MC.Level,
+    MC.Player,
+    MC.EquipmentSlot,
+    MC.Attribute,
+    MC.Attributes,
+    MC.AttributeModifier,
+    MC.AttributeInstance,
+    MC.List,
+    'java.util.ArrayList'
+  )
+  if (holder) j.use(MC.Holder)
+  else j.use('java.util.UUID', 'java.nio.charset.StandardCharsets')
+  const attrType = holder ? 'Holder<Attribute>' : 'Attribute'
+  const OPS = holder
+    ? { add: 'ADD_VALUE', base: 'ADD_MULTIPLIED_BASE', total: 'ADD_MULTIPLIED_TOTAL' }
+    : { add: 'ADDITION', base: 'MULTIPLY_BASE', total: 'MULTIPLY_TOTAL' }
+  const adds: string[] = []
+  for (const it of items)
+    it.attributes!.forEach((a, i) => {
+      const id = `${it.id}/${i}`
+      const mod = holder
+        ? `new AttributeModifier(NkwMod.id("bonus/${id}"), ${a.amount}, AttributeModifier.Operation.${OPS[a.operation]})`
+        : `new AttributeModifier(UUID.nameUUIDFromBytes("${ns}:bonus/${id}".getBytes(StandardCharsets.UTF_8)), "${ns} bonus", ${a.amount}, AttributeModifier.Operation.${OPS[a.operation]})`
+      adds.push(`        list.add(new Bonus(${get('ModItems', it.id)}, ${ATTR_SLOT[a.slot]}, Attributes.${a.field}, ${mod}));`)
+    })
+  const modId = holder ? 'modifier.id()' : 'modifier.getId()'
+  const inventory = p.mc === '1.16.5' ? 'player.inventory' : 'player.getInventory()'
+  let hooks: string
+  if (fab) {
+    j.use('net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents')
+    hooks = `    public static void init() {
+        ServerTickEvents.END_WORLD_TICK.register(level -> tick(level));
+    }`
+  } else {
+    const ev = forgeEvents(ctx, j)
+    hooks = `    public static void init() {
+        ${ev.bus}.addListener(NkwAttributes::onTick);
+    }
+
+${ev.tickHandler()}`
+  }
+  out(
+    'NkwAttributes',
+    j.render(`
+/** Stat bonuses of the mod's items while they are held, worn or carried. */
+public final class NkwAttributes {
+    private static final int MAINHAND = 0, OFFHAND = 1, HAND = 2, HEAD = 3, CHEST = 4, LEGS = 5, FEET = 6, INVENTORY = 7;
+
+    private static final class Bonus {
+        final Item item;
+        final int slot;
+        final ${attrType} attribute;
+        final AttributeModifier modifier;
+
+        Bonus(Item item, int slot, ${attrType} attribute, AttributeModifier modifier) {
+            this.item = item;
+            this.slot = slot;
+            this.attribute = attribute;
+            this.modifier = modifier;
+        }
+    }
+
+    private static List<Bonus> bonuses;
+
+    private NkwAttributes() {}
+
+${hooks}
+
+    /** Built on first use, after the items are registered. */
+    private static List<Bonus> bonuses() {
+        if (bonuses != null) return bonuses;
+        List<Bonus> list = new ArrayList<>();
+${adds.join('\n')}
+        bonuses = list;
+        return list;
+    }
+
+    private static void tick(Level level) {
+        if (level.isClientSide || level.getGameTime() % 5 != 0) return;
+        for (Player player : level.players()) update(player);
+    }
+
+    private static void update(Player player) {
+        for (Bonus bonus : bonuses()) {
+            AttributeInstance instance = player.getAttribute(bonus.attribute);
+            if (instance == null) continue;
+            boolean active = active(player, bonus.item, bonus.slot);
+            boolean has = instance.getModifier(bonus.${modId}) != null;
+            if (active && !has) instance.addTransientModifier(bonus.modifier);
+            else if (!active && has) instance.removeModifier(bonus.${modId});
+        }
+    }
+
+    private static boolean active(Player player, Item item, int slot) {
+        switch (slot) {
+            case MAINHAND:
+                return player.getMainHandItem().getItem() == item;
+            case OFFHAND:
+                return player.getOffhandItem().getItem() == item;
+            case HAND:
+                return player.getMainHandItem().getItem() == item || player.getOffhandItem().getItem() == item;
+            case HEAD:
+                return player.getItemBySlot(EquipmentSlot.HEAD).getItem() == item;
+            case CHEST:
+                return player.getItemBySlot(EquipmentSlot.CHEST).getItem() == item;
+            case LEGS:
+                return player.getItemBySlot(EquipmentSlot.LEGS).getItem() == item;
+            case FEET:
+                return player.getItemBySlot(EquipmentSlot.FEET).getItem() == item;
+            default:
+                return ${inventory}.contains(new ItemStack(item));
+        }
+    }
+}`)
+  )
+}
+
+/**
+ * Crops: the vanilla crop (ages 0–7, farmland, bone meal) plus a fixed growth time and the regrow
+ * cooldown, both run with scheduled block ticks (onPlace schedules the next step after every change).
+ */
+function genCropBlock(ctx: GenCtx, out: (cls: string, text: string) => void): void {
+  const { pkg, p } = ctx
+  const j = new JavaFile(pkg, 'NkwCropBlock').use(
+    MC.CropBlock,
+    MC.BlockBehaviour,
+    MC.BlockState,
+    MC.BlockGetter,
+    MC.BlockPos,
+    MC.Blocks,
+    MC.ServerLevel,
+    MC.Level
+  )
+  const random = p.mc === '1.16.5' || p.mc === '1.18.2' ? (j.use('java.util.Random'), 'Random') : (j.use('net.minecraft.util.RandomSource'), 'RandomSource')
+  const schedule = p.mc === '1.16.5' ? 'level.getBlockTicks().scheduleTick(pos, this, ticks)' : 'level.scheduleTick(pos, this, ticks)'
+  out(
+    'NkwCropBlock',
+    j.render(`
+/** A crop of the mod: soil, growth time, harvest mode and how it is picked. */
+public class NkwCropBlock extends CropBlock {
+    private final boolean dirt;
+    /** ticks per age step (0: random growth like wheat) */
+    private final int growStep;
+    public final boolean regrow;
+    public final int regrowAge;
+    private final int regrowTicks;
+    /** 0 break, 1 right-click, 2 hold right-click, 3 right-click and stand still */
+    public final int input;
+    public final int harvestTicks;
+    /** harvest timer look (NkwHarvestHud) */
+    public final int ui;
+    /** a hand harvest goes straight into the inventory */
+    public final boolean give;
+
+    public NkwCropBlock(BlockBehaviour.Properties properties, boolean dirt, int growStep, boolean regrow, int regrowAge, int regrowTicks, int input, int harvestTicks, int ui, boolean give) {
+        super(properties);
+        this.dirt = dirt;
+        this.growStep = growStep;
+        this.regrow = regrow;
+        this.regrowAge = regrowAge;
+        this.regrowTicks = regrowTicks;
+        this.input = input;
+        this.harvestTicks = harvestTicks;
+        this.ui = ui;
+        this.give = give;
+    }
+
+    @Override
+    protected boolean mayPlaceOn(BlockState state, BlockGetter level, BlockPos pos) {
+        if (dirt && (state.is(Blocks.GRASS_BLOCK) || state.is(Blocks.DIRT) || state.is(Blocks.COARSE_DIRT) || state.is(Blocks.PODZOL))) return true;
+        return super.mayPlaceOn(state, level, pos);
+    }
+
+    /** Ages after the regrow point use the cooldown; the rest the growth time (0 = random growth). */
+    private boolean timed(int age) {
+        return growStep > 0 || (regrow && age >= regrowAge);
+    }
+
+    private int stepTicks(int age) {
+        if (regrow && age >= regrowAge) return Math.max(1, regrowTicks / Math.max(1, getMaxAge() - regrowAge));
+        return growStep;
+    }
+
+    @Override
+    public void randomTick(BlockState state, ServerLevel level, BlockPos pos, ${random} random) {
+        if (timed(state.getValue(AGE))) return;
+        super.randomTick(state, level, pos, random);
+    }
+
+    @Override
+    public void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean moved) {
+        super.onPlace(state, level, pos, oldState, moved);
+        int age = state.getValue(AGE);
+        if (level.isClientSide || age >= getMaxAge() || !timed(age)) return;
+        int ticks = stepTicks(age);
+        ${schedule};
+    }
+
+    @Override
+    public void tick(BlockState state, ServerLevel level, BlockPos pos, ${random} random) {
+        int age = state.getValue(AGE);
+        if (age < getMaxAge() && timed(age) && canSurvive(state, level, pos)) level.setBlock(pos, getStateForAge(age + 1), 2);
+    }
+}`)
+  )
+}
+
+/** Game bodies: entity class, attributes, spawn category, size, renderer and what its texture method takes. */
+const BODY = {
+  zombie: {
+    cls: 'Zombie',
+    pkg: 'monster',
+    attrs: 'Zombie',
+    creature: false,
+    size: [0.6, 1.95],
+    renderer: 'ZombieRenderer',
+    param: 'Zombie',
+    state: 'ZombieRenderState'
+  },
+  skeleton: {
+    cls: 'Skeleton',
+    pkg: 'monster',
+    attrs: 'AbstractSkeleton',
+    creature: false,
+    size: [0.6, 1.99],
+    renderer: 'SkeletonRenderer',
+    param: 'AbstractSkeleton',
+    state: 'SkeletonRenderState'
+  },
+  spider: {
+    cls: 'Spider',
+    pkg: 'monster',
+    attrs: 'Spider',
+    creature: false,
+    size: [1.4, 0.9],
+    renderer: 'SpiderRenderer<Spider>',
+    param: 'Spider',
+    state: 'LivingEntityRenderState'
+  },
+  cow: { cls: 'Cow', pkg: 'animal', attrs: 'Cow', creature: true, size: [0.9, 1.4], renderer: 'CowRenderer', param: 'Cow', state: 'LivingEntityRenderState' },
+  pig: { cls: 'Pig', pkg: 'animal', attrs: 'Pig', creature: true, size: [0.9, 0.9], renderer: 'PigRenderer', param: 'Pig', state: 'PigRenderState' }
+} as const
+type GameBody = keyof typeof BODY
+/** The game body a mob uses (a 3D model without GeckoLib stands in as a zombie or a pig). */
+const gameBody = (m: MobIR): GameBody => (m.body === 'model3d' ? (m.behavior === 'passive' ? 'pig' : 'zombie') : m.body)
+/** Whether a mob is drawn with its GeckoLib model on this target. */
+const isGeoMob = (ctx: GenCtx, m: MobIR) => ctx.gecko && m.body === 'model3d' && !!m.geo
+/** Generated entity class of a GeckoLib mob. */
+const geoMobClass = (m: MobIR) =>
+  `Nkw${m.id
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join('')}Entity`
+/** The entity class a mob is made of. */
+const mobClass = (ctx: GenCtx, m: MobIR) => (isGeoMob(ctx, m) ? geoMobClass(m) : BODY[gameBody(m)].cls)
+/** Client imports for the GeckoLib mob renderers. */
+const geoMobImports = (ctx: GenCtx) =>
+  ctx.ir.mobs.some((m) => isGeoMob(ctx, m))
+    ? ['software.bernie.geckolib.renderer.GeoEntityRenderer', 'software.bernie.geckolib.model.DefaultedEntityGeoModel']
+    : []
+/** A new renderer for a mob (`arg` is the renderer context / dispatcher variable). */
+function mobRenderer(ctx: GenCtx, m: MobIR, arg: string): string {
+  if (isGeoMob(ctx, m)) return `new GeoEntityRenderer<${geoMobClass(m)}>(${arg}, new DefaultedEntityGeoModel<>(NkwMod.id("${m.id}")))`
+  return `new Nkw${BODY[gameBody(m)].cls}Renderer(${arg}, NkwMod.id("textures/entity/${m.id}.png"))`
+}
+
+/** A GeckoLib mob: AI goals for its behavior and idle / walk / attack animations. */
+function geoMobSource(ctx: GenCtx, m: MobIR): string {
+  const legacy = ctx.p.mc === '1.20.1'
+  const g = legacy ? 'software.bernie.geckolib.core' : 'software.bernie.geckolib'
+  const cls = geoMobClass(m)
+  const hostile = m.behavior === 'hostile'
+  const fights = m.behavior !== 'passive'
+  const base = hostile ? 'Monster' : 'PathfinderMob'
+  const j = new JavaFile(ctx.pkg, cls).use(
+    MC.EntityType,
+    MC.Level,
+    'net.minecraft.world.entity.player.Player',
+    `net.minecraft.world.entity.${hostile ? 'monster.Monster' : 'PathfinderMob'}`,
+    'net.minecraft.world.entity.ai.goal.FloatGoal',
+    'net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal',
+    'net.minecraft.world.entity.ai.goal.LookAtPlayerGoal',
+    'net.minecraft.world.entity.ai.goal.RandomLookAroundGoal',
+    'software.bernie.geckolib.animatable.GeoEntity',
+    'software.bernie.geckolib.util.GeckoLibUtil',
+    `${g}.animatable.instance.AnimatableInstanceCache`,
+    `${g}.animation.AnimatableManager`,
+    `${g}.animation.AnimationController`,
+    `${g}.animation.RawAnimation`
+  )
+  if (fights) j.use('net.minecraft.world.entity.ai.goal.MeleeAttackGoal', 'net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal')
+  else j.use('net.minecraft.world.entity.ai.goal.PanicGoal')
+  if (hostile) j.use('net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal')
+  const idle = m.anims.idle || m.geo?.animation?.name || ''
+  if (!idle) j.use(legacy ? 'software.bernie.geckolib.core.object.PlayState' : 'software.bernie.geckolib.animation.PlayState')
+  const anims = [
+    ['ATTACK', m.anims.attack, 'thenPlay', 'this.swinging'],
+    ['WALK', m.anims.walk, 'thenLoop', 'state.isMoving()'],
+    ['IDLE', idle, 'thenLoop', '']
+  ].filter((a) => a[1])
+  const str = (v: string) => JSON.stringify(v)
+  const lines = (...l: string[]) => l.filter(Boolean).join('\n')
+  return j.render(`
+/** ${m.name.replace(/\*\//g, '')}: a GeckoLib model with ${m.behavior} behavior. */
+public class ${cls} extends ${base} implements GeoEntity {
+${anims.map(([k, name, how]) => `    private static final RawAnimation ${k} = RawAnimation.begin().${how}(${str(name)});`).join('\n')}
+    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
+
+    public ${cls}(EntityType<? extends ${base}> type, Level level) {
+        super(type, level);
+    }
+
+    @Override
+    protected void registerGoals() {
+${lines(
+  '        this.goalSelector.addGoal(0, new FloatGoal(this));',
+  fights
+    ? '        this.goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.2D, false));'
+    : '        this.goalSelector.addGoal(1, new PanicGoal(this, 1.25D));',
+  '        this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 1.0D));',
+  '        this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 8.0F));',
+  '        this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));',
+  fights ? '        this.targetSelector.addGoal(1, new HurtByTargetGoal(this));' : '',
+  hostile ? '        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, true));' : ''
+)}
+    }
+${
+  hostile
+    ? ''
+    : `
+    @Override
+    public boolean removeWhenFarAway(double distance) {
+        return false;
+    }
+`
+}
+    @Override
+    public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
+        controllers.add(new AnimationController<>(this, "main", 4, state -> {
+${lines(
+  ...anims.map(([k, , , when]) => (when ? `            if (${when}) return state.setAndContinue(${k});` : `            return state.setAndContinue(${k});`)),
+  idle ? '' : '            return PlayState.STOP;'
+)}
+        }));
+    }
+
+    @Override
+    public AnimatableInstanceCache getAnimatableInstanceCache() {
+        return this.cache;
+    }
+}`)
+}
+
+/**
+ * Mobs: entity types (a game body or a GeckoLib model), default attributes, natural spawning (1.19.2+),
+ * and on the client a renderer per body that swaps in the skin.
+ */
+function genMobs(ctx: GenCtx, out: (cls: string, text: string) => void): void {
+  const { ir, pkg, loader, p } = ctx
+  const fab = fabricLike(loader)
+  const neo = loader === 'neoforge'
+  const mobs = ir.mobs
+  const geoMobs = mobs.filter((m) => isGeoMob(ctx, m))
+  const creature = (m: MobIR) => (isGeoMob(ctx, m) ? m.behavior !== 'hostile' : BODY[gameBody(m)].creature)
+  const j = new JavaFile(pkg, 'ModEntities').use(MC.EntityType, 'net.minecraft.world.entity.MobCategory', MC.Attributes)
+  const used = new Set(mobs.filter((m) => !isGeoMob(ctx, m)).map(gameBody))
+  for (const b of used) {
+    j.use(`net.minecraft.world.entity.${BODY[b].pkg}.${BODY[b].cls}`)
+    if (BODY[b].attrs !== BODY[b].cls) j.use(`net.minecraft.world.entity.${BODY[b].pkg}.${BODY[b].attrs}`)
+  }
+  const build = (id: string) =>
+    p.propertiesId ? (j.use(MC.RK, MC.Registries), `build(ResourceKey.create(Registries.ENTITY_TYPE, NkwMod.id("${id}")))`) : `build("${id}")`
+  if (geoMobs.length) j.use('net.minecraft.world.entity.Mob')
+  if (geoMobs.some((m) => m.behavior === 'hostile')) j.use('net.minecraft.world.entity.monster.Monster')
+  const typeExpr = (m: MobIR) => {
+    const cls = mobClass(ctx, m)
+    const size = isGeoMob(ctx, m) ? [m.width, m.height] : BODY[gameBody(m)].size
+    return `EntityType.Builder.<${cls}>of(${cls}::new, MobCategory.${creature(m) ? 'CREATURE' : 'MONSTER'}).sized(${f(size[0])}, ${f(size[1])}).${build(m.id)}`
+  }
+  const attrs = (m: MobIR) => {
+    const geoMob = isGeoMob(ctx, m)
+    const base = geoMob
+      ? m.behavior === 'hostile'
+        ? 'Monster.createMonsterAttributes()'
+        : 'Mob.createMobAttributes()'
+      : `${BODY[gameBody(m)].attrs}.createAttributes()`
+    const attack = geoMob ? m.behavior !== 'passive' : !BODY[gameBody(m)].creature
+    return `${base}.add(Attributes.MAX_HEALTH, ${m.health}).add(Attributes.MOVEMENT_SPEED, ${m.speed}).add(Attributes.ARMOR, ${m.armor})${attack ? `.add(Attributes.ATTACK_DAMAGE, ${m.attack})` : ''}`
+  }
+  // natural spawning: placement rules + biomes (Fabric in code, Forge / NeoForge with biome modifier files)
+  const spawning = mobs.filter((m) => m.spawn)
+  const placeType = mcAtLeast(p.mc, '1.21.1')
+    ? (j.use('net.minecraft.world.entity.SpawnPlacementTypes'), 'SpawnPlacementTypes.ON_GROUND')
+    : 'SpawnPlacements.Type.ON_GROUND'
+  if (spawning.length) j.use('net.minecraft.world.entity.SpawnPlacements', 'net.minecraft.world.level.levelgen.Heightmap')
+  const rule = (m: MobIR) =>
+    isGeoMob(ctx, m)
+      ? m.behavior === 'hostile'
+        ? 'Monster::checkMonsterSpawnRules'
+        : 'Mob::checkMobSpawnRules'
+      : creature(m)
+        ? (j.use('net.minecraft.world.entity.animal.Animal'), 'Animal::checkAnimalSpawnRules')
+        : (j.use('net.minecraft.world.entity.monster.Monster'), 'Monster::checkMonsterSpawnRules')
+  let body: string
+  if (fab) {
+    j.use(MC.Registry, p.builtInRegistries ? MC.BuiltIn : MC.Registry, 'net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry')
+    const reg = p.builtInRegistries ? 'BuiltInRegistries.ENTITY_TYPE' : 'Registry.ENTITY_TYPE'
+    if (spawning.length) j.use('net.fabricmc.fabric.api.biome.v1.BiomeModifications', 'net.fabricmc.fabric.api.biome.v1.BiomeSelectors')
+    const select = { overworld: 'foundInOverworld', nether: 'foundInTheNether', end: 'foundInTheEnd' } as const
+    body = `
+public final class ModEntities {
+${mobs.map((m) => `    public static final EntityType<${mobClass(ctx, m)}> ${C(m.id)} = Registry.register(${reg}, NkwMod.id("${m.id}"), ${typeExpr(m)});`).join('\n')}
+
+    private ModEntities() {}
+
+    public static void init() {
+${mobs.map((m) => `        FabricDefaultAttributeRegistry.register(${C(m.id)}, ${attrs(m)});`).join('\n')}
+${spawning
+  .map(
+    (m) =>
+      `        SpawnPlacements.register(${C(m.id)}, ${placeType}, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, ${rule(m)});
+        BiomeModifications.addSpawn(BiomeSelectors.${select[m.spawn!.where]}(), MobCategory.${creature(m) ? 'CREATURE' : 'MONSTER'}, ${C(m.id)}, ${m.spawn!.weight}, ${m.spawn!.min}, ${m.spawn!.max});`
+  )
+  .join('\n')}
+    }
+}`
+  } else {
+    j.use(neo ? 'net.neoforged.neoforge.registries.DeferredRegister' : 'net.minecraftforge.registries.DeferredRegister')
+    j.use(neo ? 'net.neoforged.neoforge.registries.DeferredHolder' : 'net.minecraftforge.registries.RegistryObject')
+    j.use(neo ? MC.Registries : 'net.minecraftforge.registries.ForgeRegistries')
+    j.use(neo ? 'net.neoforged.bus.api.IEventBus' : 'net.minecraftforge.eventbus.api.IEventBus')
+    j.use(neo ? 'net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent' : 'net.minecraftforge.event.entity.EntityAttributeCreationEvent')
+    const create = neo
+      ? 'DeferredRegister.create(Registries.ENTITY_TYPE, NkwMod.MOD_ID)'
+      : `DeferredRegister.create(ForgeRegistries.${mcAtLeast(p.mc, '1.19.2') ? 'ENTITY_TYPES' : 'ENTITIES'}, NkwMod.MOD_ID)`
+    const holder = (cls: string) => (neo ? `DeferredHolder<EntityType<?>, EntityType<${cls}>>` : `RegistryObject<EntityType<${cls}>>`)
+    let placements = ''
+    if (spawning.length) {
+      const ev = neo ? (mcAtLeast(p.mc, '1.21.1') ? 'RegisterSpawnPlacementsEvent' : 'SpawnPlacementRegisterEvent') : 'SpawnPlacementRegisterEvent'
+      j.use(`${neo ? 'net.neoforged.neoforge' : 'net.minecraftforge'}.event.entity.${ev}`)
+      placements = `
+
+    private static void placements(${ev} event) {
+${spawning.map((m) => `        event.register(${C(m.id)}.get(), ${placeType}, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, ${rule(m)}, ${ev}.Operation.REPLACE);`).join('\n')}
+    }`
+    }
+    body = `
+public final class ModEntities {
+    public static final DeferredRegister<EntityType<?>> ENTITIES = ${create};
+${mobs.map((m) => `    public static final ${holder(mobClass(ctx, m))} ${C(m.id)} = ENTITIES.register("${m.id}", () -> ${typeExpr(m)});`).join('\n')}
+
+    private ModEntities() {}
+
+    public static void init(IEventBus bus) {
+        bus.addListener(ModEntities::attributes);
+${spawning.length ? '        bus.addListener(ModEntities::placements);\n' : ''}    }
+
+    private static void attributes(EntityAttributeCreationEvent event) {
+${mobs.map((m) => `        event.put(${C(m.id)}.get(), ${attrs(m)}.build());`).join('\n')}
+    }${placements}
+}`
+  }
+  out('ModEntities', j.render(body))
+  for (const m of geoMobs) out(geoMobClass(m), geoMobSource(ctx, m))
+
+  // ── client: one renderer class per body, the skin per mob ──
+  const old = p.mc === '1.16.5'
+  const state = p.itemDefinitions
+  for (const b of used) {
+    const B = BODY[b]
+    const cls = `Nkw${B.cls}Renderer`
+    const r = new JavaFile(pkg, cls).use(MC.RL, `net.minecraft.client.renderer.entity.${B.renderer.replace(/<.*/, '')}`)
+    if (state) r.use(`net.minecraft.client.renderer.entity.state.${B.state}`)
+    else r.use(`net.minecraft.world.entity.${B.pkg}.${B.param}`)
+    if (b === 'spider') r.use(`net.minecraft.world.entity.monster.Spider`)
+    const ctxType = old
+      ? (r.use('net.minecraft.client.renderer.entity.EntityRenderDispatcher'), 'EntityRenderDispatcher')
+      : (r.use('net.minecraft.client.renderer.entity.EntityRendererProvider'), 'EntityRendererProvider.Context')
+    out(
+      cls,
+      r.render(`
+/** The game's ${b} renderer with the mob's own skin. */
+public class ${cls} extends ${B.renderer} {
+    private final ResourceLocation texture;
+
+    public ${cls}(${ctxType} context, ResourceLocation texture) {
+        super(context);
+        this.texture = texture;
+    }
+
+    @Override
+    public ResourceLocation getTextureLocation(${state ? B.state : B.param} entity) {
+        return texture;
+    }
+}`)
+    )
+  }
+  if (fab) return // Fabric: registered in NkwClient
+  const c = new JavaFile(pkg, 'NkwMobsClient').use(...geoMobImports(ctx))
+  let reg: string
+  if (old) {
+    c.use(
+      'net.minecraftforge.fml.client.registry.RenderingRegistry',
+      'net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent',
+      'net.minecraftforge.eventbus.api.IEventBus'
+    )
+    reg = `    public static void init(IEventBus bus) {
+        bus.addListener(NkwMobsClient::setup);
+    }
+
+    private static void setup(FMLClientSetupEvent event) {
+${mobs.map((m) => `        RenderingRegistry.registerEntityRenderingHandler(ModEntities.${C(m.id)}.get(), manager -> ${mobRenderer(ctx, m, 'manager')});`).join('\n')}
+    }`
+  } else {
+    const base = neo ? 'net.neoforged.neoforge' : 'net.minecraftforge'
+    c.use(`${base}.client.event.EntityRenderersEvent`, neo ? 'net.neoforged.bus.api.IEventBus' : 'net.minecraftforge.eventbus.api.IEventBus')
+    reg = `    public static void init(IEventBus bus) {
+        bus.addListener(NkwMobsClient::renderers);
+    }
+
+    private static void renderers(EntityRenderersEvent.RegisterRenderers event) {
+${mobs.map((m) => `        event.registerEntityRenderer(ModEntities.${C(m.id)}.get(), context -> ${mobRenderer(ctx, m, 'context')});`).join('\n')}
+    }`
+  }
+  out(
+    'NkwMobsClient',
+    c.render(`
+/** Client side of the mobs (only loaded on the client): renderers. */
+public final class NkwMobsClient {
+    private NkwMobsClient() {}
+
+${reg}
 }`)
   )
 }

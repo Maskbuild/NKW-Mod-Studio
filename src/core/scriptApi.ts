@@ -81,12 +81,28 @@ export const RESERVED_CLASSES = new Set([
   'NkwFacingModelBlock',
   'NkwJukebox',
   'NkwHeadwear',
+  'NkwThirst',
+  'NkwAttributes',
+  'NkwTiers',
+  'NkwCropBlock',
+  'NkwHarvest',
+  'NkwHarvestHud',
+  'ModEntities',
+  'NkwMobsClient',
+  'NkwZombieRenderer',
+  'NkwSkeletonRenderer',
+  'NkwSpiderRenderer',
+  'NkwCowRenderer',
+  'NkwPigRenderer',
   'NkwSwordItem',
   'NkwPickaxeItem',
   'NkwAxeItem',
   'NkwShovelItem',
   'NkwHoeItem'
 ])
+
+/** Whether the generated mod writes a class with this name (fixed classes and each 3D mob's Nkw<Id>Entity). */
+export const isReservedClass = (name: string) => RESERVED_CLASSES.has(name) || /^Nkw[A-Z][A-Za-z0-9]*Entity$/.test(name)
 
 export const targetKey = (t: Pick<Target, 'loader' | 'mc'>) => `${t.loader}-${t.mc}`
 

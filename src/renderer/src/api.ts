@@ -1,3 +1,5 @@
+import type { GameOptions } from '@core/gameOptions'
+import type { ModelControls } from '@core/modelControls'
 import type { Project, ProjectMeta, Target } from '@core/project'
 import type { VanillaData } from '@core/vanilla'
 
@@ -7,6 +9,8 @@ export interface Settings {
   memoryMb: number
   allowDownloads: boolean
   recent: { dir: string; name: string; modId: string; at: number }[]
+  game: GameOptions
+  modelControls: ModelControls
 }
 export type AssetKind = 'texture' | 'model' | 'geo' | 'sound' | 'animation'
 export interface AssetEntry {
@@ -57,6 +61,8 @@ export const api = {
   moveAsset: (from: string, to: string) => call<{ from: string; to: string }[]>('assets:move', { from, to }),
   deleteAsset: (path: string) => call<string[]>('assets:delete', { path }),
   readModel: (asset: string) => call<unknown>('assets:readModel', { asset }),
+  writeModel: (asset: string, model: Record<string, unknown>) => call<void>('assets:writeModel', { asset, model }),
+  writeTexture: (asset: string, png: string) => call<void>('assets:writeTexture', { asset, png }),
   animationNames: (asset: string) => call<string[]>('assets:animationNames', { asset }),
   /** Imports files dropped from the OS; kind is detected from content unless given. */
   importFiles: (files: File[], kind?: AssetKind, folder?: string, audio?: AudioOptions) =>
@@ -72,6 +78,7 @@ export const api = {
   vanilla: (mc: string, source: ItemSource = 'minecraft') => call<VanillaData | null>('vanilla:get', { mc, source }),
   downloadVanilla: (mc: string, source: ItemSource = 'minecraft') => call<VanillaData | null>('vanilla:download', { mc, source }),
   toolchain: () => call<{ jdks: { major: number; home: string; managed: boolean }[]; toolsDir: string }>('toolchain:status'),
+  previewCode: (project: Project, target: Target) => call<{ path: string; text: string | null; generated?: string }[]>('code:preview', { project, target }),
   startBuild: (project: Project, target: Target, task: 'runClient' | 'build' | 'compileJava') => call<boolean>('build:start', { project, target, task }),
   stopBuild: () => call<boolean>('build:stop'),
   openBuildFolder: (t: Target) => call<boolean>('build:openFolder', t),

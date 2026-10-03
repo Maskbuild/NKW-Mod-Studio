@@ -116,6 +116,17 @@ export async function resolveDeps(target: Target, cacheDir: string): Promise<Res
     deps.modMenu = id ? `maven.modrinth:modmenu:${id}` : null
   }
 
+  // AppleSkin shows hunger / saturation of food in test runs (not a dependency of the mod)
+  {
+    const mrLoader = loader === 'quilt' ? 'fabric' : loader
+    const v = await cached(cacheDir, `appleskin-id:${mc}:${mrLoader}`, () => modrinth('appleskin', mc, mrLoader, true))
+    deps.appleSkin = v ? `maven.modrinth:appleskin:${v}` : null
+    if (v && mrLoader === 'fabric') {
+      const cloth = await cached(cacheDir, `cloth-config-id:${mc}`, () => modrinth('cloth-config', mc, 'fabric', true))
+      deps.clothConfig = cloth ? `maven.modrinth:cloth-config:${cloth}` : null
+    }
+  }
+
   const fd = farmersDelightFor(loader, mc)
   if (fd) {
     const mrLoader = loader === 'quilt' ? 'fabric' : loader

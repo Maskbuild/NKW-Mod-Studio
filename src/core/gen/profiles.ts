@@ -207,6 +207,14 @@ export const PROFILES: VersionProfile[] = [
   }
 ]
 
+/** Whether Minecraft version `mc` is `min` or newer (e.g. mcAtLeast('1.21.1', '1.20.4')). */
+export function mcAtLeast(mc: string, min: string): boolean {
+  const a = mc.split('.').map(Number)
+  const b = min.split('.').map(Number)
+  for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0)
+  return true
+}
+
 export function getProfile(mc: string): VersionProfile {
   const p = PROFILES.find((x) => x.mc === mc)
   if (!p) throw new Error(`Unsupported Minecraft version ${mc}`)

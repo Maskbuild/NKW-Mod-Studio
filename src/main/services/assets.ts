@@ -258,6 +258,35 @@ export async function readModel(projectDir: string, asset: string): Promise<unkn
   return JSON.parse(await readFile(join(projectDir, 'assets', asset), 'utf8'))
 }
 
+// ───────── model editor ─────────
+
+/** Writes a file atomically (temp file + rename), creating its folder. */
+async function writeAssetFile(projectDir: string, asset: string, data: string | Buffer): Promise<void> {
+  const file = join(projectDir, 'assets', asset)
+  await mkdir(join(file, '..'), { recursive: true })
+  const tmp = `${file}.tmp-${process.pid}`
+  await writeFile(tmp, data)
+  await rename(tmp, file)
+}
+
+/** Saves a Java block/item model made in the model editor (models/*.json). */
+export async function writeModel(projectDir: string, asset: string, model: unknown): Promise<void> {
+  checkAsset(asset, 'models')
+  if (!asset.endsWith('.json') || typeof model !== 'object' || model === null || Array.isArray(model)) throw new Error('Invalid model')
+  const text = JSON.stringify(model, null, 2)
+  if (text.length > 4_000_000) throw new Error('Model is too large')
+  await writeAssetFile(projectDir, asset, text + '\n')
+}
+
+/** Saves a texture painted in the model editor (textures/*.png, base64 PNG). */
+export async function writeTexture(projectDir: string, asset: string, pngBase64: string): Promise<void> {
+  checkAsset(asset, 'textures')
+  if (!asset.endsWith('.png')) throw new Error('Invalid texture path')
+  const png = Buffer.from(pngBase64, 'base64')
+  if (png.length > 8_000_000 || png.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') throw new Error('Not a PNG image')
+  await writeAssetFile(projectDir, asset, png)
+}
+
 // ───────── file management (tree view) ─────────
 
 export async function makeFolder(projectDir: string, folder: string): Promise<void> {

@@ -6,6 +6,8 @@ export interface JavaModel {
   parent?: string
   textures?: Record<string, string>
   elements?: {
+    /** cube name (Blockbench); Minecraft ignores it */
+    name?: string
     from: number[]
     to: number[]
     rotation?: { angle: number; axis: 'x' | 'y' | 'z'; origin: number[]; rescale?: boolean }
