@@ -478,6 +478,7 @@ export function writeFixture(dir: string): Project {
     depleted: 'minecraft:cobblestone',
     give: true,
     adventure: false,
+    toolWear: 3,
     dropMin: 2,
     dropMax: 4,
     tabTitle: 'Resource Nodes'

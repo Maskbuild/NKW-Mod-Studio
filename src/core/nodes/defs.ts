@@ -828,7 +828,10 @@ export const NODE_DEFS: NodeDef[] = [
         label: t('ID prefix', 'คำนำหน้า ID'),
         kind: 'id',
         default: 'regen',
-        hint: t('regen → regen_iron_ore, regen_iron_ore_depleted', 'regen → regen_iron_ore, regen_iron_ore_depleted')
+        hint: t(
+          'regen → regen_iron_ore, regen_iron_ore_depleted. Nodes with the same prefix share one creative tab.',
+          'regen → regen_iron_ore, regen_iron_ore_depleted · โหนดที่ใช้คำนำหน้าเดียวกันจะอยู่แท็บครีเอทีฟเดียวกัน'
+        )
       },
       {
         key: 'input',
@@ -919,6 +922,19 @@ export const NODE_DEFS: NodeDef[] = [
         label: t('Harvest goes into the inventory', 'ผลผลิตเข้าตัวทันที'),
         kind: 'bool',
         default: false
+      },
+      {
+        key: 'toolWear',
+        label: t('Tool durability used per harvest', 'ค่าคงทนเครื่องมือที่เสียต่อครั้ง'),
+        kind: 'int',
+        default: 1,
+        min: 0,
+        max: 64,
+        hint: t(
+          'The item in the main hand loses this much durability each time a block is picked with the left button (0 = none). Mining ("Break") wears tools like the game does. Creative mode is not affected.',
+          'ไอเทมในมือหลักเสียค่าคงทนเท่านี้ทุกครั้งที่เก็บด้วยคลิกซ้าย (0 = ไม่เสีย) · แบบ "ทุบ" เสียค่าคงทนตามปกติของเกม · โหมดสร้างสรรค์ไม่เสีย'
+        ),
+        showIf: (d) => d.input !== undefined && d.input !== 'break'
       },
       harvestAdventureProp((d) => d.input !== undefined && d.input !== 'break'),
       { key: 'tabTitle', label: t('Creative tab title (EN)', 'ชื่อแท็บครีเอทีฟ (EN)'), kind: 'text', default: 'Regenerating Blocks' },

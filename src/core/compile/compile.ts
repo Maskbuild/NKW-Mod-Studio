@@ -783,7 +783,8 @@ export function compile(project: Project, target?: Target): CompileResult {
               timer: breaking && bool(d, 'timer', true),
               drop,
               give: bool(d, 'give', false),
-              adventure: bool(d, 'adventure', true)
+              adventure: bool(d, 'adventure', true),
+              wear: breaking ? 0 : int(d, 'toolWear', 1, 0, 64)
             }
           })
           ir.blocks.push({
@@ -800,6 +801,12 @@ export function compile(project: Project, target?: Target): CompileResult {
         }
         if (items.length) {
           const tabId = `${prefix}_blocks`
+          // nodes with the same ID prefix share one creative tab (named by the first of them)
+          const same = regenTabs.find((tb) => tb.id === tabId)
+          if (same) {
+            same.items.push(...items.filter((it) => !same.items.includes(it)))
+            break
+          }
           regenTabs.push({
             id: tabId,
             nodeId: n.id,

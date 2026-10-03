@@ -16,7 +16,7 @@ export function regenCtor(ctx: GenCtx, b: BlockIR, props: string): string {
   const r = b.regen!
   const ui = harvestUiIndex(ctx.ir, r.ui)
   const drop = r.drop ? `"${r.drop.item}", ${r.drop.min}, ${r.drop.max}` : 'null, 0, 0'
-  return `new NkwRegenBlock(${props}, "${r.original}", () -> ${ref(r.depleted)}, ${INPUT[r.input]}, ${r.harvestTicks}, ${ui}, ${r.timer ? ui : -1}, ${r.give}, ${r.adventure}, ${drop})`
+  return `new NkwRegenBlock(${props}, "${r.original}", () -> ${ref(r.depleted)}, ${INPUT[r.input]}, ${r.harvestTicks}, ${ui}, ${r.timer ? ui : -1}, ${r.give}, ${r.adventure}, ${r.wear}, ${drop})`
 }
 
 /**
@@ -56,10 +56,15 @@ export function genRegen(ctx: GenCtx, out: (cls: string, text: string) => void):
       MC.ItemStack,
       MC.Item,
       MC.RL,
+      MC.EquipmentSlot,
       'java.util.Collections',
       'java.util.List',
       'java.util.function.Supplier'
     )
+    // 1.20.5+: hurtAndBreak takes the slot, before a callback for when the tool breaks
+    const wearTool = p.stackId
+      ? 'tool.hurtAndBreak(wear, player, EquipmentSlot.MAINHAND);'
+      : 'tool.hurtAndBreak(wear, player, broken -> broken.broadcastBreakEvent(EquipmentSlot.MAINHAND));'
     const blocks = registry(p, j, 'BLOCK')
     const items = registry(p, j, 'ITEM')
     out(
@@ -80,13 +85,15 @@ public class NkwRegenBlock extends Block {
     public final boolean give;
     /** players in adventure mode may pick it by hand */
     public final boolean adventure;
+    /** durability the main-hand item loses per left-button harvest */
+    public final int wear;
     /** item given instead of the original's drops (null: the original's drops), with its count */
     private final String drop;
     private final int dropMin;
     private final int dropMax;
     private BlockState originalState;
 
-    public NkwRegenBlock(BlockBehaviour.Properties properties, String original, Supplier<Block> depleted, int input, int harvestTicks, int ui, int breakUi, boolean give, boolean adventure, String drop, int dropMin, int dropMax) {
+    public NkwRegenBlock(BlockBehaviour.Properties properties, String original, Supplier<Block> depleted, int input, int harvestTicks, int ui, int breakUi, boolean give, boolean adventure, int wear, String drop, int dropMin, int dropMax) {
         super(properties);
         this.original = original;
         this.depleted = depleted;
@@ -96,6 +103,7 @@ public class NkwRegenBlock extends Block {
         this.breakUi = breakUi;
         this.give = give;
         this.adventure = adventure;
+        this.wear = wear;
         this.drop = drop;
         this.dropMin = dropMin;
         this.dropMax = dropMax;
@@ -118,7 +126,8 @@ public class NkwRegenBlock extends Block {
 
     /**
      * The original block's drops for this player and tool (fortune, silk touch …), then the depleted block.
-     * needsTool: like mining the original (e.g. iron ore needs a stone pickaxe or better to drop anything).
+     * needsTool: like mining the original (e.g. iron ore needs a stone pickaxe or better to drop anything);
+     * mining already wore the tool, a left-button harvest (needsTool false) wears it here.
      */
     public void harvest(Level level, BlockPos pos, Player player, ItemStack tool, boolean needsTool) {
         if (!(level instanceof ServerLevel)) return;
@@ -132,7 +141,10 @@ public class NkwRegenBlock extends Block {
                 } else Block.popResource(level, pos, stack);
             }
         }
-        if (!needsTool) level.levelEvent(2001, pos, Block.getId(from));
+        if (!needsTool) {
+            level.levelEvent(2001, pos, Block.getId(from));
+            if (wear > 0 && !tool.isEmpty()) ${wearTool}
+        }
         level.setBlock(pos, depleted.get().defaultBlockState(), 3);
     }
 

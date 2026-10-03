@@ -211,6 +211,8 @@ export interface RegenIR {
   drop: { item: string; min: number; max: number } | null
   give: boolean
   adventure: boolean
+  /** durability the main-hand item loses per left-button harvest (mining wears tools like the game) */
+  wear: number
 }
 
 export interface BlockIR extends Named {

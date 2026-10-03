@@ -314,6 +314,12 @@ ${ownRule}if (!GAME.isEmpty()) {
         return 0;
     }
 
+    /** A grown block picked with the left button that adventure-mode players may pick (client side: the tool swings). */
+    public static boolean adventurePick(Level level, BlockPos pos) {
+        Rule rule = grown(level.getBlockState(pos));
+        return rule != null && rule.left && rule.adventure;
+    }
+
     /** The local player's running harvest, for the timer on screen (client side), or null. */
     public static Session client(Player player, Level level) {
         long now = level.getGameTime();${
@@ -542,6 +548,17 @@ export function genHarvestHud(ctx: GenCtx, out: (cls: string, text: string) => v
         boolean mining = false;
 ${[harvest ? harvestPart : '', breaking ? `        ${breakPart}` : ''].filter(Boolean).join('\n')}
         if (ui < 0) return;`
+  // adventure mode cannot mine, so the game stops swinging the tool after the first hit: keep it swinging
+  // while the left button is held on a block picked with it (the swings also reach the server)
+  let adventureSwing = ''
+  if (ir.blocks.some((b) => b.regen && b.regen.input !== 'break' && b.regen.adventure)) {
+    j.use('net.minecraft.world.phys.BlockHitResult', 'net.minecraft.world.phys.HitResult', 'net.minecraft.world.InteractionHand')
+    adventureSwing = `
+        if (mc.screen == null && !mc.player.mayBuild() && !mc.player.isSpectator() && mc.options.keyAttack.isDown()
+                && mc.hitResult instanceof BlockHitResult && mc.hitResult.getType() == HitResult.Type.BLOCK
+                && NkwHarvest.adventurePick(mc.level, ((BlockHitResult) mc.hitResult).getBlockPos()))
+            mc.player.swing(InteractionHand.MAIN_HAND);`
+  }
   let breakTracker = ''
   if (breaking) {
     const breakLook = [
@@ -603,7 +620,8 @@ ${hooks}
 
     private static void render(${G} graphics) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null || mc.options.hideGui) return;
+        if (mc.player == null || mc.level == null) return;${adventureSwing}
+        if (mc.options.hideGui) return;
 ${timerSource}
         int[] look = LOOKS[ui < LOOKS.length ? ui : 0];
         String left = String.format("%.1f", ticksLeft / 20.0);

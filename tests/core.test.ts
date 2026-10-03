@@ -645,10 +645,18 @@ describe('generators', () => {
         const text = (all: typeof files, end: string) => all.find((f) => f.path.endsWith(end))?.text
         const regenBlocks = files.find((x) => x.path.endsWith('/ModBlocks.java'))!.text!
         expect(regenBlocks).toMatch(
-          /new NkwRegenBlock\([^\n]*"minecraft:iron_ore", \(\) -> ModBlocks\.REGEN_IRON_ORE_DEPLETED(\.get\(\))?, 0, 40, 0, 0, false, true, null, 0, 0\)/
+          /new NkwRegenBlock\([^\n]*"minecraft:iron_ore", \(\) -> ModBlocks\.REGEN_IRON_ORE_DEPLETED(\.get\(\))?, 0, 40, 0, 0, false, true, 0, null, 0, 0\)/
         )
         // its Timer window (the bar) is used, not the default text (index 0)
-        expect(regenBlocks).toMatch(/"minecraft:amethyst_block", [^\n]*, 2, 60, [1-9]\d*, -1, true, false, "nkwtest:ruby", 2, 4\)/)
+        expect(regenBlocks).toMatch(/"minecraft:amethyst_block", [^\n]*, 2, 60, [1-9]\d*, -1, true, false, 3, "nkwtest:ruby", 2, 4\)/)
+        // a left-button harvest wears the tool in the main hand (mining wears it like the game)
+        expect(text(files, '/NkwRegenBlock.java')).toContain(
+          p.stackId
+            ? 'if (wear > 0 && !tool.isEmpty()) tool.hurtAndBreak(wear, player, EquipmentSlot.MAINHAND);'
+            : `if (wear > 0 && !tool.isEmpty()) tool.hurtAndBreak(wear, player, broken -> broken.broadcastBreakEvent(${p.mc === '1.16.5' && loader === 'forge' ? 'EquipmentSlotType' : 'EquipmentSlot'}.MAINHAND));`
+        )
+        // adventure mode cannot mine: no swing code unless some block is picked there with the left button
+        expect(text(files, '/NkwHarvestHud.java')).not.toContain('mc.player.swing(')
         // picked with the left button: from the arm swing, where the player looks
         expect(java).toContain('if (!player.swinging || player.isSpectator()) return null;')
         expect(java).toContain(p.stackId ? 'player.pick(player.blockInteractionRange(), 1.0F, false)' : 'player.pick(4.5, 1.0F, false)')
@@ -1006,5 +1014,32 @@ describe('review fixes', () => {
     }
     const names = (bbmodelToGeo(JSON.stringify(bb)).geo['minecraft:geometry'][0].bones ?? []).map((b) => b.name)
     expect(names).toEqual(['a_b', 'a_b_2'])
+  })
+  it('keeps the tool swinging in adventure mode while a block is picked with the left button', () => {
+    const p = structuredClone(project)
+    p.graph.nodes.find((n) => n.id === 'regen_hold')!.data.adventure = true
+    for (const target of [
+      { loader: 'fabric', mc: '1.21.1' },
+      { loader: 'forge', mc: '1.16.5' }
+    ] as const) {
+      const { ir } = compile(p, target)
+      const files = generate(ir, target, { ...FALLBACK_DEPS[target.mc], ...deps } as never, read)
+      const hud = files.find((f) => f.path.endsWith('/NkwHarvestHud.java'))!.text!
+      expect(hud).toContain('mc.options.keyAttack.isDown()')
+      expect(hud).toMatch(/NkwHarvest\.adventurePick\(mc\.level, \(\((BlockHitResult|BlockRayTraceResult)\) mc\.hitResult\)\.getBlockPos\(\)\)\)/)
+      expect(hud).toContain(target.loader === 'forge' ? 'mc.player.swing(Hand.MAIN_HAND);' : 'mc.player.swing(InteractionHand.MAIN_HAND);')
+      // swinging still happens with the HUD hidden (F1)
+      expect(hud.indexOf('mc.player.swing(')).toBeLessThan(hud.indexOf('mc.options.hideGui'))
+    }
+  })
+  it('puts Regenerating Blocks nodes with the same ID prefix into one creative tab', () => {
+    const p = structuredClone(project)
+    const ores = p.graph.nodes.find((n) => n.id === 'regen_ores')!
+    p.graph.nodes.push({ ...structuredClone(ores), id: 'regen_more', position: { x: 0, y: 900 }, data: { ...ores.data, blocks: ['minecraft:gold_ore'] } })
+    const { ir, diagnostics } = compile(p, { loader: 'fabric', mc: '1.21.1' })
+    expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
+    expect(ir.tabs.filter((tb) => tb.id === 'regen_blocks').length).toBe(1)
+    expect(ir.tabs.find((tb) => tb.id === 'regen_blocks')!.items).toContain('nkwtest:regen_gold_ore')
+    expect(ir.tabs.find((tb) => tb.id === 'regen_blocks')!.items).toContain('nkwtest:regen_iron_ore')
   })
 })
