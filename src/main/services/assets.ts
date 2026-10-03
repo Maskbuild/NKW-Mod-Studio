@@ -51,8 +51,9 @@ export const EXTENSIONS: Record<AssetKind, string[]> = {
 }
 
 function uniqueName(dir: string, base: string, ext: string): string {
-  let name = base || 'file'
-  for (let i = 2; existsSync(join(dir, `${name}.${ext}`)); i++) name = `${base}_${i}`
+  const first = base || 'file'
+  let name = first
+  for (let i = 2; existsSync(join(dir, `${name}.${ext}`)); i++) name = `${first}_${i}`
   return name
 }
 
@@ -70,6 +71,7 @@ function pngSize(buf: Buffer): { width: number; height: number } | null {
 async function writePng(projectDir: string, folder: string, base: string, buf: Buffer): Promise<ImportedAsset> {
   const size = pngSize(buf)
   if (!size) throw new Error('Not a valid PNG image')
+  if (!size.width || !size.height) throw new Error('Not a valid PNG image')
   if (size.width > 4096 || size.height > 4096) throw new Error('Image is larger than 4096×4096')
   const dir = join(projectDir, 'assets', folder)
   await mkdir(dir, { recursive: true })
@@ -142,7 +144,7 @@ export async function importAsset(
         const textures: string[] = []
         for (const [i, t] of conv.textures.entries()) {
           if (!t.base64) continue
-          const png = await writePng(projectDir, ROOT.texture, toId(t.name.replace(/.png$/i, '')) || `${base}_${i}`, Buffer.from(t.base64, 'base64'))
+          const png = await writePng(projectDir, ROOT.texture, toId(t.name.replace(/\.png$/i, '')) || `${base}_${i}`, Buffer.from(t.base64, 'base64'))
           textures.push(png.asset)
           extra.push(png)
         }

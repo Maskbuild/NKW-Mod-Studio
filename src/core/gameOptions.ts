@@ -153,8 +153,9 @@ export function mergeOptionsTxt(existing: string, entries: Record<string, string
     .split(/\r?\n/)
     .filter((l) => l.trim())
     .map((l) => {
-      const k = l.slice(0, l.indexOf(':'))
-      if (k in left) {
+      const i = l.indexOf(':')
+      const k = i < 0 ? '' : l.slice(0, i)
+      if (k && k in left) {
         const v = left[k]
         delete left[k]
         return `${k}:${v}`

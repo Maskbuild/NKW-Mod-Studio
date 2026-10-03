@@ -13,6 +13,8 @@ type Snapshot = { nodes: FlowNode[]; edges: Edge[] }
 
 const HISTORY = 120
 let idSeq = Date.now() % 100000
+/** the save in progress (see save) */
+let pendingSave: Promise<void> | null = null
 
 export function newId(prefix = 'n'): string {
   return `${prefix}${(++idSeq).toString(36)}${Math.random().toString(36).slice(2, 5)}`
@@ -205,6 +207,8 @@ export const useStore = create<State>((set, get) => ({
   },
   async closeProject() {
     if (get().dirty) await get().save()
+    // a failed save keeps the project open, so nothing is lost
+    if (get().dirty) return
     await api.closeProject()
     set({ page: 'home', dir: null, meta: null, nodes: [], edges: [], past: [], future: [] })
     set({ settings: await api.settings() })
@@ -312,16 +316,36 @@ export const useStore = create<State>((set, get) => ({
     set({ nodes, dirty: true })
   },
   async save() {
+    // one save at a time: a second call waits for the running one, then saves what changed meanwhile
+    while (pendingSave) await pendingSave
     const p = get().project()
-    if (!p || get().saving) return
-    set({ saving: true })
+    if (!p) return
+    const before = get()
+    const run = (async () => {
+      set({ saving: true })
+      try {
+        await api.saveProject(p)
+        // edits made while saving stay unsaved
+        const s = get()
+        const same =
+          s.nodes === before.nodes &&
+          s.edges === before.edges &&
+          s.meta === before.meta &&
+          s.targets === before.targets &&
+          s.activeTarget === before.activeTarget &&
+          s.overrides === before.overrides
+        if (same) set({ dirty: false })
+      } catch (e) {
+        get().toast(String((e as Error).message ?? e), true)
+      } finally {
+        set({ saving: false })
+      }
+    })()
+    pendingSave = run
     try {
-      await api.saveProject(p)
-      set({ dirty: false })
-    } catch (e) {
-      get().toast(String((e as Error).message ?? e), true)
+      await run
     } finally {
-      set({ saving: false })
+      if (pendingSave === run) pendingSave = null
     }
   },
   copy() {
@@ -359,8 +383,11 @@ export const useStore = create<State>((set, get) => ({
             typeof n.id === 'string' &&
             typeof n.type === 'string' &&
             (NODE_DEF_MAP[n.type] || n.type === 'comment' || n.type === 'reroute') &&
-            n.position &&
-            typeof n.data === 'object'
+            Number.isFinite(n.position?.x) &&
+            Number.isFinite(n.position?.y) &&
+            !!n.data &&
+            typeof n.data === 'object' &&
+            !Array.isArray(n.data)
         )
         const keep = new Set(known.map((n) => n.id))
         clip = { nodes: known, edges: (parsed.edges as Snapshot['edges']).filter((e) => e && keep.has(e.source) && keep.has(e.target)) }

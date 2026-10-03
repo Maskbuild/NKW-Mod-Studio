@@ -38,6 +38,14 @@ const str = (d: Data, k: string, def = ''): string => (typeof d[k] === 'string' 
 const num = (d: Data, k: string, def = 0): number => (typeof d[k] === 'number' && Number.isFinite(d[k]) ? (d[k] as number) : def)
 const bool = (d: Data, k: string, def = false): boolean => (typeof d[k] === 'boolean' ? (d[k] as boolean) : def)
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+/** Whole number in a range (counts, protection points … that the game reads as integers). */
+const int = (d: Data, k: string, def: number, lo: number, hi: number) => clamp(Math.round(num(d, k, def)), lo, hi)
+/** A select setting: one of the options the node definition offers, else its default (old or edited data). */
+const sel = <T extends string = string>(n: GraphNode, key: string): T => {
+  const p = NODE_DEF_MAP[n.type]?.props.find((x) => x.key === key)
+  const v = str(n.data, key)
+  return (p?.options?.some((o) => o.value === v) ? v : String(p?.default ?? '')) as T
+}
 
 export interface CompileResult {
   ir: ModIR
@@ -47,10 +55,6 @@ export interface CompileResult {
 /** Material id used by tools / armor with no material wired in (iron stats). */
 const DEFAULT_MAT = 'nkw_iron'
 
-/**
- * Graph → IR. Pure function: no filesystem access, safe to run in a Web Worker.
- * Pass `target` to also check loader/version specific compatibility.
- */
 /**
  * Brackets / quotes the generated Java would choke on, found before building (Gradle would report the
  * same, much later). Skips strings, chars and comments.
@@ -72,6 +76,14 @@ export function scriptBracketProblem(code: string): { en: string; th: string; li
       if (end < 0) return { en: `unclosed comment (line ${line})`, th: `คอมเมนต์ไม่ได้ปิด (บรรทัด ${line})`, line }
       line += code.slice(i, end).split('\n').length - 1
       i = end + 1
+      continue
+    }
+    // Java text block: """ … """
+    if (code.startsWith('"""', i)) {
+      const end = code.indexOf('"""', i + 3)
+      if (end < 0) return { en: `unclosed text block (line ${line})`, th: `ข้อความหลายบรรทัด (""") ไม่ได้ปิด (บรรทัด ${line})`, line }
+      line += code.slice(i, end).split('\n').length - 1
+      i = end + 2
       continue
     }
     if (c === '"' || c === "'") {
@@ -138,6 +150,10 @@ export function breakRuleMessage(r: Pick<BreakRuleIR, 'tool' | 'level' | 'onFail
     : { en: `Needs ${what} to drop anything`, th: `ต้องใช้${th}ถึงจะได้ของ` }
 }
 
+/**
+ * Graph → IR. Pure function: no filesystem access, safe to run in a Web Worker.
+ * Pass `target` to also check loader/version specific compatibility.
+ */
 export function compile(project: Project, target?: Target): CompileResult {
   const diags: Diagnostic[] = []
   const err = (nodeId: string | undefined, en: string, th: string) => diags.push({ severity: 'error', nodeId, message: { en, th } })
@@ -361,20 +377,19 @@ export function compile(project: Project, target?: Target): CompileResult {
     if (!s || s.node.type !== 'harvestUi') return null
     const d = s.node.data
     const rgb = (k: string, def: string) => parseInt((/^#[0-9a-f]{6}$/i.test(str(d, k)) ? str(d, k) : def).slice(1), 16)
-    const int = (k: string, def: number, lo: number, hi: number) => clamp(Math.round(num(d, k, def)), lo, hi)
     const style = str(d, 'style', 'bar')
     const place = str(d, 'place', 'crosshair')
     return {
       style: style === 'text' || style === 'ring' ? style : 'bar',
       color: rgb('color', '#4ade80'),
       back: rgb('back', '#000000'),
-      backAlpha: Math.round((int('backOpacity', 50, 0, 100) * 255) / 100),
+      backAlpha: Math.round((int(d, 'backOpacity', 50, 0, 100) * 255) / 100),
       place: place === 'hotbar' || place === 'top' ? place : 'crosshair',
-      offset: int('offset', 0, -200, 200),
-      width: int('width', 60, 10, 300),
-      height: int('height', 4, 1, 20),
-      radius: int('radius', 9, 3, 40),
-      thickness: int('thickness', 3, 1, 40),
+      offset: int(d, 'offset', 0, -200, 200),
+      width: int(d, 'width', 60, 10, 300),
+      height: int(d, 'height', 4, 1, 20),
+      radius: int(d, 'radius', 9, 3, 40),
+      thickness: int(d, 'thickness', 3, 1, 40),
       time: bool(d, 'time', true)
     }
   }
@@ -490,7 +505,7 @@ export function compile(project: Project, target?: Target): CompileResult {
   })
   const itemBase = (n: GraphNode) => ({
     maxStack: clamp(Math.round(num(n.data, 'maxStack', 64)), 1, 64),
-    rarity: (str(n.data, 'rarity', 'common') as ItemIR['rarity']) || 'common',
+    rarity: sel<ItemIR['rarity']>(n, 'rarity'),
     fireResistant: bool(n.data, 'fireResistant'),
     glint: bool(n.data, 'glint'),
     handheld: bool(n.data, 'handheld'),
@@ -509,7 +524,6 @@ export function compile(project: Project, target?: Target): CompileResult {
   let usesGeo = false
   let usesDefaultTool = false
   let usesDefaultArmor = false
-  let tabNodes = 0
   /** creative tabs of Regenerating Blocks nodes (after the project's own tabs) */
   const regenTabs: ModIR['tabs'] = []
 
@@ -561,7 +575,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           glint: false,
           handheld: true,
           tool: {
-            type: str(d, 'toolType', 'sword') as NonNullable<ItemIR['tool']>['type'],
+            type: sel<NonNullable<ItemIR['tool']>['type']>(n, 'toolType'),
             material: mat ? str(mat.node.data, 'id') : DEFAULT_MAT,
             damage: num(d, 'attackDamage', 3),
             speed: num(d, 'attackSpeed', -2.4),
@@ -584,7 +598,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           durability: clamp(Math.round(num(d, 'durability', 500)), 1, 100000),
           speed: num(d, 'speed', 6),
           damage: num(d, 'damage', 2),
-          level: str(d, 'level', 'iron') as ToolMatIR['level'],
+          level: sel<ToolMatIR['level']>(n, 'level'),
           enchantability: clamp(Math.round(num(d, 'enchantability', 14)), 0, 100),
           repair: ingredient(n.id, 'repair', false)
         }
@@ -599,7 +613,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           ...names(n),
           nodeId: n.id,
           kind: is3d ? 'model' : 'cube',
-          shape: (str(d, 'shape', 'cube_all') as BlockIR['shape']) || 'cube_all',
+          shape: sel<BlockIR['shape']>(n, 'shape'),
           textures: {
             side: is3d ? null : texture(n.id, 'texture', true),
             top: is3d ? null : texture(n.id, 'top', false),
@@ -611,10 +625,10 @@ export function compile(project: Project, target?: Target): CompileResult {
           solid: !is3d || bool(d, 'solid', true),
           hardness: clamp(num(d, 'hardness', 3), 0, 100),
           resistance: clamp(num(d, 'resistance', 6), 0, 3600000),
-          sound: str(d, 'sound', 'stone'),
-          tool: str(d, 'tool', 'pickaxe') as BlockIR['tool'],
-          toolLevel: str(d, 'toolLevel', 'wood') as BlockIR['toolLevel'],
-          requiresTool: str(d, 'tool', 'pickaxe') !== 'none' && bool(d, 'requiresTool', true),
+          sound: sel(n, 'sound'),
+          tool: sel<BlockIR['tool']>(n, 'tool'),
+          toolLevel: sel<BlockIR['toolLevel']>(n, 'toolLevel'),
+          requiresTool: sel(n, 'tool') !== 'none' && bool(d, 'requiresTool', true),
           light: clamp(Math.round(num(d, 'light', 0)), 0, 15),
           drop: item(n.id, 'drop', false),
           dropMin: clamp(Math.round(num(d, 'dropMin', 1)), 0, 64),
@@ -705,7 +719,7 @@ export function compile(project: Project, target?: Target): CompileResult {
         if (!NSID_RE.test(look)) err(n.id, `"${look}" is not a block ID (e.g. minecraft:bedrock)`, `"${look}" ไม่ใช่ ID บล็อก (เช่น minecraft:bedrock)`)
         const ticks = clamp(Math.round(num(d, 'regenSeconds', 60)), 1, 86400) * 20
         const breaking = input === 'break'
-        const tool = (['none', 'pickaxe', 'axe', 'shovel', 'hoe'].includes(str(d, 'tool')) ? str(d, 'tool') : 'pickaxe') as BlockIR['tool']
+        const tool = sel<BlockIR['tool']>(n, 'tool')
         const items: string[] = []
         const base = (id: string, name: string): BlockIR => ({
           id,
@@ -722,7 +736,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           // right-click harvests: the block itself cannot be mined; blocks resist explosions either way
           hardness: breaking ? clamp(num(d, 'hardness', 3), 0, 100) : -1,
           resistance: 3600000,
-          sound: str(d, 'sound', 'stone'),
+          sound: sel(n, 'sound'),
           tool: breaking ? tool : 'none',
           toolLevel: 'wood',
           requiresTool: false,
@@ -985,15 +999,15 @@ export function compile(project: Project, target?: Target): CompileResult {
           nodeId: n.id,
           durability: clamp(Math.round(num(d, 'durability', 20)), 1, 1000),
           protection: {
-            helmet: num(d, 'helmet', 2),
-            chestplate: num(d, 'chestplate', 6),
-            leggings: num(d, 'leggings', 5),
-            boots: num(d, 'boots', 2)
+            helmet: int(d, 'helmet', 2, 0, 30),
+            chestplate: int(d, 'chestplate', 6, 0, 30),
+            leggings: int(d, 'leggings', 5, 0, 30),
+            boots: int(d, 'boots', 2, 0, 30)
           },
           enchantability: clamp(Math.round(num(d, 'enchantability', 15)), 0, 100),
           toughness: num(d, 'toughness', 0),
           knockback: clamp(num(d, 'knockback', 0), 0, 1),
-          equipSound: str(d, 'equipSound', 'iron'),
+          equipSound: sel(n, 'equipSound'),
           layer1: texture(n.id, 'layer1', true),
           layer2: texture(n.id, 'layer2', true),
           repair: ingredient(n.id, 'repair', false)
@@ -1022,7 +1036,7 @@ export function compile(project: Project, target?: Target): CompileResult {
             model: null,
             handheld: false,
             maxStack: 1,
-            rarity: (str(d, 'rarity', 'common') as ItemIR['rarity']) || 'common',
+            rarity: sel<ItemIR['rarity']>(n, 'rarity'),
             fireResistant: bool(d, 'fireResistant'),
             glint: false,
             armor: { material: mat ? str(mat.node.data, 'id') : DEFAULT_MAT, slot, geo: g, effects: [] }
@@ -1056,7 +1070,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           ...(g?.java && !iconModel ? { separateIcon: true } : {}),
           handheld: false,
           maxStack: 1,
-          rarity: (str(d, 'rarity', 'common') as ItemIR['rarity']) || 'common',
+          rarity: sel<ItemIR['rarity']>(n, 'rarity'),
           fireResistant: bool(d, 'fireResistant'),
           glint: false,
           armor: { material: mat ? str(mat.node.data, 'id') : DEFAULT_MAT, slot, geo: g, effects: effects(n.id) },
@@ -1162,7 +1176,7 @@ export function compile(project: Project, target?: Target): CompileResult {
             .join('')
         )
         if (result)
-          ir.recipes.push({ kind: 'shaped', name: recipeName(result, 'shaped'), nodeId: n.id, pattern, key, result, count: clamp(num(d, 'count', 1), 1, 64) })
+          ir.recipes.push({ kind: 'shaped', name: recipeName(result, 'shaped'), nodeId: n.id, pattern, key, result, count: int(d, 'count', 1, 1, 64) })
         break
       }
       case 'recipeShapeless': {
@@ -1180,14 +1194,14 @@ export function compile(project: Project, target?: Target): CompileResult {
             nodeId: n.id,
             ingredients: ings,
             result,
-            count: clamp(num(d, 'count', 1), 1, 64)
+            count: int(d, 'count', 1, 1, 64)
           })
         break
       }
       case 'recipeCooking': {
         const input = ingredient(n.id, 'input', true)
         const result = item(n.id, 'result', true)
-        const station = str(d, 'kind', 'smelting') as 'smelting'
+        const station = sel<'smelting'>(n, 'kind')
         if (input && result)
           ir.recipes.push({
             kind: 'cooking',
@@ -1211,7 +1225,7 @@ export function compile(project: Project, target?: Target): CompileResult {
             nodeId: n.id,
             input,
             result,
-            count: clamp(num(d, 'count', 1), 1, 64)
+            count: int(d, 'count', 1, 1, 64)
           })
         break
       }
@@ -1237,10 +1251,10 @@ export function compile(project: Project, target?: Target): CompileResult {
         const results: { item: string; count: number; chance: number }[] = []
         for (let i = 1; i <= 4; i++) {
           const it = item(n.id, `out${i}`, i === 1)
-          if (it) results.push({ item: it, count: clamp(num(d, `count${i}`, 1), 1, 64), chance: i === 1 ? 1 : clamp(num(d, `chance${i}`, 1), 0, 1) })
+          if (it) results.push({ item: it, count: int(d, `count${i}`, 1, 1, 64), chance: i === 1 ? 1 : clamp(num(d, `chance${i}`, 1), 0, 1) })
         }
         if (input && results.length)
-          ir.recipes.push({ kind: 'fdCutting', name: recipeName(results[0].item, 'cutting'), nodeId: n.id, input, tool: str(d, 'tool', 'knife'), results })
+          ir.recipes.push({ kind: 'fdCutting', name: recipeName(results[0].item, 'cutting'), nodeId: n.id, input, tool: sel(n, 'tool'), results })
         break
       }
       case 'fdCooking': {
@@ -1260,10 +1274,10 @@ export function compile(project: Project, target?: Target): CompileResult {
             ingredients: ings,
             container: item(n.id, 'container', false),
             result,
-            count: clamp(num(d, 'count', 1), 1, 64),
+            count: int(d, 'count', 1, 1, 64),
             xp: num(d, 'xp', 1),
             time: clamp(Math.round(num(d, 'time', 200)), 1, 72000),
-            tab: str(d, 'tab', 'meals')
+            tab: sel(n, 'tab')
           })
         break
       }
@@ -1292,7 +1306,6 @@ export function compile(project: Project, target?: Target): CompileResult {
         break
       }
       case 'creativeTab': {
-        tabNodes++
         const id = str(d, 'id') || 'main'
         if (!ID_RE.test(id)) err(n.id, `Invalid ID "${id}" (use a-z, 0-9, _)`, `ID "${id}" ไม่ถูกต้อง (ใช้ a-z, 0-9, _)`)
         ir.tabs.push({
@@ -1401,13 +1414,12 @@ export function compile(project: Project, target?: Target): CompileResult {
     }
     main.items.push(...loose.filter((id) => !main!.items.includes(id)))
   }
-  void tabNodes
 
   if (target) {
     if (!isSupported(target.loader, target.mc)) err(undefined, `${target.loader} ${target.mc} is not supported`, `ไม่รองรับ ${target.loader} ${target.mc}`)
     else {
       const p = getProfile(target.mc)
-      const fdItems = JSON.stringify([ir.recipes, ir.tabs, ir.blocks.map((x) => x.drop)]).includes('farmersdelight:')
+      const fdItems = JSON.stringify([ir.recipes, ir.tabs, ir.blocks, ir.breakRules]).includes('farmersdelight:')
       if (fdItems && !usesFD && !farmersDelightFor(target.loader, target.mc))
         warn(
           undefined,

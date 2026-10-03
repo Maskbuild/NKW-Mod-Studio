@@ -382,7 +382,9 @@ describe('compiler', () => {
     )
     expect(m).toContain('instance.getModifier(bonus.modifier.id())')
     expect(text(modern.files, '/ModItems.java')).toContain('Attributes.MAX_HEALTH.value().getDescriptionId()')
-    expect(text(gen('fabric', '1.16.5').files, '/NkwAttributes.java')).toContain('player.inventory.contains(new ItemStack(item))')
+    expect(text(gen('fabric', '1.16.5').files, '/NkwAttributes.java')).toContain(
+      'for (ItemStack stack : player.inventory.items) if (stack.getItem() == item) return true;'
+    )
     expect(text(gen('forge', '1.16.5').files, '/NkwAttributes.java')).toContain('ModifiableAttributeInstance instance')
   })
   it('leaves disabled nodes (and their wires) out of the mod', () => {
@@ -645,7 +647,8 @@ describe('generators', () => {
         expect(regenBlocks).toMatch(
           /new NkwRegenBlock\([^\n]*"minecraft:iron_ore", \(\) -> ModBlocks\.REGEN_IRON_ORE_DEPLETED(\.get\(\))?, 0, 40, 0, 0, false, true, null, 0, 0\)/
         )
-        expect(regenBlocks).toMatch(/"minecraft:amethyst_block", [^\n]*, 2, 60, \d+, -1, true, false, "nkwtest:ruby", 2, 4\)/)
+        // its Timer window (the bar) is used, not the default text (index 0)
+        expect(regenBlocks).toMatch(/"minecraft:amethyst_block", [^\n]*, 2, 60, [1-9]\d*, -1, true, false, "nkwtest:ruby", 2, 4\)/)
         // picked with the left button: from the arm swing, where the player looks
         expect(java).toContain('if (!player.swinging || player.isSpectator()) return null;')
         expect(java).toContain(p.stackId ? 'player.pick(player.blockInteractionRange(), 1.0F, false)' : 'player.pick(4.5, 1.0F, false)')
@@ -969,5 +972,39 @@ describe('crops', () => {
       'EntityType.Builder.<Zombie>of(Zombie::new, MobCategory.MONSTER).sized(0.6F, 1.95F).build("ruby_golem")'
     )
     expect(old.diagnostics.some((d) => d.nodeId === 'm_golem' && d.severity === 'warning')).toBe(true)
+  })
+})
+
+describe('review fixes', () => {
+  it('falls back to the default for unknown select values and escapes % in names', () => {
+    const p = structuredClone(project)
+    const ruby = p.graph.nodes.find((n) => n.data.id === 'ruby')!
+    ruby.data.rarity = 'BOGUS'
+    ruby.data.name = 'Ruby 100%'
+    const { ir, diagnostics } = compile(p, { loader: 'fabric', mc: '1.21.1' })
+    expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
+    const files = generate(ir, { loader: 'fabric', mc: '1.21.1' }, { ...FALLBACK_DEPS['1.21.1'], ...deps } as never, read)
+    expect(files.find((f) => f.path.endsWith('/ModItems.java'))!.text!).not.toMatch(/bogus/i)
+    const lang = JSON.parse(files.find((f) => f.path.endsWith('/lang/en_us.json'))!.text!) as Record<string, string>
+    expect(lang['item.nkwtest.ruby']).toBe('Ruby 100%%')
+    // creative tabs skip items that are not in the game (another mod missing)
+    expect(files.find((f) => f.path.endsWith('/ModTabs.java'))!.text!).toContain('!= Items.AIR')
+  })
+  it('accepts Java text blocks in scripts', () => {
+    expect(scriptBracketProblem('String s = """\n  } ) ]\n  """;')).toBeNull()
+    expect(scriptBracketProblem('void a() { String s = """\n{\n"""; ')).not.toBeNull()
+  })
+  it('keeps option lines without a colon untouched', () => {
+    expect(mergeOptionsTxt('version:3\nweird\n', { versio: 'x' })).toBe('version:3\nweird\nversio:x\n')
+  })
+  it('gives Blockbench bones unique safe names', () => {
+    const bb = {
+      outliner: [
+        { name: 'a b', children: [] },
+        { name: 'a b', children: [] }
+      ]
+    }
+    const names = (bbmodelToGeo(JSON.stringify(bb)).geo['minecraft:geometry'][0].bones ?? []).map((b) => b.name)
+    expect(names).toEqual(['a_b', 'a_b_2'])
   })
 })

@@ -634,11 +634,17 @@ ${ir.sounds.map((s) => `    public static final ${holder} ${C(s.id)} = SOUNDS.re
       j.use(MC.Items)
       return 'new ItemStack(Items.BOOK)'
     }
+    /** Items of a tab; items of the game / other mods are looked up and skipped when missing (an empty stack would crash the tab). */
     const accept = (tab: (typeof ir.tabs)[number], indent: string) =>
       tab.items
-        .map((id) => itemExpr(id))
+        .map((id) => {
+          const e = itemExpr(id)
+          if (!e) return null
+          if (id.startsWith(`${ctx.ns}:`)) return `${indent}output.accept(${e});`
+          j.use(MC.Item, MC.Items)
+          return `${indent}{\n${indent}    Item item = ${e};\n${indent}    if (item != Items.AIR) output.accept(item);\n${indent}}`
+        })
         .filter((e): e is string => !!e)
-        .map((e) => `${indent}output.accept(${e});`)
         .join('\n')
     let body: string
     if (!p.tabRegistry) {
@@ -1449,7 +1455,7 @@ ${it.food.hits.map((h) => `                    new NkwEffect(NkwEffect.${HIT_ACT
         j.use(MC.Attributes)
         const op = a.operation === 'add' ? 0 : a.operation === 'base' ? 1 : 2
         const shownAmount = Math.abs(a.operation === 'add' ? a.amount : a.amount * 100)
-        const name = tr('').replace('""', `Attributes.${a.field}${p.stackId ? '.value()' : ''}.getDescriptionId()`)
+        const name = translatable(p, j, `Attributes.${a.field}${p.stackId ? '.value()' : ''}.getDescriptionId()`)
         const line = tr(`attribute.modifier.${a.amount < 0 ? 'take' : 'plus'}.${op}`, JSON.stringify(String(Number(shownAmount.toFixed(2)))), name)
         lines.push(`tooltip.add(${line}.withStyle(ChatFormatting.${a.amount < 0 ? 'RED' : 'BLUE'}));`)
       }
@@ -1482,7 +1488,7 @@ ${lines.map((l) => `                ${l}`).join('\n')}
   /** Spawn egg of a mob: colours in the item (≤1.21.3) or in its item model (1.21.4). */
   const eggCtor = (m: MobIR): string => {
     const P = baseProps(`${m.id}_spawn_egg`)
-    const ref = fab ? `ModEntities.${C(m.id)}` : `ModEntities.${C(m.id)}`
+    const ref = `ModEntities.${C(m.id)}`
     if (p.itemDefinitions) {
       j.use('net.minecraft.world.item.SpawnEggItem')
       return `new SpawnEggItem(${fab ? ref : `${ref}.get()`}, ${P})`
@@ -1538,7 +1544,6 @@ ${propsHelper}
   j.use(neo ? MC.Registries : 'net.minecraftforge.registries.ForgeRegistries')
   const holder = neo ? 'DeferredHolder<Item, Item>' : 'RegistryObject<Item>'
   const create = neo ? 'DeferredRegister.create(Registries.ITEM, NkwMod.MOD_ID)' : 'DeferredRegister.create(ForgeRegistries.ITEMS, NkwMod.MOD_ID)'
-  void ns
   return j.render(`
 public final class ModItems {
     public static final DeferredRegister<Item> ITEMS = ${create};
@@ -1922,6 +1927,7 @@ function genAttributes(ctx: GenCtx, items: ItemIR[], get: (cls: string, id: stri
     })
   const modId = holder ? 'modifier.id()' : 'modifier.getId()'
   const inventory = p.mc === '1.16.5' ? 'player.inventory' : 'player.getInventory()'
+  j.use(MC.ItemStack)
   let hooks: string
   if (fab) {
     j.use('net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents')
@@ -2005,7 +2011,9 @@ ${adds.join('\n')}
             case FEET:
                 return player.getItemBySlot(EquipmentSlot.FEET).getItem() == item;
             default:
-                return ${inventory}.contains(new ItemStack(item));
+                // any stack of the item (Inventory.contains would also compare damage / names)
+                for (ItemStack stack : ${inventory}.items) if (stack.getItem() == item) return true;
+                return false;
         }
     }
 }`)

@@ -83,9 +83,9 @@ export function genBreakRules(ctx: GenCtx, out: (cls: string, text: string) => v
   let tagLookup = ''
   if (tags.length) {
     j.use(MC.TagKey, MC.RL, 'java.util.ArrayList', 'java.util.List')
-    const registry = p.builtInRegistries ? (j.use(MC.Registries), 'Registries.BLOCK') : (j.use(MC.Registry), 'Registry.BLOCK_REGISTRY')
+    const blockKeys = p.builtInRegistries ? (j.use(MC.Registries), 'Registries.BLOCK') : (j.use(MC.Registry), 'Registry.BLOCK_REGISTRY')
     const rl = (id: string) => (p.rlFactory ? `ResourceLocation.parse("${id}")` : `new ResourceLocation("${id}")`)
-    for (const t of tags) lines.push(`        TAGS.add(TagKey.create(${registry}, ${rl(t.tag)}));\n        TAG_RULES.add(${t.rule});`)
+    for (const t of tags) lines.push(`        TAGS.add(TagKey.create(${blockKeys}, ${rl(t.tag)}));\n        TAG_RULES.add(${t.rule});`)
     tagFields = `
     /** block tags of the rules, checked after the ids */
     private static final List<TagKey<Block>> TAGS = new ArrayList<>();

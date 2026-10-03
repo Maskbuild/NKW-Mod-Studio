@@ -79,12 +79,13 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
     const meaningful = changes.some(
       (c) => c.type === 'remove' || c.type === 'add' || (c.type === 'position' && !c.dragging) || (c.type === 'dimensions' && c.resizing)
     )
-    if (meaningful)
+    if (meaningful) {
+      const ids = new Set(next.map((n) => n.id))
       s.setGraph(
         next,
-        s.edges.filter((e) => next.some((n) => n.id === e.source) && next.some((n) => n.id === e.target))
+        s.edges.filter((e) => ids.has(e.source) && ids.has(e.target))
       )
-    else useStore.setState({ nodes: next })
+    } else useStore.setState({ nodes: next })
   }, [])
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {

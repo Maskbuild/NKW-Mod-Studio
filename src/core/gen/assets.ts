@@ -217,9 +217,11 @@ export function genAssets(ctx: GenCtx): void {
   // ── lang ──
   const en: Record<string, string> = {}
   const th: Record<string, string> = {}
-  const put = (k: string, e: string, t: string) => {
-    en[k] = e
-    th[k] = t || e
+  /** A lang entry. Text the user wrote is escaped ('%' would be read as a format code); `format` = our own %s template. */
+  const put = (k: string, e: string, t: string, format = false) => {
+    const esc = (v: string) => (format ? v : v.replace(/%/g, '%%'))
+    en[k] = esc(e)
+    th[k] = esc(t || e)
   }
   for (const it of ir.items) {
     put(`item.${ns}.${it.id}`, it.name, it.nameTh)
@@ -237,7 +239,7 @@ export function genAssets(ctx: GenCtx): void {
   }
   // Regenerating Blocks: the item is named after the original block (%s), only operators can place it
   if (ir.blocks.some((b) => b.regen)) {
-    put(`item.${ns}.regen_name`, '%s (Regenerating)', '%s (เกิดใหม่)')
+    put(`item.${ns}.regen_name`, '%s (Regenerating)', '%s (เกิดใหม่)', true)
     put(`message.${ns}.regen_op`, 'Only operators (OP) can place this', 'เฉพาะ OP เท่านั้นที่วางบล็อกนี้ได้')
   }
   for (const m of ir.mobs) {
@@ -247,20 +249,20 @@ export function genAssets(ctx: GenCtx): void {
   if (ir.items.some((i) => i.headwear)) put(`tooltip.${ns}.wearable_head`, 'Can be worn on the head', 'สวมบนหัวได้')
   // timers on screen (picking crops, breaking blocks)
   if (usesHud(ir)) {
-    put(`message.${ns}.breaking`, 'Breaking %s %s s', 'กำลังทุบ %s %s วิ')
-    put(`message.${ns}.breaking_notime`, 'Breaking %s', 'กำลังทุบ %s')
-    put(`message.${ns}.harvest`, 'Harvesting %s %s s', 'กำลังเก็บ %s %s วิ')
-    put(`message.${ns}.harvest_notime`, 'Harvesting %s', 'กำลังเก็บ %s')
-    put(`message.${ns}.harvest_seconds`, '%s s', '%s วิ')
+    put(`message.${ns}.breaking`, 'Breaking %s %s s', 'กำลังทุบ %s %s วิ', true)
+    put(`message.${ns}.breaking_notime`, 'Breaking %s', 'กำลังทุบ %s', true)
+    put(`message.${ns}.harvest`, 'Harvesting %s %s s', 'กำลังเก็บ %s %s วิ', true)
+    put(`message.${ns}.harvest_notime`, 'Harvesting %s', 'กำลังเก็บ %s', true)
+    put(`message.${ns}.harvest_seconds`, '%s s', '%s วิ', true)
     put(`message.${ns}.harvest_done`, 'Harvested!', 'เก็บแล้ว!')
     put(`message.${ns}.harvest_moved`, 'You moved: right-click again to harvest', 'ขยับแล้ว: คลิกขวาใหม่เพื่อเก็บ')
     put(`message.${ns}.harvest_released`, 'Keep holding right-click to harvest', 'กดคลิกขวาค้างไว้เพื่อเก็บ')
     put(`message.${ns}.harvest_released_left`, 'Keep holding left-click to harvest', 'กดคลิกซ้ายค้างไว้เพื่อเก็บ')
     put(`message.${ns}.harvest_moved_left`, 'You moved: left-click again to harvest', 'ขยับแล้ว: คลิกซ้ายใหม่เพื่อเก็บ')
   }
-  // Break Rule messages ('%' would be read as a format code)
+  // Break Rule messages
   ir.breakRules.forEach((r, i) => {
-    if (r.message) put(breakRuleKey(ns, i), r.message.en.replace(/%/g, '%%'), r.message.th.replace(/%/g, '%%'))
+    if (r.message) put(breakRuleKey(ns, i), r.message.en, r.message.th)
   })
   // stat bonus tooltip headers
   const when: Record<string, [string, string]> = {

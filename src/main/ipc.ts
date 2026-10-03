@@ -1,4 +1,4 @@
-import { copyFile } from 'node:fs/promises'
+import { copyFile, rm } from 'node:fs/promises'
 import { GameOptionsSchema, optionsEntries } from '@core/gameOptions'
 import { ModelControlsSchema } from '@core/modelControls'
 import { existsSync } from 'node:fs'
@@ -32,6 +32,8 @@ import { TEMPLATE_IDS, applyTemplate } from './templates'
 /** The one project the renderer may touch. All paths are resolved relative to it. */
 let currentDir: string | null = null
 let running: RunningBuild | null = null
+/** true from "build:start" until the build runs (or fails to start): stops a double click starting two builds */
+let starting = false
 
 const toolsDir = () => (!app.isPackaged && process.env.NKW_TOOLS_DIR ? process.env.NKW_TOOLS_DIR : join(app.getPath('userData'), 'tools'))
 
@@ -247,7 +249,7 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
     const errors: string[] = []
     for (const p of r.filePaths.slice(0, 32)) {
       try {
-        out.push(...(await importAsset(dir, p, 'sound', { ...audio, volume: audio.volume }, folder)))
+        out.push(...(await importAsset(dir, p, 'sound', audio, folder)))
       } catch (e) {
         errors.push(`${basename(p)}: ${(e as Error).message}`)
       }
@@ -291,103 +293,114 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
     z.object({ project: ProjectSchema, target: TargetSchema, task: z.enum(['runClient', 'build', 'compileJava']) }),
     async ({ project, target, task }) => {
       const dir = requireProject()
-      if (running) throw new Error('A build is already running')
-      await saveProject(dir, project)
-      const th = settings.get().language === 'th'
-      let allowDownload = settings.get().allowDownloads
-      let buf: string[] = []
-      const flush = setInterval(() => {
-        if (buf.length) {
-          send('build:log', buf)
-          buf = []
-        }
-      }, 80)
-      const log = (line: string) => {
-        buf.push(line)
-        if (buf.length > 500) {
-          send('build:log', buf)
-          buf = []
-        }
+      if (running || starting) throw new Error('A build is already running')
+      starting = true
+      try {
+        return await startRun(dir, project, target, task)
+      } finally {
+        starting = false
       }
-      const progress = (msg: string, done?: number, total?: number) => send('build:progress', { msg, done, total })
-
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          running = await startBuild({
-            projectDir: dir,
-            project,
-            target,
-            toolsDir: toolsDir(),
-            allowDownload,
-            task,
-            log,
-            progress,
-            memoryMb: settings.get().memoryMb,
-            gameOptions: optionsEntries(settings.get().game, settings.get().language)
-          })
-          break
-        } catch (e) {
-          if (e instanceof NeedsDownloadError && !allowDownload) {
-            const what = e.what === 'jdk' ? `Java ${e.version} (Eclipse Temurin, ~200 MB)` : `Gradle ${e.version} (~140 MB)`
-            const r = await dialog.showMessageBox(win, {
-              type: 'question',
-              buttons: th ? ['ดาวน์โหลด', 'ดาวน์โหลดเสมอ', 'ยกเลิก'] : ['Download', 'Always download', 'Cancel'],
-              defaultId: 0,
-              cancelId: 2,
-              title: th ? 'ต้องดาวน์โหลดเครื่องมือ' : 'Tools required',
-              message: th ? `ต้องใช้ ${what} เพื่อทดสอบม็อดนี้` : `${what} is required to test this mod.`,
-              detail: th
-                ? 'ดาวน์โหลดจากแหล่งทางการ ตรวจสอบ checksum และเก็บไว้ในโฟลเดอร์ของแอป'
-                : 'It is downloaded from the official source, checksum-verified and stored in the app folder.'
-            })
-            if (r.response === 2) {
-              clearInterval(flush)
-              send('build:done', { code: -1, cancelled: true })
-              return false
-            }
-            allowDownload = true
-            if (r.response === 1) await settings.update({ allowDownloads: true })
-            continue
-          }
-          clearInterval(flush)
-          throw e
-        }
-      }
-      const run = running
-      if (!run) {
-        clearInterval(flush)
-        return false
-      }
-      void run.done.then(async (code) => {
-        clearInterval(flush)
-        if (buf.length) send('build:log', buf)
-        buf = []
-        running = null
-        let jar: string | null = null
-        if (task === 'build' && code === 0) jar = await findJar(run.outDir)
-        send('build:done', { code, jar: jar ? basename(jar) : null })
-        if (jar) {
-          const r = await dialog.showSaveDialog(win, {
-            title: th ? 'บันทึกไฟล์ม็อด (.jar)' : 'Save mod file (.jar)',
-            defaultPath: basename(jar),
-            filters: [{ name: 'Minecraft mod', extensions: ['jar'] }]
-          })
-          if (!r.canceled && r.filePath && extname(r.filePath).toLowerCase() === '.jar') {
-            await copyFile(jar, r.filePath)
-            shell.showItemInFolder(r.filePath)
-          }
-        }
-      })
-      return true
     }
   )
+  const startRun = async (dir: string, project: Project, target: z.infer<typeof TargetSchema>, task: 'runClient' | 'build' | 'compileJava') => {
+    await saveProject(dir, project)
+    const th = settings.get().language === 'th'
+    let allowDownload = settings.get().allowDownloads
+    let buf: string[] = []
+    const flush = setInterval(() => {
+      if (buf.length) {
+        send('build:log', buf)
+        buf = []
+      }
+    }, 80)
+    const log = (line: string) => {
+      buf.push(line)
+      if (buf.length > 500) {
+        send('build:log', buf)
+        buf = []
+      }
+    }
+    const progress = (msg: string, done?: number, total?: number) => send('build:progress', { msg, done, total })
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        running = await startBuild({
+          projectDir: dir,
+          project,
+          target,
+          toolsDir: toolsDir(),
+          allowDownload,
+          task,
+          log,
+          progress,
+          memoryMb: settings.get().memoryMb,
+          gameOptions: optionsEntries(settings.get().game, settings.get().language)
+        })
+        break
+      } catch (e) {
+        if (e instanceof NeedsDownloadError && !allowDownload) {
+          const what = e.what === 'jdk' ? `Java ${e.version} (Eclipse Temurin, ~200 MB)` : `Gradle ${e.version} (~140 MB)`
+          const r = await dialog.showMessageBox(win, {
+            type: 'question',
+            buttons: th ? ['ดาวน์โหลด', 'ดาวน์โหลดเสมอ', 'ยกเลิก'] : ['Download', 'Always download', 'Cancel'],
+            defaultId: 0,
+            cancelId: 2,
+            title: th ? 'ต้องดาวน์โหลดเครื่องมือ' : 'Tools required',
+            message: th ? `ต้องใช้ ${what} เพื่อทดสอบม็อดนี้` : `${what} is required to test this mod.`,
+            detail: th
+              ? 'ดาวน์โหลดจากแหล่งทางการ ตรวจสอบ checksum และเก็บไว้ในโฟลเดอร์ของแอป'
+              : 'It is downloaded from the official source, checksum-verified and stored in the app folder.'
+          })
+          if (r.response === 2) {
+            clearInterval(flush)
+            send('build:done', { code: -1, cancelled: true })
+            return false
+          }
+          allowDownload = true
+          if (r.response === 1) await settings.update({ allowDownloads: true })
+          continue
+        }
+        clearInterval(flush)
+        throw e
+      }
+    }
+    const run = running
+    if (!run) {
+      clearInterval(flush)
+      return false
+    }
+    void run.done.then(async (code) => {
+      clearInterval(flush)
+      if (buf.length) send('build:log', buf)
+      buf = []
+      running = null
+      let jar: string | null = null
+      if (task === 'build' && code === 0) jar = await findJar(run.outDir)
+      send('build:done', { code, jar: jar ? basename(jar) : null })
+      if (jar) {
+        const r = await dialog.showSaveDialog(win, {
+          title: th ? 'บันทึกไฟล์ม็อด (.jar)' : 'Save mod file (.jar)',
+          defaultPath: basename(jar),
+          filters: [{ name: 'Minecraft mod', extensions: ['jar'] }]
+        })
+        if (!r.canceled && r.filePath && extname(r.filePath).toLowerCase() === '.jar') {
+          try {
+            await copyFile(jar, r.filePath)
+            shell.showItemInFolder(r.filePath)
+          } catch (e) {
+            dialog.showErrorBox(th ? 'บันทึกไฟล์ม็อดไม่สำเร็จ' : 'Could not save the mod file', (e as Error).message)
+          }
+        }
+      }
+    })
+    return true
+  }
   handle('build:stop', z.undefined(), () => {
     running?.stop()
     return true
   })
   handle('build:clean', TargetSchema, async (t) => {
     if (running) throw new Error('Stop the running build first')
-    const { rm } = await import('node:fs/promises')
     await rm(buildDir(requireProject(), t), { recursive: true, force: true })
     return true
   })

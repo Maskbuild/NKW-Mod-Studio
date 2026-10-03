@@ -164,8 +164,8 @@ export function boxUnwrap(elements: EditElement[], indices: number[], ref: strin
     for (const f of FACES) {
       const face = faces[f]
       if (!face || face.texture !== ref) continue
-      faces[f] = { ...face, uv: at[f].map(q), rotation: undefined }
-      delete faces[f].rotation
+      const { rotation: _drop, ...rest } = face
+      faces[f] = { ...rest, uv: at[f].map(q) }
     }
     out[p.i] = { ...e, faces }
   }

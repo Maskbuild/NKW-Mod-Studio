@@ -3,7 +3,7 @@ import { JavaFile, MC, forgeEvents, registry, translatable } from './java'
 import { mcAtLeast } from './profiles'
 import { fabricLike, type GenCtx } from './types'
 
-/** The timer look used when a crop has no Harvest UI node: text above the hotbar (white). */
+/** The timer window used when a node has no Timer window node: text above the hotbar (white). */
 export const DEFAULT_HARVEST_UI: HarvestUiIR = {
   style: 'text',
   color: 0xffffff,
@@ -18,11 +18,12 @@ export const DEFAULT_HARVEST_UI: HarvestUiIR = {
   time: true
 }
 
-/** Every timer look of the mod, the default first; a crop's look is its index here. */
+/** Every timer window of the mod, the default first; a node's window is its index here. */
 export function harvestUis(ir: ModIR): HarvestUiIR[] {
   const list = [DEFAULT_HARVEST_UI]
   const keys = [JSON.stringify(DEFAULT_HARVEST_UI)]
-  for (const ui of [...ir.blocks.map((b) => b.crop?.ui), ...ir.gameCrops.map((g) => g.ui), ...ir.breakRules.map((r) => (r.timer ? r.ui : null))]) {
+  const used = [...ir.blocks.flatMap((b) => [b.crop?.ui, b.regen?.ui]), ...ir.gameCrops.map((g) => g.ui), ...ir.breakRules.map((r) => (r.timer ? r.ui : null))]
+  for (const ui of used) {
     if (!ui || keys.includes(JSON.stringify(ui))) continue
     keys.push(JSON.stringify(ui))
     list.push(ui)
@@ -30,7 +31,7 @@ export function harvestUis(ir: ModIR): HarvestUiIR[] {
   return list
 }
 
-/** Index of a timer look in harvestUis(ir). */
+/** Index of a timer window in harvestUis(ir). */
 export function harvestUiIndex(ir: ModIR, ui: HarvestUiIR | null): number {
   return ui
     ? Math.max(
@@ -56,8 +57,9 @@ const AFTER = { break: 0, replant: 1, regrow: 2 } as const
 /**
  * Picking crops by hand: a right-click harvests at once, or starts a timer the player keeps going by
  * holding the button (the game repeats the use every 4 ticks) or by standing still. Works for the mod's
- * crops and for crops of the game / other mods (found by block id, grown = highest "age"). The server
- * runs the timer; the client runs the same timer for the on-screen look (NkwHarvestHud).
+ * crops and for crops of the game / other mods (found by block id, grown = highest "age"). Regenerating
+ * Blocks are picked the same way with the left button (read from arm swings). The server runs the timer;
+ * the client runs the same timer for the on-screen look (NkwHarvestHud).
  */
 export function genHarvest(ctx: GenCtx, out: (cls: string, text: string) => void): void {
   const { pkg, loader, p, ns, ir } = ctx
@@ -82,14 +84,14 @@ export function genHarvest(ctx: GenCtx, out: (cls: string, text: string) => void
     'java.util.IdentityHashMap',
     'java.util.List',
     'java.util.Map',
-    'java.util.UUID',
-    'java.util.concurrent.ConcurrentHashMap'
+    'java.util.UUID'
   )
   const tr = (key: string) => translatable(p, j, `"${key}"`)
   const blockKey = `${registry(p, j, 'BLOCK')}.getKey(block)`
-  // left-button picking reads arm swings, but placing a block, using an item or clicking a mob swings the arm
-  // too: those right-clicks are remembered so their swing is not taken for a left click
+  // some block is picked with the left button (Regenerating Blocks with a click harvest): read from arm swings,
+  // but placing a block, using an item or clicking a mob swings the arm too, so those right-clicks are remembered
   const leftButton = ir.blocks.some((b) => b.regen && b.regen.input !== 'break')
+  if (leftButton) j.use('net.minecraft.world.phys.HitResult', 'net.minecraft.world.phys.BlockHitResult', 'java.util.concurrent.ConcurrentHashMap')
   let hooks: string
   if (fab) {
     j.use('net.fabricmc.fabric.api.event.player.UseBlockCallback', 'net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents', MC.InteractionResult)
@@ -156,9 +158,6 @@ ${ev.tickHandler()}`
   // the mod's own crops (only when it has any: NkwCropBlock is not generated otherwise)
   const ownCrops = ir.blocks.some((b) => b.crop)
   const regen = ir.blocks.some((b) => b.regen)
-  /** some block is picked with the left button (Regenerating Blocks with a click harvest) */
-  const left = ir.blocks.some((b) => b.regen && b.regen.input !== 'break')
-  j.use('net.minecraft.world.phys.HitResult', 'net.minecraft.world.phys.BlockHitResult')
   // Regenerating Blocks are "grown" while they are not depleted; after 3 = their own harvest
   const regenRule = regen
     ? `        if (block instanceof NkwRegenBlock) {
@@ -231,7 +230,8 @@ public final class NkwHarvest {
 
     /** crops of the game and of other mods, by block id */
     private static final Map<String, Rule> GAME = new HashMap<>();
-    private static final Map<Block, Rule> RULES = new IdentityHashMap<>();
+    /** rule cache (read by the client render thread and the server thread: synchronized; null = no rule) */
+    private static final Map<Block, Rule> RULES = Collections.synchronizedMap(new IdentityHashMap<>());
     private static final Map<UUID, Session> SESSIONS = new HashMap<>();
     /** the local player's harvest (client side) */
     private static Session client;
@@ -316,15 +316,22 @@ ${ownRule}if (!GAME.isEmpty()) {
 
     /** The local player's running harvest, for the timer on screen (client side), or null. */
     public static Session client(Player player, Level level) {
-        long now = level.getGameTime();
-        Rule rule = swingRule(player, level);
-        if (rule != null && rule.input >= 2) client = track(client, swingPos, rule, now, player);
+        long now = level.getGameTime();${
+          leftButton
+            ? `
+        BlockPos swung = swingTarget(player, level);
+        if (swung != null) {
+            Rule rule = grown(level.getBlockState(swung));
+            if (rule != null && rule.input >= 2) client = track(client, swung, rule, now, player);
+        }`
+            : ''
+        }
         if (client != null && check(client, player, level, now) != 0) client = null;
         return client;
-    }
+    }${
+      leftButton
+        ? `
 
-    /** the block the last swingRule call found */
-    private static BlockPos swingPos;
     /** game time of each player's last right-click (both sides) */
     private static final Map<UUID, Long> RIGHT_CLICKED = new ConcurrentHashMap<>();
 
@@ -334,36 +341,38 @@ ${ownRule}if (!GAME.isEmpty()) {
     }
 
     /**
-     * Left-button picking: the player swings the arm (a click, or held on a block that cannot be mined) at a
-     * grown block picked with the left button. Works on both sides from the arm swing and where the player looks.
+     * Left-button picking: the grown block picked with the left button that the player swings the arm at (a
+     * click, or held on a block that cannot be mined), or null. Works on both sides from the swing and the look.
      */
-    private static Rule swingRule(Player player, Level level) {
+    private static BlockPos swingTarget(Player player, Level level) {
         if (!player.swinging || player.isSpectator()) return null;
         // the swing of a right-click (placing a block, using an item …) is no left click
         Long right = RIGHT_CLICKED.get(player.getUUID());
         if (right != null && Math.abs(level.getGameTime() - right) <= 8) return null;
         HitResult hit = player.pick(${p.stackId ? 'player.blockInteractionRange()' : '4.5'}, 1.0F, false);
         if (!(hit instanceof BlockHitResult) || hit.getType() != HitResult.Type.BLOCK) return null;
-        BlockPos pos = ((BlockHitResult) hit).getBlockPos();
+        BlockPos pos = ((BlockHitResult) hit).getBlockPos().immutable();
         Rule rule = grown(level.getBlockState(pos));
-        if (rule == null || !rule.left || (!rule.adventure && !player.mayBuild())) return null;
-        swingPos = pos.immutable();
-        return rule;
+        return rule == null || !rule.left || (!rule.adventure && !player.mayBuild()) ? null : pos;
+    }`
+        : ''
     }
 
     private static void tick(Level level) {
-        if (level.isClientSide${left ? '' : ' || SESSIONS.isEmpty()'}) return;
+        if (level.isClientSide${leftButton ? '' : ' || SESSIONS.isEmpty()'}) return;
         long now = level.getGameTime();
         for (Player player : level.players()) {${
-          left
+          leftButton
             ? `
-            Rule swing = swingRule(player, level);
-            if (swing != null) {
+            BlockPos swung = swingTarget(player, level);
+            if (swung != null) {
+                BlockState state = level.getBlockState(swung);
+                Rule swing = grown(state);
                 if (swing.input == 1) {
-                    harvest(player, level, swingPos, level.getBlockState(swingPos), swing);
+                    harvest(player, level, swung, state, swing);
                     continue;
                 }
-                SESSIONS.put(player.getUUID(), track(SESSIONS.get(player.getUUID()), swingPos, swing, now, player));
+                SESSIONS.put(player.getUUID(), track(SESSIONS.get(player.getUUID()), swung, swing, now, player));
             }`
             : ''
         }
@@ -437,8 +446,9 @@ ${ownRule}if (!GAME.isEmpty()) {
 const argb = (rgb: number, alpha = 255) => `0x${((((alpha & 0xff) << 24) | rgb) >>> 0).toString(16).toUpperCase().padStart(8, '0')}`
 
 /**
- * The harvest timer on screen (client only): text, a bar that fills up or a circle that fills around the
- * crosshair. Drawn on the HUD with the loader's hook; GuiGraphics on 1.20+, PoseStack before.
+ * The timer on screen (client only) for picking by hand and for breaking blocks that show their breaking
+ * time: text, a bar that fills up or a circle that fills around the crosshair. Drawn on the HUD with the
+ * loader's hook; GuiGraphics on 1.20+, PoseStack before.
  */
 export function genHarvestHud(ctx: GenCtx, out: (cls: string, text: string) => void): void {
   const { pkg, loader, p, ns, ir } = ctx
@@ -545,7 +555,7 @@ ${[harvest ? harvestPart : '', breaking ? `        ${breakPart}` : ''].filter(Bo
     private static float minedProgress;
 
     /**
-     * Mining of a Break Rule block that shows a timer: { look, progress, ticks left }, or null. Counts the
+     * Mining of a block that shows its breaking time (Break Rule, Regenerating Blocks): { window, progress, ticks left }, or null. Counts the
      * progress per tick the way the game does (the same speed the game uses for this player and tool).
      */
     private static float[] breaking(Minecraft mc) {
