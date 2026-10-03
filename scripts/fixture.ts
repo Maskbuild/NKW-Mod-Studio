@@ -478,9 +478,14 @@ export function writeFixture(dir: string): Project {
     depleted: 'minecraft:cobblestone',
     give: true,
     adventure: false,
+    dropMin: 2,
+    dropMax: 4,
     tabTitle: 'Resource Nodes'
   })
   wire('ui_bar', 'out', 'regen_hold', 'ui')
+  // a block of this mod grows back too, and a node can drop a mod item instead
+  wire('blk', 'block', 'regen_ores', 'block1')
+  wire('ruby', 'out', 'regen_hold', 'drop')
 
   // ── mobs: game bodies with a skin, spawn eggs, drops, natural spawning ──
   node('m_zombie', 'mob', {

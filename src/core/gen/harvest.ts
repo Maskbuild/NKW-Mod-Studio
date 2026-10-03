@@ -112,22 +112,25 @@ ${ev.tickHandler()}`
   }
   const games = ir.gameCrops.map(
     (g) =>
-      `        GAME.put("${g.block}", new Rule(${INPUT[g.input]}, ${g.harvestTicks}, ${AFTER[g.after]}, ${g.back}, ${harvestUiIndex(ir, g.ui)}, ${g.give}, ${g.adventure}));`
+      `        GAME.put("${g.block}", new Rule(${INPUT[g.input]}, ${g.harvestTicks}, ${AFTER[g.after]}, ${g.back}, ${harvestUiIndex(ir, g.ui)}, ${g.give}, ${g.adventure}, false));`
   )
   // the mod's own crops (only when it has any: NkwCropBlock is not generated otherwise)
   const ownCrops = ir.blocks.some((b) => b.crop)
   const regen = ir.blocks.some((b) => b.regen)
+  /** some block is picked with the left button (Regenerating Blocks with a click harvest) */
+  const left = ir.blocks.some((b) => b.regen && b.regen.input !== 'break')
+  j.use('net.minecraft.world.phys.HitResult', 'net.minecraft.world.phys.BlockHitResult')
   // Regenerating Blocks are "grown" while they are not depleted; after 3 = their own harvest
   const regenRule = regen
     ? `        if (block instanceof NkwRegenBlock) {
             NkwRegenBlock r = (NkwRegenBlock) block;
-            if (r.input > 0) rule = new Rule(r.input, r.harvestTicks, 3, 0, r.ui, r.give, r.adventure);
+            if (r.input > 0) rule = new Rule(r.input, r.harvestTicks, 3, 0, r.ui, r.give, r.adventure, true);
         } else `
     : ''
   const ownRule = ownCrops
     ? `        ${regenRule.trimStart()}if (block instanceof NkwCropBlock) {
             NkwCropBlock crop = (NkwCropBlock) block;
-            if (crop.input > 0) rule = new Rule(crop.input, crop.harvestTicks, crop.regrow ? 2 : 0, crop.regrowAge, crop.ui, crop.give, crop.adventure);
+            if (crop.input > 0) rule = new Rule(crop.input, crop.harvestTicks, crop.regrow ? 2 : crop.replant ? 1 : 0, crop.replant ? 0 : crop.regrowAge, crop.ui, crop.give, crop.adventure, false);
         } else `
     : regen
       ? regenRule
@@ -137,7 +140,10 @@ ${ev.tickHandler()}`
     j.render(`
 /** Picking crops by hand, with a timer on screen (NkwHarvestHud). */
 public final class NkwHarvest {
-    /** How a crop is picked. input: 1 right-click, 2 hold, 3 stand still; after: 0 break, 1 replant, 2 back to an age, 3 a Regenerating Blocks block. */
+    /**
+     * How a crop is picked. input: 1 click, 2 hold, 3 click then stand still (left: with the left mouse button,
+     * else the right); after: 0 break, 1 replant, 2 back to an age, 3 a Regenerating Blocks block.
+     */
     public static final class Rule {
         public final int input;
         public final int ticks;
@@ -149,8 +155,10 @@ public final class NkwHarvest {
         public final boolean give;
         /** players in adventure mode may pick it */
         public final boolean adventure;
+        /** picked with the left mouse button (Regenerating Blocks), else the right */
+        public final boolean left;
 
-        Rule(int input, int ticks, int after, int back, int ui, boolean give, boolean adventure) {
+        Rule(int input, int ticks, int after, int back, int ui, boolean give, boolean adventure, boolean left) {
             this.input = input;
             this.ticks = Math.max(1, ticks);
             this.after = after;
@@ -158,6 +166,7 @@ public final class NkwHarvest {
             this.ui = ui;
             this.give = give;
             this.adventure = adventure;
+            this.left = left;
         }
     }
 
@@ -231,7 +240,7 @@ ${ownRule}if (!GAME.isEmpty()) {
     static boolean use(Player player, Level level, BlockPos pos, InteractionHand hand) {
         BlockState state = level.getBlockState(pos);
         Rule rule = grown(state);
-        if (rule == null) return false;
+        if (rule == null || rule.left) return false;
         // adventure mode (players who may not build): picking by hand only when the crop allows it
         if (!rule.adventure && !player.mayBuild()) return false;
         if (hand != InteractionHand.MAIN_HAND) return true;
@@ -259,28 +268,63 @@ ${ownRule}if (!GAME.isEmpty()) {
     /** 0 still going, 1 the crop is gone, 2 the button was let go, 3 the player moved. */
     private static int check(Session s, Player player, Level level, long now) {
         if (grown(level.getBlockState(s.pos)) != s.rule) return 1;
-        if (s.rule.input == 2 && now - s.lastUse > 7) return 2;
-        if (s.rule.input == 3 && player.distanceToSqr(s.x, s.y, s.z) > 0.04) return 3;
+        // adventure mode cannot keep mining, so holding the left button there works like "click and stand still"
+        boolean standing = s.rule.input == 3 || (s.rule.left && s.rule.input == 2 && !player.mayBuild());
+        if (s.rule.input == 2 && !standing && now - s.lastUse > 7) return 2;
+        if (standing && player.distanceToSqr(s.x, s.y, s.z) > 0.04) return 3;
         return 0;
     }
 
     /** The local player's running harvest, for the timer on screen (client side), or null. */
     public static Session client(Player player, Level level) {
-        if (client != null && check(client, player, level, level.getGameTime()) != 0) client = null;
+        long now = level.getGameTime();
+        Rule rule = swingRule(player, level);
+        if (rule != null && rule.input >= 2) client = track(client, swingPos, rule, now, player);
+        if (client != null && check(client, player, level, now) != 0) client = null;
         return client;
     }
 
+    /** the block the last swingRule call found */
+    private static BlockPos swingPos;
+
+    /**
+     * Left-button picking: the player swings the arm (a click, or held on a block that cannot be mined) at a
+     * grown block picked with the left button. Works on both sides from the arm swing and where the player looks.
+     */
+    private static Rule swingRule(Player player, Level level) {
+        if (!player.swinging || player.isSpectator()) return null;
+        HitResult hit = player.pick(${p.stackId ? 'player.blockInteractionRange()' : '4.5'}, 1.0F, false);
+        if (!(hit instanceof BlockHitResult) || hit.getType() != HitResult.Type.BLOCK) return null;
+        BlockPos pos = ((BlockHitResult) hit).getBlockPos();
+        Rule rule = grown(level.getBlockState(pos));
+        if (rule == null || !rule.left || (!rule.adventure && !player.mayBuild())) return null;
+        swingPos = pos.immutable();
+        return rule;
+    }
+
     private static void tick(Level level) {
-        if (level.isClientSide || SESSIONS.isEmpty()) return;
+        if (level.isClientSide${left ? '' : ' || SESSIONS.isEmpty()'}) return;
         long now = level.getGameTime();
-        for (Player player : level.players()) {
+        for (Player player : level.players()) {${
+          left
+            ? `
+            Rule swing = swingRule(player, level);
+            if (swing != null) {
+                if (swing.input == 1) {
+                    harvest(player, level, swingPos, level.getBlockState(swingPos), swing);
+                    continue;
+                }
+                SESSIONS.put(player.getUUID(), track(SESSIONS.get(player.getUUID()), swingPos, swing, now, player));
+            }`
+            : ''
+        }
             Session s = SESSIONS.get(player.getUUID());
             if (s == null) continue;
             int stop = check(s, player, level, now);
             if (stop != 0) {
                 SESSIONS.remove(player.getUUID());
-                if (stop == 2) player.displayClientMessage(${tr(`message.${ns}.harvest_released`)}, true);
-                if (stop == 3) player.displayClientMessage(${tr(`message.${ns}.harvest_moved`)}, true);
+                if (stop == 2) player.displayClientMessage(s.rule.left ? ${tr(`message.${ns}.harvest_released_left`)} : ${tr(`message.${ns}.harvest_released`)}, true);
+                if (stop == 3) player.displayClientMessage(s.rule.left ? ${tr(`message.${ns}.harvest_moved_left`)} : ${tr(`message.${ns}.harvest_moved`)}, true);
                 continue;
             }
             if (now - s.start >= s.rule.ticks) {

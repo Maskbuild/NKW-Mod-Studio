@@ -363,6 +363,7 @@ Category **Farming**. A plant that grows in up to 8 stages.
 - **Time to grow**: seconds until fully grown (0 = random like wheat).
 - **After harvest**:
   - _Gone: plant the seeds again_ (like wheat). Breaking it gives the harvest and some seeds back (**Seeds back min / max**).
+  - _Replants itself_ (like **Harvest a game crop**): picking it gives the harvest and the seeds back minus the one that goes back into the ground, and the crop grows again from the start. Needs a right-click harvest.
   - _Stays and grows back_: picking it gives the harvest, then it goes back to the stage you choose and grows again after the **cooldown**.
 - **How to harvest**: break it, right-click, **hold right-click** for the harvest time, or **right-click once and stand still** for the harvest time (moving cancels and you must click again). While harvesting, a timer shows on screen; wire a **Harvest timer look** node into **Harvest timer look** to choose how it looks (without one: text above the hotbar).
 - **Harvest count min / max**.
@@ -414,8 +415,9 @@ Category **Blocks**. Makes blocks need a certain tool and mining (ore) level —
 
 Category **Blocks**. Blocks of Minecraft (or another mod) that are harvested like crops and grow back — resource nodes for adventure maps and servers.
 
-- **Blocks (pick any number)**: e.g. iron ore, oak log, `othermod:ruby_ore`. Each one gets its own block (`regen_iron_ore` with the **ID prefix** `regen`) that looks like the original (it uses the original's model) and gives the original's drops. Full blocks such as ores, stone and logs look best; tags cannot be used.
-- **How to harvest**, like crops: _break it_ (mined like a block: **hardness**, **mined fast with**; the original's right tool is needed for drops, fortune and silk touch work; **Show a timer while breaking**), _right-click_, _hold right-click_ or _right-click and stand still_ for the **harvest time** (with the timer; wire a **Harvest timer look** node to choose its look). With the right-click ways the block cannot be mined.
+- **Blocks (pick any number)**: e.g. iron ore, oak log, `othermod:ruby_ore`, or blocks of your own mod (tick them in the list or wire their **Block** pin into the **Mod block** pins). Each one gets its own block (`regen_iron_ore` with the **ID prefix** `regen`) that looks like the original (it uses the original's model) and gives the original's drops. Full blocks such as ores, stone and logs look best; tags cannot be used.
+- **Drops instead (item)**: wire any item — of the game, another mod or your own mod — to give it (**count min / max**) instead of the original's drops.
+- **How to harvest**, like crops: _break it_ (mined like a block: **hardness**, **mined fast with**; the original's right tool is needed for drops, fortune and silk touch work; **Show a timer while breaking**), _left-click_, _hold left-click_ or _left-click once and stand still_ for the **harvest time** (with the timer; wire a **Harvest timer look** node to choose its look). With the left-click ways the block cannot be mined and the arm keeps swinging while you hold the button. In adventure mode, _hold left-click_ works like _left-click once and stand still_.
 - After the harvest it turns into the **block while growing back** (`minecraft:bedrock` by default — any block id for its look). That block cannot be broken, resists explosions and pistons cannot move it; after **Grows back after** seconds it turns back.
 - **Harvest goes into the inventory**, **Can be picked in adventure mode** (right-click ways).
 - **Only operators (OP)** can place these blocks; anyone else gets a message. They are in their own **creative tab** (**Creative tab title** EN/TH), after your tabs. In creative mode an OP removes them by breaking them as usual.

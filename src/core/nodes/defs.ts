@@ -795,11 +795,15 @@ export const NODE_DEFS: NodeDef[] = [
     category: 'block',
     title: t('Regenerating Blocks', 'บล็อกเกิดใหม่ (ทรัพยากร)'),
     description: t(
-      "Blocks of Minecraft or other mods that are harvested like crops and grow back. Each picked block gets its own copy: it looks like the original and gives the original's drops, then turns into a block that cannot be broken (bedrock by default) and grows back after a while. Only operators (OP) can place them; they are in their own creative tab.",
-      'บล็อกของ Minecraft หรือม็อดอื่นที่เก็บได้แบบพืชและเกิดใหม่ได้ แต่ละบล็อกที่เลือกจะได้บล็อกของตัวเอง: หน้าตาเหมือนต้นฉบับและได้ของเหมือนต้นฉบับ เก็บแล้วกลายเป็นบล็อกที่ทุบไม่ได้ (ค่าเริ่มต้นคือ bedrock) แล้วเกิดใหม่ตามเวลา · วางได้เฉพาะ OP และอยู่ในแท็บครีเอทีฟของตัวเอง'
+      'Blocks of Minecraft, other mods or this mod that are harvested like crops (mined, or with the left mouse button) and grow back. Each picked block gets its own copy: it looks like the original and gives the original\'s drops (or the item wired into "Drops instead"), then turns into a block that cannot be broken (bedrock by default) and grows back after a while. Only operators (OP) can place them; they are in their own creative tab.',
+      'บล็อกของ Minecraft ม็อดอื่น หรือม็อดเรา ที่เก็บได้แบบพืช (ขุด หรือใช้คลิกซ้าย) และเกิดใหม่ได้ แต่ละบล็อกที่เลือกจะได้บล็อกของตัวเอง: หน้าตาเหมือนต้นฉบับและได้ของเหมือนต้นฉบับ (หรือไอเทมที่ต่อเข้าขา "ดรอปแทน") เก็บแล้วกลายเป็นบล็อกที่ทุบไม่ได้ (ค่าเริ่มต้นคือ bedrock) แล้วเกิดใหม่ตามเวลา · วางได้เฉพาะ OP และอยู่ในแท็บครีเอทีฟของตัวเอง'
     ),
     icon: '♻',
-    inputs: [{ id: 'ui', label: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'), type: 'harvestUi', optional: true }],
+    inputs: [
+      { id: 'ui', label: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'), type: 'harvestUi', optional: true },
+      { id: 'drop', label: t('Drops instead (item)', 'ดรอปแทน (ไอเทม)'), type: 'item', optional: true },
+      ...slots(32, 'block', 'Mod block', 'บล็อกของม็อด', 'block', { group: 'blocks' })
+    ],
     outputs: [],
     props: [
       {
@@ -809,8 +813,8 @@ export const NODE_DEFS: NodeDef[] = [
         noTags: true,
         default: ['minecraft:iron_ore'],
         hint: t(
-          'Full blocks (ores, stone, logs, wood …) look best: the copy uses the original block model.',
-          'บล็อกเต็มก้อน (แร่ หิน ท่อนไม้ ไม้ …) จะสวยที่สุด เพราะบล็อกที่สร้างใช้โมเดลของบล็อกต้นฉบับ'
+          'Full blocks (ores, stone, logs, wood …) look best: the copy uses the original block model. Blocks of this mod: tick them here or wire their Block pin into the Mod block pins.',
+          'บล็อกเต็มก้อน (แร่ หิน ท่อนไม้ ไม้ …) จะสวยที่สุด เพราะบล็อกที่สร้างใช้โมเดลของบล็อกต้นฉบับ · บล็อกของม็อดเรา: ติ๊กในรายการ หรือต่อขา "บล็อก" เข้าขา "บล็อกของม็อด"'
         )
       },
       {
@@ -827,13 +831,13 @@ export const NODE_DEFS: NodeDef[] = [
         default: 'break',
         options: [
           opt('break', 'Break it (mine)', 'ทุบ (ขุด)'),
-          opt('click', 'Right-click', 'คลิกขวา'),
-          opt('hold', 'Hold right-click for a while', 'กดคลิกขวาค้างตามเวลา'),
-          opt('stand', 'Right-click once, then stand still', 'คลิกขวาครั้งเดียวแล้วยืนนิ่งตามเวลา')
+          opt('click', 'Left-click', 'คลิกซ้าย'),
+          opt('hold', 'Hold left-click for a while', 'กดคลิกซ้ายค้างตามเวลา'),
+          opt('stand', 'Left-click once, then stand still', 'คลิกซ้ายครั้งเดียวแล้วยืนนิ่งตามเวลา')
         ],
         hint: t(
-          'Break: mined like a block (the right tool is needed for drops, like the original). Right-click ways: the block cannot be mined.',
-          'ทุบ: ขุดเหมือนบล็อกทั่วไป (ต้องใช้อุปกรณ์ถูกถึงจะได้ของ เหมือนต้นฉบับ) · แบบคลิกขวา: ทุบบล็อกไม่ได้'
+          'Break: mined like a block (the right tool is needed for drops, like the original). Left-click ways: the block cannot be mined, the arm swings while you hold the button. In adventure mode "hold" works like "click once, then stand still".',
+          'ทุบ: ขุดเหมือนบล็อกทั่วไป (ต้องใช้อุปกรณ์ถูกถึงจะได้ของ เหมือนต้นฉบับ) · แบบคลิกซ้าย: ทุบบล็อกไม่ได้ แขนจะแกว่งตอนกดค้าง · ในโหมดผจญภัย "กดค้าง" จะทำงานแบบ "คลิกครั้งเดียวแล้วยืนนิ่ง"'
         )
       },
       {
@@ -910,6 +914,16 @@ export const NODE_DEFS: NodeDef[] = [
         hint: t('Its look, e.g. minecraft:bedrock, minecraft:cobblestone', 'ใช้หน้าตาของบล็อกนี้ เช่น minecraft:bedrock, minecraft:cobblestone')
       },
       {
+        key: 'dropMin',
+        label: t('"Drops instead" count min', 'จำนวน "ดรอปแทน" ต่ำสุด'),
+        kind: 'int',
+        default: 1,
+        min: 1,
+        max: 64,
+        hint: t('Only used when an item is wired into "Drops instead".', 'ใช้เมื่อต่อไอเทมเข้าขา "ดรอปแทน" เท่านั้น')
+      },
+      { key: 'dropMax', label: t('"Drops instead" count max', 'จำนวน "ดรอปแทน" สูงสุด'), kind: 'int', default: 1, min: 1, max: 64 },
+      {
         key: 'give',
         label: t('Harvest goes into the inventory', 'ผลผลิตเข้าตัวทันที'),
         kind: 'bool',
@@ -969,6 +983,7 @@ export const NODE_DEFS: NodeDef[] = [
         default: 'replant',
         options: [
           opt('replant', 'Gone: plant the seeds again (like wheat)', 'หายไป ต้องปลูกเมล็ดใหม่ (แบบข้าวสาลี)'),
+          opt('auto', 'Replants itself (one seed is used, it grows again from the start)', 'ปลูกใหม่เอง (ใช้เมล็ด 1 เมล็ด แล้วโตใหม่ตั้งแต่ต้น)'),
           opt('regrow', 'Stays and grows back after a cooldown', 'ต้นยังอยู่ โตใหม่ตามเวลาคูลดาวน์')
         ]
       },
@@ -1026,7 +1041,7 @@ export const NODE_DEFS: NodeDef[] = [
           'Off: drops on the ground like normal. On: straight into the inventory (what does not fit drops at your feet).',
           'ปิด: ดรอปบนพื้นแบบปกติ · เปิด: เข้าช่องเก็บของเลย (ถ้าเต็มจะดรอปที่เท้า)'
         ),
-        showIf: (d) => d.input === 'click' || d.input === 'hold' || d.input === 'stand' || d.mode === 'regrow'
+        showIf: (d) => d.input === 'click' || d.input === 'hold' || d.input === 'stand' || d.mode === 'regrow' || d.mode === 'auto'
       },
       { key: 'produceMin', label: t('Harvest count min', 'จำนวนผลผลิตต่ำสุด'), kind: 'int', default: 1, min: 1, max: 64 },
       { key: 'produceMax', label: t('Harvest count max', 'จำนวนผลผลิตสูงสุด'), kind: 'int', default: 2, min: 1, max: 64 },
@@ -1046,7 +1061,7 @@ export const NODE_DEFS: NodeDef[] = [
           'มีผลเฉพาะตอนผู้เล่นทุบ: การเก็บด้วยมือยังได้ผลผลิตตามปกติ · ถ้าเลือก "ไม่ได้อะไรเลย" แต่ตั้งวิธีเก็บเป็น "ทุบ" จะไม่ได้อะไรเลย'
         )
       ),
-      harvestAdventureProp((d) => (d.input !== undefined && d.input !== 'break') || d.mode === 'regrow')
+      harvestAdventureProp((d) => (d.input !== undefined && d.input !== 'break') || d.mode === 'regrow' || d.mode === 'auto')
     ]
   },
 

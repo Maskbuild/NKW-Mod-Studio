@@ -167,7 +167,8 @@ function cropLoot(ns: string, id: string, c: NonNullable<BlockIR['crop']>, seed:
     pools.push({ rolls: 1, entries: [{ type: 'minecraft:item', name: c.produce, functions: countFn(c.produceMin, c.produceMax) }], conditions: grown })
   if (seed) {
     const children: unknown[] = []
-    if (c.mode === 'replant' && c.seedMax > 0)
+    // seeds back when fully grown (a crop that replants itself uses one of them again)
+    if (c.mode !== 'regrow' && c.seedMax > 0)
       children.push({ type: 'minecraft:item', name: `${ns}:${seed}`, conditions: grown, functions: countFn(c.seedMin, c.seedMax) })
     children.push({ type: 'minecraft:item', name: `${ns}:${seed}`, conditions: [{ condition: 'minecraft:inverted', term: grown[0] }] })
     pools.push({ rolls: 1, entries: [{ type: 'minecraft:alternatives', children }] })

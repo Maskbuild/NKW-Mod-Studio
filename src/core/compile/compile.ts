@@ -632,10 +632,16 @@ export function compile(project: Project, target?: Target): CompileResult {
           if (s) stages.push(s)
         }
         if (!stages.length) err(n.id, 'Connect at least one growth stage texture', 'ต่อเท็กซ์เจอร์ระยะการโตอย่างน้อย 1 ระยะ')
-        const mode = str(d, 'mode', 'replant') === 'regrow' ? 'regrow' : 'replant'
+        const mode = (['regrow', 'auto'].includes(str(d, 'mode')) ? str(d, 'mode') : 'replant') as NonNullable<BlockIR['crop']>['mode']
         const input = (['break', 'click', 'hold', 'stand'].includes(str(d, 'input')) ? str(d, 'input') : 'break') as NonNullable<BlockIR['crop']>['input']
-        if (mode === 'regrow' && input === 'break')
-          warn(n.id, 'A crop that grows back needs a right-click harvest: right-click is used', 'พืชที่โตใหม่ต้องเก็บด้วยคลิกขวา: ใช้คลิกขวาแทน')
+        if (mode !== 'replant' && input === 'break')
+          warn(
+            n.id,
+            mode === 'auto'
+              ? 'A crop that replants itself needs a right-click harvest: right-click is used'
+              : 'A crop that grows back needs a right-click harvest: right-click is used',
+            mode === 'auto' ? 'พืชที่ปลูกใหม่เองต้องเก็บด้วยคลิกขวา: ใช้คลิกขวาแทน' : 'พืชที่โตใหม่ต้องเก็บด้วยคลิกขวา: ใช้คลิกขวาแทน'
+          )
         const growSeconds = clamp(Math.round(num(d, 'growSeconds', 0)), 0, 36000)
         const produceMin = clamp(Math.round(num(d, 'produceMin', 1)), 1, 64)
         const seedMin = clamp(Math.round(num(d, 'seedMin', 1)), 0, 64)
@@ -668,7 +674,7 @@ export function compile(project: Project, target?: Target): CompileResult {
             mode,
             regrowAge: clamp(Math.round(num(d, 'regrowStage', 0)), 0, 6),
             regrowTicks: clamp(Math.round(num(d, 'regrowSeconds', 60)), 1, 36000) * 20,
-            input: mode === 'regrow' && input === 'break' ? 'click' : input,
+            input: mode !== 'replant' && input === 'break' ? 'click' : input,
             harvestTicks: Math.round(clamp(num(d, 'harvestSeconds', 2), 0.5, 120) * 20),
             produce: item(n.id, 'produce', true),
             produceMin,
@@ -725,14 +731,25 @@ export function compile(project: Project, target?: Target): CompileResult {
           dropMax: 1
         })
         const entries = breakRuleEntries(d)
+        // blocks of this mod wired in
+        for (let i = 1; i <= 32; i++) {
+          const s = source(n.id, `block${i}`)
+          if (!s || !['block', 'block3d'].includes(s.node.type)) continue
+          const id = `${modid}:${str(s.node.data, 'id')}`
+          if (!entries.includes(id)) entries.push(id)
+        }
         if (!entries.length) err(n.id, 'Pick at least one block', 'เลือกบล็อกอย่างน้อย 1 อัน')
+        const dropItem = item(n.id, 'drop', false)
+        const dropMin = clamp(Math.round(num(d, 'dropMin', 1)), 1, 64)
+        const drop = dropItem ? { item: dropItem, min: dropMin, max: Math.max(dropMin, clamp(Math.round(num(d, 'dropMax', 1)), 1, 64)) } : null
         for (const e of entries) {
           if (e.startsWith('#') || !NSID_RE.test(e)) {
             err(n.id, `"${e}" is not a block ID (tags cannot be used here)`, `"${e}" ไม่ใช่ ID บล็อก (ใช้แท็กที่นี่ไม่ได้)`)
             continue
           }
           const [ns, path] = e.split(':')
-          const id = `${prefix}_${ns === 'minecraft' ? '' : `${ns}_`}${path.replace(/[/.-]/g, '_')}`
+          // minecraft:iron_ore → regen_iron_ore, mymod:ruby_ore → regen_ruby_ore, othermod:ruby_ore → regen_othermod_ruby_ore
+          const id = `${prefix}_${ns === 'minecraft' || ns === modid ? '' : `${ns}_`}${path.replace(/[/.-]/g, '_')}`
           if (!ID_RE.test(id)) {
             err(n.id, `"${e}" makes the invalid ID "${id}"`, `"${e}" ได้ ID "${id}" ที่ไม่ถูกต้อง`)
             continue
@@ -749,6 +766,7 @@ export function compile(project: Project, target?: Target): CompileResult {
               harvestTicks: Math.round(clamp(num(d, 'harvestSeconds', 2), 0.5, 120) * 20),
               ui: harvestUi(n.id),
               timer: breaking && bool(d, 'timer', true),
+              drop,
               give: bool(d, 'give', false),
               adventure: bool(d, 'adventure', true)
             }
@@ -1340,6 +1358,10 @@ export function compile(project: Project, target?: Target): CompileResult {
         'No seeds: wire this crop into an Item\'s "Places block" pin so it can be planted',
         'ยังไม่มีเมล็ด: ต่อพืชนี้เข้าขา "วางเป็นบล็อก" ของไอเทม เพื่อให้ปลูกได้'
       )
+  // Regenerating Blocks of this mod's blocks: the block must exist (and not be a regenerating block itself)
+  for (const b of ir.blocks)
+    if (b.regen?.original.startsWith(`${modid}:`) && !ir.blocks.some((x) => !x.regen && !x.depleted && `${modid}:${x.id}` === b.regen!.original))
+      err(b.nodeId, `${b.regen.original} is not a block of this mod`, `${b.regen.original} ไม่ใช่บล็อกของม็อดนี้`)
   // Break Rules: own blocks must exist; a block in two rules follows the first one
   const ruled = new Map<string, string>()
   for (const r of ir.breakRules)

@@ -114,7 +114,8 @@ export interface CropIR {
   soil: 'farmland' | 'dirt'
   /** ticks per age step; 0 = random growth like wheat */
   growStep: number
-  mode: 'replant' | 'regrow'
+  /** replant: gone, plant the seeds again · auto: replants itself (one seed used) · regrow: back to an age */
+  mode: 'replant' | 'auto' | 'regrow'
   /** regrow: the age a harvest goes back to, and the ticks from there to fully grown */
   regrowAge: number
   regrowTicks: number
@@ -206,6 +207,8 @@ export interface RegenIR {
   ui: HarvestUiIR | null
   /** break harvest: show the breaking time on screen */
   timer: boolean
+  /** gives this item instead of the original's drops (any item: the game's, another mod's or this mod's) */
+  drop: { item: string; min: number; max: number } | null
   give: boolean
   adventure: boolean
 }

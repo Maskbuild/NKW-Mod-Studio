@@ -15,7 +15,8 @@ export function regenCtor(ctx: GenCtx, b: BlockIR, props: string): string {
   if (b.depleted) return `new NkwDepletedBlock(${props}, () -> ${ref(b.depleted.restore)}, ${b.depleted.ticks})`
   const r = b.regen!
   const ui = harvestUiIndex(ctx.ir, r.ui)
-  return `new NkwRegenBlock(${props}, "${r.original}", () -> ${ref(r.depleted)}, ${INPUT[r.input]}, ${r.harvestTicks}, ${ui}, ${r.timer ? ui : -1}, ${r.give}, ${r.adventure})`
+  const drop = r.drop ? `"${r.drop.item}", ${r.drop.min}, ${r.drop.max}` : 'null, 0, 0'
+  return `new NkwRegenBlock(${props}, "${r.original}", () -> ${ref(r.depleted)}, ${INPUT[r.input]}, ${r.harvestTicks}, ${ui}, ${r.timer ? ui : -1}, ${r.give}, ${r.adventure}, ${drop})`
 }
 
 /**
@@ -30,7 +31,9 @@ export function genRegen(ctx: GenCtx, out: (cls: string, text: string) => void):
     ['1.16.5', '1.18.2'].includes(p.mc) ? `new TranslatableComponent("${key}"${arg})` : `Component.translatable("${key}"${arg})`
   const trImport = ['1.16.5', '1.18.2'].includes(p.mc) ? 'net.minecraft.network.chat.TranslatableComponent' : MC.Component
   const reg = p.builtInRegistries ? 'BuiltInRegistries.BLOCK' : 'Registry.BLOCK'
-  const rl = p.rlFactory ? 'ResourceLocation.parse(original)' : 'new ResourceLocation(original)'
+  const regItems = p.builtInRegistries ? 'BuiltInRegistries.ITEM' : 'Registry.ITEM'
+  const lookup = p.propertiesId ? 'getValue' : 'get'
+  const rl = (v: string) => (p.rlFactory ? `ResourceLocation.parse(${v})` : `new ResourceLocation(${v})`)
   const push = (j: JavaFile) =>
     oldPush
       ? (j.use('net.minecraft.world.level.material.PushReaction'),
@@ -56,7 +59,9 @@ export function genRegen(ctx: GenCtx, out: (cls: string, text: string) => void):
       MC.ServerLevel,
       MC.Player,
       MC.ItemStack,
+      MC.Item,
       MC.RL,
+      'java.util.Collections',
       p.builtInRegistries ? MC.BuiltIn : MC.Registry,
       'java.util.List',
       'java.util.function.Supplier'
@@ -79,9 +84,13 @@ public class NkwRegenBlock extends Block {
     public final boolean give;
     /** players in adventure mode may pick it by hand */
     public final boolean adventure;
+    /** item given instead of the original's drops (null: the original's drops), with its count */
+    private final String drop;
+    private final int dropMin;
+    private final int dropMax;
     private BlockState originalState;
 
-    public NkwRegenBlock(BlockBehaviour.Properties properties, String original, Supplier<Block> depleted, int input, int harvestTicks, int ui, int breakUi, boolean give, boolean adventure) {
+    public NkwRegenBlock(BlockBehaviour.Properties properties, String original, Supplier<Block> depleted, int input, int harvestTicks, int ui, int breakUi, boolean give, boolean adventure, String drop, int dropMin, int dropMax) {
         super(properties);
         this.original = original;
         this.depleted = depleted;
@@ -91,12 +100,15 @@ public class NkwRegenBlock extends Block {
         this.breakUi = breakUi;
         this.give = give;
         this.adventure = adventure;
+        this.drop = drop;
+        this.dropMin = dropMin;
+        this.dropMax = dropMax;
     }
 
     /** The block this one stands for (stone when it is not in the game). */
     public BlockState original() {
         if (originalState == null) {
-            Block block = ${reg}.${p.propertiesId ? 'getValue' : 'get'}(${rl});
+            Block block = ${reg}.${lookup}(${rl('original')});
             originalState = (block == null || block == Blocks.AIR ? Blocks.STONE : block).defaultBlockState();
         }
         return originalState;
@@ -116,7 +128,7 @@ public class NkwRegenBlock extends Block {
         if (!(level instanceof ServerLevel)) return;
         BlockState from = original();
         if (!needsTool || player.hasCorrectToolForDrops(from)) {
-            List<ItemStack> drops = Block.getDrops(from, (ServerLevel) level, pos, null, player, tool);
+            List<ItemStack> drops = drop != null ? dropInstead(level) : Block.getDrops(from, (ServerLevel) level, pos, null, player, tool);
             for (ItemStack stack : drops) {
                 if (stack.isEmpty()) continue;
                 if (give) {
@@ -126,6 +138,13 @@ public class NkwRegenBlock extends Block {
         }
         if (!needsTool) level.levelEvent(2001, pos, Block.getId(from));
         level.setBlock(pos, depleted.get().defaultBlockState(), 3);
+    }
+
+    /** The "Drops instead" item with a count between min and max. */
+    private List<ItemStack> dropInstead(Level level) {
+        Item item = ${regItems}.${lookup}(${rl('drop')});
+        int count = dropMin + (dropMax > dropMin ? level.getRandom().nextInt(dropMax - dropMin + 1) : 0);
+        return Collections.singletonList(new ItemStack(item, count));
     }${push(j)}
 }`)
     )

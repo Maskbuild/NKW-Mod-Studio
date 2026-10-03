@@ -55,8 +55,8 @@ describe('compiler', () => {
     const boots = ir.items.find((i) => i.id === 'winged_boots')!
     expect(boots.armor!.geo!.animation).toEqual({ asset: 'animations/ruby_armor.json', name: 'animation.ruby_armor.idle' })
     expect(ir.textureAnims['textures/glow.png']).toEqual({ frametime: 4, interpolate: true })
-    // 8 blocks + 4 Regenerating Blocks, each with its depleted form
-    expect(ir.blocks.length).toBe(16)
+    // 8 blocks + 5 Regenerating Blocks, each with its depleted form
+    expect(ir.blocks.length).toBe(18)
     expect(ir.items.find((i) => i.id === 'ruby_seeds')!.places).toBe('ruby_crop')
     expect(ir.items.find((i) => i.id === 'lamp_trophy')!.separateIcon).toBe(true)
     expect(ir.tabs.map((tb) => tb.id)).toEqual(['main', 'gear', 'regen_blocks', 'node_blocks'])
@@ -516,8 +516,11 @@ describe('compiler', () => {
     expect(ir.blocks.find((b) => b.id === 'node_amethyst_block_depleted')!.depleted!.look).toBe('minecraft:cobblestone')
     expect(ir.tabs.find((t) => t.id === 'regen_blocks')).toMatchObject({
       title: 'Regenerating Blocks',
-      items: ['nkwtest:regen_iron_ore', 'nkwtest:regen_oak_log', 'nkwtest:regen_othermod_ruby_ore']
+      items: ['nkwtest:regen_iron_ore', 'nkwtest:regen_oak_log', 'nkwtest:regen_othermod_ruby_ore', 'nkwtest:regen_ruby_block']
     })
+    // a block of this mod (wired in), and a mod item dropped instead of the original's loot
+    expect(ir.blocks.find((b) => b.id === 'regen_ruby_block')!.regen).toMatchObject({ original: 'nkwtest:ruby_block', drop: null })
+    expect(node.regen!.drop).toEqual({ item: 'nkwtest:ruby', min: 2, max: 4 })
     expect(ir.tabs.find((t) => t.id === 'node_blocks')!.title).toBe('Resource Nodes')
     // tags cannot be regenerating blocks
     const p = structuredClone(project) as Project
@@ -622,7 +625,7 @@ describe('generators', () => {
         expect(rules.includes('"#minecraft:logs"})')).toBe(p.mc !== '1.16.5')
         expect(rules).not.toMatch(/ADVENTURE\.put\(RULE_1/)
         expect(java).toContain('if (!rule.adventure && !player.mayBuild()) return false;')
-        expect(java).toMatch(/GAME\.put\("minecraft:wheat", new Rule\([^)]*, true\)\);/)
+        expect(java).toMatch(/GAME\.put\("minecraft:wheat", new Rule\([^)]*, true, false\)\);/)
         expect(rules).toContain('add("nkwtest:ruby_wheat", PLANT_YOUNG);')
         expect(rules).toContain('add("nkwtest:ruby_bush", PLANT_NONE);')
         expect(rules).toContain('add("minecraft:carrots", PLANT_NONE);')
@@ -640,8 +643,14 @@ describe('generators', () => {
         const text = (all: typeof files, end: string) => all.find((f) => f.path.endsWith(end))?.text
         const regenBlocks = files.find((x) => x.path.endsWith('/ModBlocks.java'))!.text!
         expect(regenBlocks).toMatch(
-          /new NkwRegenBlock\([^\n]*"minecraft:iron_ore", \(\) -> ModBlocks\.REGEN_IRON_ORE_DEPLETED(\.get\(\))?, 0, 40, 0, 0, false, true\)/
+          /new NkwRegenBlock\([^\n]*"minecraft:iron_ore", \(\) -> ModBlocks\.REGEN_IRON_ORE_DEPLETED(\.get\(\))?, 0, 40, 0, 0, false, true, null, 0, 0\)/
         )
+        expect(regenBlocks).toMatch(/"minecraft:amethyst_block", [^\n]*, 2, 60, \d+, -1, true, false, "nkwtest:ruby", 2, 4\)/)
+        // picked with the left button: from the arm swing, where the player looks
+        expect(java).toContain('if (!player.swinging || player.isSpectator()) return null;')
+        expect(java).toContain(p.stackId ? 'player.pick(player.blockInteractionRange(), 1.0F, false)' : 'player.pick(4.5, 1.0F, false)')
+        expect(java).toContain('if (r.input > 0) rule = new Rule(r.input, r.harvestTicks, 3, 0, r.ui, r.give, r.adventure, true);')
+        expect(en['message.nkwtest.harvest_released_left']).toBe('Keep holding left-click to harvest')
         expect(regenBlocks).toMatch(/new NkwDepletedBlock\([^\n]*strength\(-1\.0F, 3600000\.0F\)[^\n]*\(\) -> ModBlocks\.REGEN_IRON_ORE(\.get\(\))?, 600\)/)
         expect(files.find((x) => x.path.endsWith('/ModItems.java'))!.text).toContain('new NkwRegenBlockItem(ModBlocks.REGEN_IRON_ORE')
         expect(text(files, '/NkwRegenBlockItem.java')).toContain('player.hasPermissions(2)')
@@ -812,6 +821,27 @@ describe('model editor controls', () => {
 })
 
 describe('crops', () => {
+  it('replants a crop by itself after a hand harvest (one seed used)', () => {
+    const p = structuredClone(project) as Project
+    const wheatNode = p.graph.nodes.find((n) => n.id === 'wheat')!
+    wheatNode.data.mode = 'auto'
+    const { ir } = compile(p, { loader: 'fabric', mc: '1.21.1' })
+    const wheat = ir.blocks.find((b) => b.id === 'ruby_wheat')!.crop!
+    expect(wheat.mode).toBe('auto')
+    const files = generate(ir, { loader: 'fabric', mc: '1.21.1' }, { ...FALLBACK_DEPS['1.21.1'], ...deps } as never, read)
+    const java = files
+      .filter((f) => f.path.endsWith('.java'))
+      .map((f) => f.text)
+      .join('\n')
+    expect(java).toMatch(/"ruby_wheat", new NkwCropBlock\([^\n]*, true\)/)
+    expect(java).toContain('crop.regrow ? 2 : crop.replant ? 1 : 0, crop.replant ? 0 : crop.regrowAge')
+    // grown: the harvest and seeds back (one goes back into the ground)
+    const loot = JSON.parse(files.find((f) => f.path.endsWith('/loot_table/blocks/ruby_wheat.json'))!.text!)
+    expect(loot.pools[1].entries[0].children).toHaveLength(2)
+    // breaking is no harvest for it: right-click is used
+    wheatNode.data.input = 'break'
+    expect(compile(p).diagnostics.some((d) => d.nodeId === 'wheat' && /replants itself/.test(d.message.en))).toBe(true)
+  })
   it('makes growing crops with stage models, loot and hand harvesting', () => {
     const gen = (loader: 'fabric' | 'forge' | 'neoforge', mc: string) => {
       const { ir, diagnostics } = compile(project, { loader, mc })
@@ -838,7 +868,7 @@ describe('crops', () => {
     expect(JSON.parse(text(files, '/loot_table/blocks/ruby_bush.json')!).pools[1].entries[0].children).toHaveLength(1)
     const blocks = text(files, '/ModBlocks.java')!
     expect(blocks).toContain(
-      'new NkwCropBlock(BlockBehaviour.Properties.of().noCollission().randomTicks().instabreak().sound(SoundType.CROP), false, 0, false, 0, 1200, 2, 30, 1, false, true)'
+      'new NkwCropBlock(BlockBehaviour.Properties.of().noCollission().randomTicks().instabreak().sound(SoundType.CROP), false, 0, false, 0, 1200, 2, 30, 1, false, true, false)'
     )
     expect(blocks).toContain('return ModItems.RUBY_WHEAT_SEEDS;')
     expect(text(files, '/NkwCropBlock.java')).toContain('level.scheduleTick(pos, this, ticks);')
@@ -866,10 +896,10 @@ describe('crops', () => {
     expect(byBlock['minecraft:sweet_berry_bush']).toMatchObject({ input: 'click', after: 'regrow', back: 1 })
     expect(byBlock['minecraft:carrots']).toMatchObject({ after: 'replant', back: 0 })
     const harvest = text(files, '/NkwHarvest.java')!
-    expect(harvest).toContain('GAME.put("minecraft:wheat", new Rule(2, 20, 0, 1, 2, true, true));')
+    expect(harvest).toContain('GAME.put("minecraft:wheat", new Rule(2, 20, 0, 1, 2, true, true, false));')
     // one node, many crops (checked + typed ids), all with the same settings
     for (const id of ['farmersdelight:cabbages', 'farmersdelight:onions', 'farmersdelight:rice_panicles'])
-      expect(harvest).toContain(`GAME.put("${id}", new Rule(2, 30, 1, 0, 1, false, true));`)
+      expect(harvest).toContain(`GAME.put("${id}", new Rule(2, 30, 1, 0, 1, false, true, false));`)
     expect(gameCropIds({ crop: 'custom', block: 'a:b, c:d' })).toEqual(['a:b', 'c:d'])
     expect(gameCropIds({})).toEqual(['minecraft:wheat'])
     expect(harvest).toContain('BuiltInRegistries.BLOCK.getKey(block)')
