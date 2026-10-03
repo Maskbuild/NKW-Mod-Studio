@@ -3,6 +3,7 @@ import { scriptAppliesTo, scriptSource } from '../scriptApi'
 import { geoLoopName } from './geo'
 import { geckoArmorSource } from './gecko'
 import { genHarvest, harvestUiIndex, usesHarvest } from './harvest'
+import { genBreakRules, usesBreakRules } from './breakRules'
 import { toMcp1165 } from './mcp'
 import { parseJavaModel, rotateBoxes, shapeBoxes, type Box } from './model'
 import { mcAtLeast, type VersionProfile } from './profiles'
@@ -429,6 +430,7 @@ ${wornEffectsMethod()}
   if (ir.blocks.some((b) => b.crop)) genCropBlock(ctx, out)
   if (ir.mobs.length) genMobs(ctx, out)
   if (usesHarvest(ir)) genHarvest(ctx, out)
+  if (usesBreakRules(ir)) genBreakRules(ctx, out)
 
   if (fab && !p.jukeboxSongs && ir.items.some((i) => i.disc)) {
     const j = new JavaFile(pkg, 'NkwDiscItem').use(MC.RecordItem, MC.SoundEvent, MC.Item)
@@ -718,7 +720,7 @@ public class NkwMod implements ModInitializer {
         ModBlocks.init();
         ModItems.init();
         ModTabs.init();
-${ir.mobs.length ? '        ModEntities.init();\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}${thirstMod ? '        NkwThirst.init();\n' : ''}${usesHarvest(ir) ? '        NkwHarvest.init();\n' : ''}${attrItems.length ? '        NkwAttributes.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${ir.mobs.length ? '        ModEntities.init();\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}${thirstMod ? '        NkwThirst.init();\n' : ''}${usesHarvest(ir) ? '        NkwHarvest.init();\n' : ''}${usesBreakRules(ir) ? '        NkwBreakRules.init();\n' : ''}${attrItems.length ? '        NkwAttributes.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 }`
     } else {
@@ -750,7 +752,7 @@ public class NkwMod {
         NkwTags.init();
 ${regs.map((r) => `        ${r}.register(bus);`).join('\n')}
 ${ir.mobs.length ? `        ModEntities.init(bus);\n        if (FMLEnvironment.dist == Dist.CLIENT) NkwMobsClient.init(bus);\n` : ''}${usesHarvest(ir) ? '        if (FMLEnvironment.dist == Dist.CLIENT) NkwHarvestHud.init(bus);\n' : ''}
-${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}${thirstMod ? '        NkwThirst.init();\n' : ''}${usesHarvest(ir) ? '        NkwHarvest.init();\n' : ''}${attrItems.length ? '        NkwAttributes.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}${thirstMod ? '        NkwThirst.init();\n' : ''}${usesHarvest(ir) ? '        NkwHarvest.init();\n' : ''}${usesBreakRules(ir) ? '        NkwBreakRules.init();\n' : ''}${attrItems.length ? '        NkwAttributes.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 
     ${idFn}

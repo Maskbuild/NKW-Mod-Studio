@@ -18,6 +18,7 @@ import { ArmorFitField } from './ArmorFit'
 import { TabOrder } from './TabOrder'
 import { ScriptEditor, ScriptTargets } from './ScriptEditor'
 import { HarvestUiPreview } from './HarvestUiPreview'
+import { BlockListField } from './BlockList'
 
 const ModelPreview = lazy(() => import('./ModelPreview'))
 
@@ -611,6 +612,8 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
       return <NsidField node={node} p={p} />
     case 'animName':
       return <AnimNameField node={node} p={p} />
+    case 'blockList':
+      return <BlockListField node={node} p={p} />
     case 'craftGrid':
       return <CraftGrid node={node} />
     case 'armorFit':

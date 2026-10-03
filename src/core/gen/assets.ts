@@ -1,5 +1,6 @@
 import type { BlockIR, ModelRef } from '../ir'
 import { usesHarvest } from './harvest'
+import { breakRuleKey } from './breakRules'
 import { armorIconModel, fitAnimation, geoLoopName, javaModelToGeo, prepareArmorGeo, type GeoFile } from './geo'
 import { textureKeys, type JavaModel } from './model'
 import { parseJavaModel, remapTextures } from './model'
@@ -248,6 +249,10 @@ export function genAssets(ctx: GenCtx): void {
     put(`message.${ns}.harvest_moved`, 'You moved: right-click again to harvest', 'ขยับแล้ว: คลิกขวาใหม่เพื่อเก็บ')
     put(`message.${ns}.harvest_released`, 'Keep holding right-click to harvest', 'กดคลิกขวาค้างไว้เพื่อเก็บ')
   }
+  // Break Rule messages ('%' would be read as a format code)
+  ir.breakRules.forEach((r, i) => {
+    if (r.message) put(breakRuleKey(ns, i), r.message.en.replace(/%/g, '%%'), r.message.th.replace(/%/g, '%%'))
+  })
   // stat bonus tooltip headers
   const when: Record<string, [string, string]> = {
     mainhand: ['When in Main Hand:', 'เมื่อถือในมือหลัก:'],

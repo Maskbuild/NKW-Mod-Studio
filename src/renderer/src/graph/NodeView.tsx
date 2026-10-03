@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, type CSSProperties } from 'react'
 import { JAVA_KEYWORDS } from '@core/scriptApi'
 import { Handle, NodeResizer, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
 import { useTranslation } from 'react-i18next'
-import { EFFECTS, NODE_DEF_MAP, gameCropIds, PIN_COLORS, visibleInputs, type Category, type PinDef } from '@core/nodes/defs'
+import { EFFECTS, NODE_DEF_MAP, breakRuleEntries, gameCropIds, PIN_COLORS, visibleInputs, type Category, type PinDef } from '@core/nodes/defs'
 import { L } from '../i18n'
 import { assetUrl, vanillaIconUrl } from '../api'
 import { useItemInfo } from './VanillaPanel'
@@ -130,6 +130,18 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
         return o ? L(o.label).replace(/ \(Farmer's Delight\)$/, ' (FD)') : id
       })
       return <span title={names.join(', ')}>{names.length > 3 ? `${names.slice(0, 3).join(', ')} +${names.length - 3}` : names.join(', ') || '—'}</span>
+    }
+    case 'breakRule': {
+      const def = NODE_DEF_MAP.breakRule.props
+      const tool = def.find((p) => p.key === 'tool')?.options?.find((o) => o.value === (data.tool ?? 'pickaxe'))
+      const level = data.tool === 'shears' ? undefined : def.find((p) => p.key === 'level')?.options?.find((o) => o.value === (data.level ?? 'stone'))
+      const n = breakRuleEntries(data).length + [...connected].filter((c) => c.startsWith('i:block')).length
+      return (
+        <span>
+          {tool ? L(tool.label) : '?'}
+          {level ? ` · ${L(level.label)}` : ''} · {n} ⬛
+        </span>
+      )
     }
     case 'armorSet':
       return <span className="mono">{String(data.baseId ?? '')}_*</span>

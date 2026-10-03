@@ -98,7 +98,8 @@ export const RESERVED_CLASSES = new Set([
   'NkwPickaxeItem',
   'NkwAxeItem',
   'NkwShovelItem',
-  'NkwHoeItem'
+  'NkwHoeItem',
+  'NkwBreakRules'
 ])
 
 /** Whether the generated mod writes a class with this name (fixed classes and each 3D mob's Nkw<Id>Entity). */

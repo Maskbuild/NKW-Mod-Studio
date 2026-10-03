@@ -472,6 +472,49 @@ describe('compiler', () => {
     const { diagnostics } = compile(project, { loader: 'fabric', mc: '1.16.5' })
     expect(diagnostics.some((d) => /Farmer's Delight/.test(d.message.en))).toBe(true)
   })
+  it('collects Break Rules: picked game / other-mod blocks, #tags and wired mod blocks, with a message', () => {
+    const { ir, diagnostics } = compile(project)
+    expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
+    const iron = ir.breakRules.find((r) => r.nodeId === 'rule_iron')!
+    expect(iron.blocks).toEqual([
+      'minecraft:stone',
+      'minecraft:deepslate',
+      'othermod:ruby_ore',
+      'nkwtest:ruby_pillar',
+      'nkwtest:ruby_block',
+      'nkwtest:ruby_lamp'
+    ])
+    expect(iron.tags).toEqual(['minecraft:logs'])
+    expect(iron).toMatchObject({ tool: 'pickaxe', level: 'iron', onFail: 'noDrop' })
+    expect(iron.message).toEqual({ en: 'Needs an iron pickaxe or better to drop anything', th: 'ต้องใช้อีเต้อเหล็ก 100%' })
+    expect(ir.breakRules.find((r) => r.nodeId === 'rule_axe')!.message!.th).toBe('ต้องใช้ขวานระดับเพชรขึ้นไปถึงจะทุบได้')
+    expect(ir.breakRules.find((r) => r.nodeId === 'rule_shears')).toMatchObject({ level: 'wood', message: null })
+    // plants: what breaking them gives
+    expect(ir.blocks.find((b) => b.id === 'ruby_wheat')!.crop!.breakDrops).toBe('grown')
+    expect(ir.blocks.find((b) => b.id === 'ruby_bush')!.crop!.breakDrops).toBe('none')
+    expect(ir.gameCrops.find((g) => g.block === 'minecraft:carrots')!.breakDrops).toBe('none')
+    expect(ir.gameCrops.find((g) => g.block === 'minecraft:wheat')!.breakDrops).toBe('normal')
+  })
+  it('checks Break Rules', () => {
+    const p = structuredClone(project) as Project
+    const rule = p.graph.nodes.find((n) => n.id === 'rule_any')!
+    rule.data.blocks = ['Not An Id', 'nkwtest:missing_block']
+    const crop = p.graph.nodes.find((n) => n.id === 'wheat')!
+    crop.data.breakDrops = 'none'
+    crop.data.input = 'break'
+    const { diagnostics } = compile(p)
+    const of = (id: string) => diagnostics.filter((d) => d.nodeId === id).map((d) => d.message.en)
+    expect(of('rule_any').some((m) => /not a block ID/.test(m))).toBe(true)
+    expect(of('rule_any').some((m) => /not a block of this mod/.test(m))).toBe(true)
+    expect(of('wheat').some((m) => /breaking gives nothing/.test(m))).toBe(true)
+    rule.data.blocks = []
+    expect(compile(p).diagnostics.some((d) => d.nodeId === 'rule_any' && /at least one block/.test(d.message.en))).toBe(true)
+    // tags need 1.18.2+, swords have no level on 1.21.4
+    expect(compile(project, { loader: 'forge', mc: '1.16.5' }).diagnostics.some((d) => d.nodeId === 'rule_iron' && /1\.18\.2/.test(d.message.en))).toBe(true)
+    expect(
+      compile(project, { loader: 'fabric', mc: '1.21.4' }).diagnostics.some((d) => d.nodeId === 'rule_sword' && /no mining level/.test(d.message.en))
+    ).toBe(true)
+  })
 })
 
 describe('generators', () => {
@@ -531,6 +574,26 @@ describe('generators', () => {
           expect(files.find((x) => x.path.endsWith('animations/item/armor/winged_boots.animation.json'))?.text).toContain('animation.ruby_armor.idle')
         }
         if (loader === 'fabric' || loader === 'quilt') expect(files.find((x) => x.path === 'build.gradle')!.text).toContain('maven.modrinth:modmenu:x')
+        // Break Rules and plants that give nothing when broken
+        const rules = files.find((x) => x.path.endsWith('/NkwBreakRules.java'))!.text!
+        expect(java).toContain('NkwBreakRules.init();')
+        expect(rules).toContain('Rule RULE_0 = new Rule(0, 2, false, false, "message.nkwtest.break_rule_0");')
+        expect(rules).toContain('add("othermod:ruby_ore", RULE_0);')
+        expect(rules).toContain('add("nkwtest:ruby_block", RULE_0);')
+        expect(rules).toContain('new Rule(1, 3, true, false, "message.nkwtest.break_rule_1")')
+        expect(rules).toContain('add("nkwtest:ruby_wheat", PLANT_YOUNG);')
+        expect(rules).toContain('add("nkwtest:ruby_bush", PLANT_NONE);')
+        expect(rules).toContain('add("minecraft:carrots", PLANT_NONE);')
+        expect(rules.includes('TagKey.create(')).toBe(p.mc !== '1.16.5')
+        expect(rules).toContain(
+          p.toolApi === 'tierLevel' ? 'getTier().getLevel()' : p.toolApi === 'tierTag' ? 'getIncorrectBlocksForDrops()' : 'stack.get(DataComponents.TOOL)'
+        )
+        expect(rules).toContain(loader === 'fabric' || loader === 'quilt' ? 'PlayerBlockBreakEvents.BEFORE' : 'PlayerEvent.HarvestCheck')
+        if (p.mc === '1.16.5' && loader === 'forge') expect(rules).toMatch(/PlayerEntity player[^]*TextFormatting\.RED/)
+        expect(en['message.nkwtest.break_rule_0']).toBe('Needs an iron pickaxe or better to drop anything')
+        const thLang = JSON.parse(files.find((x) => x.path.endsWith('lang/th_th.json'))!.text!)
+        expect(thLang['message.nkwtest.break_rule_0']).toBe('ต้องใช้อีเต้อเหล็ก 100%%')
+        expect(en['message.nkwtest.break_rule_2']).toBeUndefined()
         // Java string escaping of the description in metadata
         const meta = files.find((f) => /fabric\.mod\.json|quilt\.mod\.json|mods\.toml/.test(f.path))!
         expect(meta.text).toContain('Fixture \\"quoted\\" \\\\ mod')

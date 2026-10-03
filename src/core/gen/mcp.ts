@@ -97,6 +97,8 @@ const CLASSES: Record<string, string> = {
   'net.minecraft.client.gui.GuiComponent': 'net.minecraft.client.gui.AbstractGui',
   'net.minecraft.client.resources.language.I18n': 'net.minecraft.client.resources.I18n',
   'net.minecraft.world.level.block.state.properties.IntegerProperty': 'net.minecraft.state.IntegerProperty',
+  'net.minecraft.world.item.TieredItem': 'net.minecraft.item.TieredItem',
+  'net.minecraft.world.item.ShearsItem': 'net.minecraft.item.ShearsItem',
   'net.minecraft.world.level.block.state.properties.Property': 'net.minecraft.state.Property',
   // Forge API that moved later
   'net.minecraftforge.registries.RegistryObject': 'net.minecraftforge.fml.RegistryObject'

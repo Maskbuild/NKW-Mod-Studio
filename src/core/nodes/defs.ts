@@ -89,6 +89,7 @@ export type PropKind =
   | 'tabOrder'
   | 'code'
   | 'scriptTargets'
+  | 'blockList'
 
 export interface PropDef {
   key: string
@@ -136,6 +137,30 @@ export function gameCropIds(d: Record<string, unknown>): string[] {
         : []
   const typed = typeof d.others === 'string' ? d.others : d.crop === 'custom' && typeof d.block === 'string' ? d.block : ''
   return [...new Set([...picked, ...typed.split(/[\s,]+/).filter(Boolean)])]
+}
+
+/** "When a player breaks it" setting of the plant nodes (Crop, Harvest a game crop). */
+const breakDropsProp = (hint: L10n): PropDef => ({
+  key: 'breakDrops',
+  label: t('When a player breaks it', 'เมื่อผู้เล่นทุบพืช'),
+  kind: 'select',
+  default: 'normal',
+  options: [
+    opt('normal', 'Drops like normal', 'ได้ของตามปกติ'),
+    opt('grown', 'Drops only when fully grown (young plants give nothing)', 'ได้ของเฉพาะตอนโตเต็มที่ (ต้นอ่อนทุบแล้วไม่ได้อะไร)'),
+    opt('none', 'Gives nothing (harvest by hand only)', 'ไม่ได้อะไรเลย (ต้องเก็บด้วยมือเท่านั้น)')
+  ],
+  hint
+})
+
+/** Tools a Break Rule can ask for. */
+export const BREAK_TOOLS = ['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'shears', 'any'] as const
+export const TOOL_LEVELS = ['wood', 'stone', 'iron', 'diamond', 'netherite'] as const
+
+/** Entries of a Break Rule's block list: block ids and #tags (older or hand-edited data is cleaned up). */
+export function breakRuleEntries(d: Record<string, unknown>): string[] {
+  const list = Array.isArray(d.blocks) ? d.blocks.filter((c): c is string => typeof c === 'string') : []
+  return [...new Set(list.map((x) => x.trim().toLowerCase()).filter(Boolean))]
 }
 
 export const CATEGORY_LABEL: Record<Category, L10n> = {
@@ -659,6 +684,78 @@ export const NODE_DEFS: NodeDef[] = [
   },
 
   {
+    type: 'breakRule',
+    category: 'block',
+    title: t('Break Rule (tool & level)', 'กฎการทุบบล็อก (อุปกรณ์และระดับแร่)'),
+    description: t(
+      "Blocks that need a certain tool and mining level. Pick any number of Minecraft blocks, blocks of other mods (type the id) or #tags, and wire in this mod's blocks. With the wrong tool the block drops nothing, or cannot be broken at all. Creative mode is not affected.",
+      'กำหนดว่าบล็อกไหนต้องใช้อุปกรณ์และระดับแร่อะไรถึงจะทุบได้ — เลือกบล็อกของ Minecraft บล็อกของม็อดอื่น (พิมพ์ ID) หรือ #แท็ก ได้หลายอันพร้อมกัน และต่อสายบล็อกของม็อดเราเข้ามาได้ ถ้าใช้อุปกรณ์ไม่ถูกจะไม่ได้ของ หรือทุบไม่ได้เลย (โหมดสร้างสรรค์ไม่มีผล)'
+    ),
+    icon: '⛏',
+    inputs: slots(32, 'block', 'Mod block', 'บล็อกของม็อด', 'block', { group: 'blocks' }),
+    outputs: [],
+    props: [
+      {
+        key: 'blocks',
+        label: t('Blocks (pick any number)', 'บล็อก (เลือกได้หลายอัน)'),
+        kind: 'blockList',
+        default: [],
+        hint: t(
+          'Tick blocks in the list (type to search), add an id like othermod:ruby_ore or a tag like #minecraft:logs, or drag blocks here from the "Game items" tab. Blocks of this mod: wire their Block pin in, or pick them in the list.',
+          'ติ๊กเลือกบล็อกในรายการ (พิมพ์เพื่อค้นหา) เพิ่ม ID เช่น othermod:ruby_ore หรือแท็กเช่น #minecraft:logs หรือลากบล็อกจากแท็บ "ไอเทมเกม" มาวาง · บล็อกของม็อดเรา: ต่อสายจากขา "บล็อก" หรือเลือกในรายการก็ได้'
+        )
+      },
+      {
+        key: 'tool',
+        label: t('Required tool', 'อุปกรณ์ที่ต้องใช้'),
+        kind: 'select',
+        default: 'pickaxe',
+        options: [
+          opt('pickaxe', 'Pickaxe', 'อีเต้อ'),
+          opt('axe', 'Axe', 'ขวาน'),
+          opt('shovel', 'Shovel', 'พลั่ว'),
+          opt('hoe', 'Hoe', 'จอบ'),
+          opt('sword', 'Sword', 'ดาบ'),
+          opt('shears', 'Shears', 'กรรไกร'),
+          opt('any', 'Any tool (only the level counts)', 'เครื่องมืออะไรก็ได้ (ดูแค่ระดับ)')
+        ]
+      },
+      {
+        key: 'level',
+        label: t('Minimum level (ore level)', 'ระดับขั้นต่ำ (ระดับแร่)'),
+        kind: 'select',
+        default: 'stone',
+        options: [
+          opt('wood', 'Wood / Gold (any level)', 'ไม้ / ทอง (ระดับไหนก็ได้)'),
+          opt('stone', 'Stone or better', 'หินขึ้นไป'),
+          opt('iron', 'Iron or better', 'เหล็กขึ้นไป'),
+          opt('diamond', 'Diamond or better', 'เพชรขึ้นไป'),
+          opt('netherite', 'Netherite', 'เนเธอไรต์')
+        ],
+        hint: t("Tools of this mod count with their Tool Material's mining level.", 'เครื่องมือของม็อดเรานับตามระดับการขุดของวัสดุเครื่องมือ'),
+        showIf: (d) => d.tool !== 'shears'
+      },
+      {
+        key: 'onFail',
+        label: t('With the wrong tool', 'ถ้าใช้อุปกรณ์ไม่ถูก'),
+        kind: 'select',
+        default: 'noDrop',
+        options: [opt('noDrop', 'It breaks but drops nothing', 'ทุบแตกแต่ไม่ได้ของ'), opt('cantBreak', 'It cannot be broken', 'ทุบไม่ได้เลย')]
+      },
+      { key: 'message', label: t('Tell the player which tool is needed', 'แจ้งผู้เล่นว่าต้องใช้อุปกรณ์อะไร'), kind: 'bool', default: true },
+      {
+        key: 'messageEn',
+        label: t('Own message (EN)', 'ข้อความเอง (EN)'),
+        kind: 'text',
+        default: '',
+        hint: t('Empty = written for you', 'เว้นว่าง = สร้างข้อความให้อัตโนมัติ'),
+        showIf: (d) => d.message !== false
+      },
+      { key: 'messageTh', label: t('Own message (TH)', 'ข้อความเอง (ไทย)'), kind: 'text', default: '', showIf: (d) => d.message !== false }
+    ]
+  },
+
+  {
     type: 'crop',
     category: 'farm',
     title: t('Crop (plant)', 'พืช (ปลูกได้)'),
@@ -776,7 +873,13 @@ export const NODE_DEFS: NodeDef[] = [
         max: 64,
         showIf: (d) => d.mode !== 'regrow'
       },
-      { key: 'seedMax', label: t('Seeds back max', 'ได้เมล็ดคืนสูงสุด'), kind: 'int', default: 3, min: 0, max: 64, showIf: (d) => d.mode !== 'regrow' }
+      { key: 'seedMax', label: t('Seeds back max', 'ได้เมล็ดคืนสูงสุด'), kind: 'int', default: 3, min: 0, max: 64, showIf: (d) => d.mode !== 'regrow' },
+      breakDropsProp(
+        t(
+          'Only breaking by a player counts: picking by hand still gives the harvest. "Nothing" with "Break it" as the harvest gives nothing at all.',
+          'มีผลเฉพาะตอนผู้เล่นทุบ: การเก็บด้วยมือยังได้ผลผลิตตามปกติ · ถ้าเลือก "ไม่ได้อะไรเลย" แต่ตั้งวิธีเก็บเป็น "ทุบ" จะไม่ได้อะไรเลย'
+        )
+      )
     ]
   },
 
@@ -875,7 +978,13 @@ export const NODE_DEFS: NodeDef[] = [
           'Off: drops on the ground like normal. On: straight into the inventory (what does not fit drops at your feet).',
           'ปิด: ดรอปบนพื้นแบบปกติ · เปิด: เข้าช่องเก็บของเลย (ถ้าเต็มจะดรอปที่เท้า)'
         )
-      }
+      },
+      breakDropsProp(
+        t(
+          'Only breaking by a player counts: picking by hand still gives the harvest. Creative mode is not affected.',
+          'มีผลเฉพาะตอนผู้เล่นทุบ: การเก็บด้วยมือยังได้ผลผลิตตามปกติ (โหมดสร้างสรรค์ไม่มีผล)'
+        )
+      )
     ]
   },
   {

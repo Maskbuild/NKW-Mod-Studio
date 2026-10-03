@@ -129,7 +129,12 @@ export interface CropIR {
   ui: HarvestUiIR | null
   /** a hand harvest goes straight into the inventory instead of dropping */
   give: boolean
+  /** what breaking it by a player gives: normal loot, only when fully grown, or nothing */
+  breakDrops: BreakDrops
 }
+
+/** Drops when a player breaks a plant (hand harvests are not affected). */
+export type BreakDrops = 'normal' | 'grown' | 'none'
 
 /** How the harvest timer is drawn (Harvest UI node). Colours are 0xRRGGBB. */
 export interface HarvestUiIR {
@@ -163,6 +168,22 @@ export interface GameCropIR {
   ui: HarvestUiIR | null
   /** the harvest goes straight into the inventory instead of dropping */
   give: boolean
+  breakDrops: BreakDrops
+}
+
+/** Blocks (of any mod, or #tags) that need a tool type / mining level (Break Rule node). */
+export interface BreakRuleIR {
+  nodeId: string
+  /** block ids, e.g. minecraft:stone, othermod:ruby_ore */
+  blocks: string[]
+  /** block tag ids, without '#' */
+  tags: string[]
+  tool: 'pickaxe' | 'axe' | 'shovel' | 'hoe' | 'sword' | 'shears' | 'any'
+  level: ToolLevel
+  /** wrong tool: the block breaks without drops, or cannot be broken */
+  onFail: 'noDrop' | 'cantBreak'
+  /** action-bar text for a wrong tool, null = none */
+  message: { en: string; th: string } | null
 }
 
 export interface BlockIR extends Named {
@@ -330,6 +351,7 @@ export interface ModIR {
   scripts: ScriptIR[]
   mobs: MobIR[]
   gameCrops: GameCropIR[]
+  breakRules: BreakRuleIR[]
   /** animated textures (asset path → .mcmeta animation settings) */
   textureAnims: Record<string, { frametime: number; interpolate: boolean }>
 }

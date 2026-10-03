@@ -2270,6 +2270,62 @@ img.frame0 {
 .multi-opt input {
   margin: 0;
 }
+/* Break Rule block picker */
+.block-list.over {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.block-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.block-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 1px 2px 1px 4px;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.block-chip.invalid {
+  border-color: #dc2626;
+}
+.block-chip .cg-icon,
+.block-pick .cg-icon,
+.block-chip .cg-icon img,
+.block-pick .cg-icon img {
+  width: 18px;
+  height: 18px;
+}
+.block-chip-x {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.block-chip-x:hover {
+  color: var(--fg, inherit);
+}
+.block-pick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 6px 0;
+}
+.block-pick .multi-opt {
+  min-width: 0;
+}
 .qa-paste {
   margin: 4px 0;
   border-bottom: 1px solid var(--border);

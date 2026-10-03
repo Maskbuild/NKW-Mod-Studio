@@ -366,6 +366,7 @@ Category **Farming**. A plant that grows in up to 8 stages.
   - _Stays and grows back_: picking it gives the harvest, then it goes back to the stage you choose and grows again after the **cooldown**.
 - **How to harvest**: break it, right-click, **hold right-click** for the harvest time, or **right-click once and stand still** for the harvest time (moving cancels and you must click again). While harvesting, a timer shows on screen; wire a **Harvest timer look** node into **Harvest timer look** to choose how it looks (without one: text above the hotbar).
 - **Harvest count min / max**.
+- **When a player breaks it**: _drops like normal_, _drops only when fully grown_ (breaking a young plant gives nothing, not even the seed), or _gives nothing_ (only picking by hand gives the harvest — pair it with a right-click harvest). Picking by hand is never affected, and neither is creative mode.
 
 ### Harvest a game crop
 
@@ -378,6 +379,7 @@ Gives a crop of Minecraft, Farmer's Delight or another mod the same hand harvest
   - _Replants itself_: the normal drops minus one seed, and the crop starts again from the beginning.
   - _Stays and goes back to a stage_: the normal drops, then it goes back to the stage you choose and grows again like in the game.
 - **Harvest goes into the inventory**: off = drops on the ground like normal; on = straight into the inventory (what does not fit drops at your feet). The Crop node has the same option for hand harvests.
+- **When a player breaks it**: the same three choices as the Crop node, e.g. _gives nothing_ so players must pick it by hand.
 - One node per crop. Farmer's Delight crops only exist on targets that have Farmer's Delight (the Problems panel tells you), and Farmer's Delight is added to "Test in game" for you.
 
 ### Harvest timer look
@@ -392,6 +394,17 @@ How the harvest timer looks on screen. Wire its output into the **Harvest timer 
 - Text and bar: **position** (under the crosshair, above the hotbar, top of the screen) and **move down** (negative = up).
 - Bar: **width** and **height**. Circle: **size** (radius) and **line thickness**; as thick as the size gives a filled circle.
 - **Show the seconds left**.
+
+### Break Rule (tool & level)
+
+Category **Blocks**. Makes blocks need a certain tool and mining (ore) level — for blocks of Minecraft, of other mods and of your own mod.
+
+- **Blocks (pick any number)**: tick blocks in the list (type to search; **Tick all … found** ticks every result, e.g. search `ore`), add ids of other mods such as `othermod:ruby_ore` (several at once, separated by spaces or commas), add tags such as `#minecraft:logs`, or drag blocks here from the **Game items** tab. Your own blocks: tick them in the list or wire their **Block** pin into the **Mod block** pins.
+- **Required tool**: pickaxe, axe, shovel, hoe, sword, shears, or _any tool_ (only the level counts).
+- **Minimum level (ore level)**: wood/gold, stone, iron, diamond or netherite and better. Tools of your mod count with their Tool Material's mining level.
+- **With the wrong tool**: _it breaks but drops nothing_ (like stone mined by hand), or _it cannot be broken_.
+- **Tell the player which tool is needed**: a red message above the hotbar, written for you (e.g. "Needs an iron pickaxe or better to drop anything"), or your own text in English and Thai.
+- Creative mode is never stopped. A block in two rules follows the first one. Block tags need Minecraft 1.18.2 or newer; on 1.21.2+ swords have no mining level, so any sword counts.
 
 ### Shared block settings
 

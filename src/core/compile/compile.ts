@@ -1,7 +1,7 @@
 import { ASSET_RE, ID_RE, NSID_RE, type GraphNode, type Project, type Target } from '../project'
 import { parseFit } from '../gen/geo'
 import { isReservedClass, scriptAppliesTo, scriptClassName, scriptEntrypoints } from '../scriptApi'
-import { ATTRIBUTES, EFFECTS, NODE_DEF_MAP, canConnect, gameCropIds, pinOf, type L10n } from '../nodes/defs'
+import { ATTRIBUTES, BREAK_TOOLS, EFFECTS, NODE_DEF_MAP, TOOL_LEVELS, breakRuleEntries, canConnect, gameCropIds, pinOf, type L10n } from '../nodes/defs'
 import type {
   ArmorMatIR,
   ArmorSlot,
@@ -21,7 +21,7 @@ import type {
   ThirstIR,
   ToolMatIR
 } from '../ir'
-import type { GameCropIR, HarvestUiIR } from '../ir'
+import type { BreakDrops, BreakRuleIR, GameCropIR, HarvestUiIR } from '../ir'
 import { farmersDelightFor, getProfile, isSupported, mcAtLeast } from '../gen/profiles'
 import { separateIconMode } from '../gen/assets'
 
@@ -94,6 +94,43 @@ export function scriptBracketProblem(code: string): { en: string; th: string; li
   }
   const open = stack.pop()
   return open ? { en: `"${open.ch}" is never closed (line ${open.line})`, th: `"${open.ch}" ยังไม่ได้ปิด (บรรทัด ${open.line})`, line: open.line } : null
+}
+
+const BREAK_DROPS: BreakDrops[] = ['normal', 'grown', 'none']
+const breakDropsOf = (d: Data): BreakDrops => (BREAK_DROPS.includes(d.breakDrops as BreakDrops) ? (d.breakDrops as BreakDrops) : 'normal')
+
+const TOOL_NAME: Record<BreakRuleIR['tool'], L10n> = {
+  pickaxe: { en: 'pickaxe', th: 'อีเต้อ' },
+  axe: { en: 'axe', th: 'ขวาน' },
+  shovel: { en: 'shovel', th: 'พลั่ว' },
+  hoe: { en: 'hoe', th: 'จอบ' },
+  sword: { en: 'sword', th: 'ดาบ' },
+  shears: { en: 'shears', th: 'กรรไกร' },
+  any: { en: 'tool', th: 'เครื่องมือ' }
+}
+const LEVEL_NAME: Record<BreakRuleIR['level'], L10n> = {
+  wood: { en: 'wooden', th: 'ไม้' },
+  stone: { en: 'stone', th: 'หิน' },
+  iron: { en: 'iron', th: 'เหล็ก' },
+  diamond: { en: 'diamond', th: 'เพชร' },
+  netherite: { en: 'netherite', th: 'เนเธอไรต์' }
+}
+
+/** The action-bar text of a Break Rule, e.g. "Needs an iron pickaxe or better to drop anything". */
+export function breakRuleMessage(r: Pick<BreakRuleIR, 'tool' | 'level' | 'onFail'>): L10n {
+  const tool = TOOL_NAME[r.tool]
+  const leveled = r.tool !== 'shears' && r.level !== 'wood'
+  const lv = LEVEL_NAME[r.level]
+  const top = r.level === 'netherite'
+  let en =
+    r.tool === 'shears'
+      ? 'shears'
+      : leveled
+        ? `${/^[aeiou]/.test(lv.en) ? 'an' : 'a'} ${lv.en} ${tool.en}${top ? '' : ' or better'}`
+        : `${r.tool === 'axe' ? 'an' : 'a'} ${tool.en}`
+  const th = leveled ? `${tool.th}ระดับ${lv.th}${top ? '' : 'ขึ้นไป'}` : tool.th
+  en = `Needs ${en} ${r.onFail === 'cantBreak' ? 'to break' : 'to drop anything'}`
+  return { en, th: r.onFail === 'cantBreak' ? `ต้องใช้${th}ถึงจะทุบได้` : `ต้องใช้${th}ถึงจะได้ของ` }
 }
 
 export function compile(project: Project, target?: Target): CompileResult {
@@ -438,6 +475,7 @@ export function compile(project: Project, target?: Target): CompileResult {
     scripts: [],
     mobs: [],
     gameCrops: [],
+    breakRules: [],
     textureAnims: {}
   }
 
@@ -632,10 +670,66 @@ export function compile(project: Project, target?: Target): CompileResult {
             seedMin,
             seedMax: Math.max(seedMin, clamp(Math.round(num(d, 'seedMax', 3)), 0, 64)),
             ui: harvestUi(n.id),
-            give: bool(d, 'give', false)
+            give: bool(d, 'give', false),
+            breakDrops: breakDropsOf(d)
           }
         }
+        if (b.crop!.breakDrops === 'none' && b.crop!.input === 'break')
+          warn(
+            n.id,
+            'Breaking is the harvest but breaking gives nothing: pick a right-click harvest',
+            'ตั้งให้เก็บเกี่ยวด้วยการทุบ แต่ทุบแล้วไม่ได้อะไร: เลือกวิธีเก็บแบบคลิกขวา'
+          )
         ir.blocks.push(b)
+        break
+      }
+      case 'breakRule': {
+        const blocks: string[] = []
+        const tags: string[] = []
+        for (const e of breakRuleEntries(d)) {
+          const tag = e.startsWith('#')
+          const id = tag ? e.slice(1) : e
+          if (!NSID_RE.test(id)) {
+            err(
+              n.id,
+              `"${e}" is not a block ID (e.g. minecraft:stone) or a tag (#minecraft:logs)`,
+              `"${e}" ไม่ใช่ ID บล็อก (เช่น minecraft:stone) หรือแท็ก (#minecraft:logs)`
+            )
+            continue
+          }
+          const list = tag ? tags : blocks
+          if (!list.includes(id)) list.push(id)
+        }
+        // blocks of this mod wired in
+        for (let i = 1; i <= 32; i++) {
+          const s = source(n.id, `block${i}`)
+          if (!s || !['block', 'block3d', 'crop'].includes(s.node.type)) continue
+          const id = `${modid}:${str(s.node.data, 'id')}`
+          if (!blocks.includes(id)) blocks.push(id)
+        }
+        if (!blocks.length && !tags.length) {
+          err(n.id, 'Pick at least one block', 'เลือกบล็อกอย่างน้อย 1 อัน')
+          break
+        }
+        const tool = ((BREAK_TOOLS as readonly string[]).includes(str(d, 'tool')) ? str(d, 'tool') : 'pickaxe') as BreakRuleIR['tool']
+        const level = (
+          tool === 'shears' ? 'wood' : (TOOL_LEVELS as readonly string[]).includes(str(d, 'level')) ? str(d, 'level') : 'stone'
+        ) as BreakRuleIR['level']
+        if (tool === 'any' && level === 'wood')
+          warn(n.id, 'Any tool of any level: every player passes this rule', 'เครื่องมืออะไรก็ได้ ระดับไหนก็ได้: ผู้เล่นทุกคนผ่านกฎนี้')
+        const onFail = str(d, 'onFail') === 'cantBreak' ? 'cantBreak' : 'noDrop'
+        const auto = breakRuleMessage({ tool, level, onFail })
+        const en = str(d, 'messageEn').trim()
+        const th = str(d, 'messageTh').trim()
+        ir.breakRules.push({
+          nodeId: n.id,
+          blocks,
+          tags,
+          tool,
+          level,
+          onFail,
+          message: bool(d, 'message', true) ? { en: en || auto.en, th: th || (en ? en : auto.th) } : null
+        })
         break
       }
       case 'gameCrop': {
@@ -684,7 +778,8 @@ export function compile(project: Project, target?: Target): CompileResult {
             after: after as GameCropIR['after'],
             back,
             ui: harvestUi(n.id),
-            give: bool(d, 'give', false)
+            give: bool(d, 'give', false),
+            breakDrops: breakDropsOf(d)
           })
         }
         break
@@ -1141,6 +1236,16 @@ export function compile(project: Project, target?: Target): CompileResult {
         'No seeds: wire this crop into an Item\'s "Places block" pin so it can be planted',
         'ยังไม่มีเมล็ด: ต่อพืชนี้เข้าขา "วางเป็นบล็อก" ของไอเทม เพื่อให้ปลูกได้'
       )
+  // Break Rules: own blocks must exist; a block in two rules follows the first one
+  const ruled = new Map<string, string>()
+  for (const r of ir.breakRules)
+    for (const b of [...r.blocks, ...r.tags.map((x) => `#${x}`)]) {
+      if (b.startsWith(`${modid}:`) && !ir.blocks.some((x) => `${modid}:${x.id}` === b))
+        err(r.nodeId, `${b} is not a block of this mod`, `${b} ไม่ใช่บล็อกของม็อดนี้`)
+      const prev = ruled.get(b)
+      if (prev && prev !== r.nodeId) warn(r.nodeId, `${b} is already in another Break Rule (that one is used)`, `${b} อยู่ในกฎการทุบอื่นแล้ว (ใช้กฎนั้น)`)
+      else ruled.set(b, r.nodeId)
+    }
   for (const m of ir.mobs) {
     claim(`entity:${m.id}`, m.nodeId)
     claim(`item:${m.id}_spawn_egg`, m.nodeId)
@@ -1198,6 +1303,16 @@ export function compile(project: Project, target?: Target): CompileResult {
       for (const it of ir.items)
         if (it.places && !ir.blocks.some((b) => b.id === it.places))
           err(it.nodeId, 'The connected block is not part of this mod', 'บล็อกที่ต่อไว้ไม่ได้อยู่ในม็อดนี้')
+      for (const r of ir.breakRules) {
+        if (r.tags.length && target.mc === '1.16.5')
+          warn(
+            r.nodeId,
+            'Block tags in Break Rules need Minecraft 1.18.2+: they are skipped on 1.16.5',
+            'แท็กบล็อกในกฎการทุบต้องใช้ Minecraft 1.18.2 ขึ้นไป: ข้ามใน 1.16.5'
+          )
+        if (r.tool === 'sword' && r.level !== 'wood' && p.toolApi === 'toolMaterial')
+          warn(r.nodeId, `On ${target.mc} swords have no mining level: any sword counts`, `ใน ${target.mc} ดาบไม่มีระดับการขุด: ดาบอะไรก็ผ่าน`)
+      }
       if (usesGeo && !p.geckoArmor)
         for (const it of ir.items)
           if (it.armor?.geo) {

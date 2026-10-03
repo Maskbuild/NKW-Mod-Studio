@@ -387,7 +387,16 @@ export function writeFixture(dir: string): Project {
   wire('blk', 'block', 'berries', 'places')
 
   // ── real crops: wheat-like (replant, hold to harvest) and a bush that grows back (stand still) ──
-  node('wheat', 'crop', { id: 'ruby_wheat', name: 'Ruby Wheat', nameTh: 'ข้าวทับทิม', input: 'hold', harvestSeconds: 1.5, produceMax: 3, seedMax: 2 })
+  node('wheat', 'crop', {
+    id: 'ruby_wheat',
+    name: 'Ruby Wheat',
+    nameTh: 'ข้าวทับทิม',
+    input: 'hold',
+    harvestSeconds: 1.5,
+    produceMax: 3,
+    seedMax: 2,
+    breakDrops: 'grown'
+  })
   ;['tex_soup', 'tex_lamp', 'tex_ruby_block', 'tex_ruby'].forEach((tx, i) => wire(tx, 'out', 'wheat', `stage${i + 1}`))
   wire('ruby', 'out', 'wheat', 'produce')
   node('wheat_seeds', 'item', { id: 'ruby_wheat_seeds', name: 'Ruby Wheat Seeds' })
@@ -403,7 +412,8 @@ export function writeFixture(dir: string): Project {
     regrowSeconds: 30,
     regrowStage: 4,
     input: 'stand',
-    harvestSeconds: 2
+    harvestSeconds: 2,
+    breakDrops: 'none'
   })
   ;['tex_soup', 'tex_ruby'].forEach((tx, i) => wire(tx, 'out', 'bush', `stage${i + 1}`))
   node('bush_berry', 'food', { id: 'ruby_bush_berry', name: 'Ruby Bush Berry', nutrition: 2 })
@@ -418,7 +428,15 @@ export function writeFixture(dir: string): Project {
   // game crops picked by hand: like the game, replanting itself, going back to a stage, Farmer's Delight
   node('g_wheat', 'gameCrop', { crops: undefined, crop: 'minecraft:wheat', input: 'hold', harvestSeconds: 1, after: 'normal', give: true })
   wire('ui_ring', 'out', 'g_wheat', 'ui')
-  node('g_carrots', 'gameCrop', { crops: undefined, crop: 'minecraft:carrots', input: 'stand', harvestSeconds: 1, after: 'replant', give: true })
+  node('g_carrots', 'gameCrop', {
+    crops: undefined,
+    crop: 'minecraft:carrots',
+    input: 'stand',
+    harvestSeconds: 1,
+    after: 'replant',
+    give: true,
+    breakDrops: 'none'
+  })
   node('g_berries', 'gameCrop', { crops: undefined, crop: 'minecraft:sweet_berry_bush', input: 'click', after: 'normal' })
   node('g_beet', 'gameCrop', { crops: undefined, crop: 'minecraft:beetroots', input: 'hold', after: 'regrow', backStage: 1 })
   wire('ui_bar', 'out', 'g_beet', 'ui')
@@ -430,6 +448,21 @@ export function writeFixture(dir: string): Project {
     after: 'replant'
   })
   wire('ui_bar', 'out', 'g_cabbage', 'ui')
+
+  // ── break rules: game blocks, another mod's block, a tag and wired mod blocks ──
+  node('rule_iron', 'breakRule', {
+    blocks: ['minecraft:stone', 'minecraft:deepslate', 'othermod:ruby_ore', '#minecraft:logs', 'nkwtest:ruby_pillar'],
+    tool: 'pickaxe',
+    level: 'iron',
+    onFail: 'noDrop',
+    messageTh: 'ต้องใช้อีเต้อเหล็ก 100%'
+  })
+  wire('blk', 'block', 'rule_iron', 'block1')
+  wire('lamp', 'block', 'rule_iron', 'block2')
+  node('rule_axe', 'breakRule', { blocks: ['minecraft:oak_planks'], tool: 'axe', level: 'diamond', onFail: 'cantBreak' })
+  node('rule_shears', 'breakRule', { blocks: ['minecraft:white_wool'], tool: 'shears', onFail: 'cantBreak', message: false })
+  node('rule_sword', 'breakRule', { blocks: ['minecraft:cobweb'], tool: 'sword', level: 'netherite' })
+  node('rule_any', 'breakRule', { blocks: ['minecraft:obsidian'], tool: 'any', level: 'diamond' })
 
   // ── mobs: game bodies with a skin, spawn eggs, drops, natural spawning ──
   node('m_zombie', 'mob', {
