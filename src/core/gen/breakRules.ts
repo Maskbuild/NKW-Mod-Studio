@@ -53,8 +53,7 @@ export function genBreakRules(ctx: GenCtx, out: (cls: string, text: string) => v
     'java.util.HashMap',
     'java.util.Map',
     'java.util.UUID',
-    'java.util.concurrent.ConcurrentHashMap',
-    'com.google.gson.JsonObject'
+    'java.util.concurrent.ConcurrentHashMap'
   )
   const blockKey = `${registry(p, j, 'BLOCK')}.getKey(state.getBlock())`
   const message = translatable(p, j, 'rule.message')
@@ -79,32 +78,37 @@ export function genBreakRules(ctx: GenCtx, out: (cls: string, text: string) => v
   if (plants.some((x) => x.drops === 'none')) lines.push(`        Rule PLANT_NONE = new Rule(${NEVER}, 0, false, false, null, -1);`)
   if (plants.some((x) => x.drops === 'grown')) lines.push(`        Rule PLANT_YOUNG = new Rule(${NEVER}, 0, false, true, null, -1);`)
   for (const x of plants) lines.push(`        add("${x.block}", ${x.drops === 'none' ? 'PLANT_NONE' : 'PLANT_YOUNG'});`)
-  // config file entries, after the nodes' rules so they win
-  const configLines = `
-        // the config file: blocks (ids${tagged ? ' or #tags' : ''}) added there, or changed (tool, level, cantBreak)
-        for (Map.Entry<String, JsonObject> e : NkwConfig.BREAK.entrySet()) {
-            String key = e.getKey();
-            JsonObject o = e.getValue();
-            Rule old = key.startsWith("#") ? ${tagged ? 'TAG_NAMES.get(key)' : 'null'} : BLOCKS.get(key);
-            int tool = NkwConfig.choice(o, "tool", TOOL_NAMES, old != null ? old.tool : 0);
-            int level = NkwConfig.choice(o, "level", LEVEL_NAMES, old != null ? old.level : 0);
-            // the node's message only while it still describes the rule
-            boolean same = old != null && old.tool == tool && old.level == level;
-            boolean cancel = NkwConfig.bool(o, "cantBreak", old != null && old.cancel);
-            // unchanged: the node's rule stays as it is (message, timer, adventure mode)
-            if (same && cancel == old.cancel) continue;
-            Rule rule = new Rule(tool, level, cancel, old != null && old.young, same ? old.message : null, old != null ? old.ui : -1);
-            if (!key.startsWith("#")) BLOCKS.put(key, rule);${
-              tagged
-                ? `
-            else {
-                // checked before the nodes' tags
-                TAGS.add(0, TagKey.create(${p.builtInRegistries ? 'Registries.BLOCK' : 'Registry.BLOCK_REGISTRY'}, ${p.rlFactory ? 'ResourceLocation.parse(key.substring(1))' : 'new ResourceLocation(key.substring(1))'}));
-                TAG_RULES.add(0, rule);
+  // the config file adds blocks (and #tags) to each Break Rule node's set, after the nodes' own blocks
+  const configLines = ir.breakRules.length
+    ? `
+        // the config file: blocks${tagged ? ' and #tags' : ''} added to each rule's set (blocks of the game / other mods)
+        Rule[] sets = {${ir.breakRules.map((_, i) => `RULE_${i}`).join(', ')}};
+        for (int i = 0; i < sets.length; i++)
+            for (String id : NkwConfig.added(NkwConfig.BREAK.get(String.valueOf(i + 1)))) {
+                if (!id.startsWith("#")) {
+                    if (!BLOCKS.containsKey(id)) BLOCKS.put(id, sets[i]);
+                }${
+                  tagged
+                    ? ` else {
+                    TAGS.add(TagKey.create(${p.builtInRegistries ? 'Registries.BLOCK' : 'Registry.BLOCK_REGISTRY'}, ${p.rlFactory ? 'ResourceLocation.parse(id.substring(1))' : 'new ResourceLocation(id.substring(1))'}));
+                    TAG_RULES.add(sets[i]);
+                }`
+                    : ''
+                }${
+                  adventure
+                    ? `
+                // adventure mode: the set's tools may break the added block too
+                String[] can = ADVENTURE.get(sets[i]);
+                if (can != null) {
+                    String[] more = Arrays.copyOf(can, can.length + 1);
+                    more[can.length] = id;
+                    ADVENTURE.put(sets[i], more);
+                }`
+                    : ''
+                }
             }`
-                : ''
-            }
-        }`
+    : ''
+  if (adventure) j.use('java.util.Arrays')
 
   let tagFields = ''
   let tagLookup = ''
@@ -113,16 +117,11 @@ export function genBreakRules(ctx: GenCtx, out: (cls: string, text: string) => v
     j.use(MC.TagKey, MC.RL, 'java.util.ArrayList', 'java.util.List')
     const blockKeys = p.builtInRegistries ? (j.use(MC.Registries), 'Registries.BLOCK') : (j.use(MC.Registry), 'Registry.BLOCK_REGISTRY')
     const rl = (id: string) => (p.rlFactory ? `ResourceLocation.parse("${id}")` : `new ResourceLocation("${id}")`)
-    for (const t of tags)
-      lines.push(
-        `        TAGS.add(TagKey.create(${blockKeys}, ${rl(t.tag)}));\n        TAG_RULES.add(${t.rule});\n        TAG_NAMES.put("#${t.tag}", ${t.rule});`
-      )
+    for (const t of tags) lines.push(`        TAGS.add(TagKey.create(${blockKeys}, ${rl(t.tag)}));\n        TAG_RULES.add(${t.rule});`)
     tagFields = `
     /** block tags of the rules, checked after the ids */
     private static final List<TagKey<Block>> TAGS = new ArrayList<>();
-    private static final List<Rule> TAG_RULES = new ArrayList<>();
-    /** the nodes' tag rules by "#namespace:path" (config file) */
-    private static final Map<String, Rule> TAG_NAMES = new HashMap<>();`
+    private static final List<Rule> TAG_RULES = new ArrayList<>();`
     tagLookup = `
         if (rule == null)
             for (int i = 0; i < TAGS.size(); i++)
@@ -330,9 +329,6 @@ public final class NkwBreakRules {
     }
 
     /** rules by block id (the first rule of a block wins) */
-    /** names used by the config file (index = tool / level code) */
-    private static final String[] TOOL_NAMES = {"pickaxe", "axe", "shovel", "hoe", "sword", "shears", "any"};
-    private static final String[] LEVEL_NAMES = {"wood", "stone", "iron", "diamond", "netherite"};
     private static final Map<String, Rule> BLOCKS = new HashMap<>();${tagFields}
     /** when each player last saw the message (no spam while mining) */
     private static final Map<UUID, Long> TOLD = new ConcurrentHashMap<>();${adventure ? '\n    /** rules whose blocks can be broken in adventure mode, with those blocks (ids and #tags) */\n    private static final Map<Rule, String[]> ADVENTURE = new LinkedHashMap<>();' : ''}
@@ -351,8 +347,7 @@ ${lines.join('\n')}${configLines}
 ${hooks}
 
     /** The rule of a block (by id, then by tag), or null. */
-    private static Rule ruleOf(BlockState state) {
-        NkwConfig.check();
+    private static Rule ruleOf(BlockState state) {${ir.breakRules.length ? '\n        NkwConfig.check();' : ''}
         Rule rule = BLOCKS.isEmpty() ? null : BLOCKS.get(String.valueOf(${blockKey}));${tagLookup}
         return rule;
     }

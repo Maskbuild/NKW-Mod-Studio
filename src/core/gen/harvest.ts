@@ -1,4 +1,5 @@
-import type { HarvestUiIR, ModIR } from '../ir'
+import type { GameCropIR, HarvestUiIR, ModIR } from '../ir'
+import { gameCropSets, usesConfig } from './config'
 import { JavaFile, MC, forgeEvents, registry, translatable } from './java'
 import { mcAtLeast } from './profiles'
 import { fabricLike, type GenCtx } from './types'
@@ -65,7 +66,6 @@ export function genHarvest(ctx: GenCtx, out: (cls: string, text: string) => void
   const { pkg, loader, p, ns, ir } = ctx
   const fab = fabricLike(loader)
   const j = new JavaFile(pkg, 'NkwHarvest').use(
-    'com.google.gson.JsonObject',
     MC.Level,
     MC.ServerLevel,
     MC.BlockPos,
@@ -152,10 +152,29 @@ ${
 
 ${ev.tickHandler()}`
   }
-  const games = ir.gameCrops.map(
-    (g) =>
-      `        GAME.put("${g.block}", new Rule(${INPUT[g.input]}, ${g.harvestTicks}, ${AFTER[g.after]}, ${g.back}, ${harvestUiIndex(ir, g.ui)}, ${g.give}, ${g.adventure}, ${g.sneak}, false));`
-  )
+  // NkwConfig exists only when the mod has something to configure (every game crop counts)
+  const config = usesConfig(ir)
+  // set helpers: only with game crops (which always come with the config file)
+  const gameHelpers = ir.gameCrops.length
+    ? `    /** A rule of "Harvest a game crop" set n with the set's harvest time from the config file (not for click harvests). */
+    private static Rule timed(int set, Rule rule) {
+        return rule.input == 1 ? rule : rule.withTicks(NkwConfig.harvestTicks(NkwConfig.GAME_CROPS.get(String.valueOf(set)), rule.ticks));
+    }
+
+    /** Crops the config file adds to set n (blocks of the game / other mods), picked like the set's crops. */
+    private static void added(int set, Rule rule) {
+        for (String id : NkwConfig.added(NkwConfig.GAME_CROPS.get(String.valueOf(set)))) if (!GAME.containsKey(id)) GAME.put(id, rule);
+    }
+`
+    : ''
+  const rule = (g: GameCropIR) =>
+    `new Rule(${INPUT[g.input]}, ${g.harvestTicks}, ${AFTER[g.after]}, ${g.back}, ${harvestUiIndex(ir, g.ui)}, ${g.give}, ${g.adventure}, ${g.sneak}, false)`
+  // one set per "Harvest a game crop" node: the config file can change its time and add crops to it
+  const games = gameCropSets(ir).flatMap((set, i) => {
+    // crops added in the config file are picked like most of the set's crops
+    const common = [...set].sort((a, b) => set.filter((x) => x.after === b.after).length - set.filter((x) => x.after === a.after).length)[0]
+    return [...set.map((g) => `        GAME.put("${g.block}", timed(${i + 1}, ${rule(g)}));`), `        added(${i + 1}, timed(${i + 1}, ${rule(common)}));`]
+  })
   // the mod's own crops (only when it has any: NkwCropBlock is not generated otherwise)
   const ownCrops = ir.blocks.some((b) => b.crop)
   const regen = ir.blocks.some((b) => b.regen)
@@ -260,40 +279,23 @@ ${hooks}
     /** How a block is picked by hand, or null. */
     public static Rule ruleOf(Block block) {
         if (RULES.containsKey(block)) return RULES.get(block);
-        NkwConfig.check();
-        String id = String.valueOf(${blockKey});
+${config ? '        NkwConfig.check();\n' : ''}        String id = String.valueOf(${blockKey});
         Rule rule = null;
         boolean own = false;
 ${ownRule}if (!GAME.isEmpty()) {
             rule = GAME.get(id);
         }
-        // the config file: the harvest time, and crops of the game / other mods (all settings) added there
-        JsonObject o = NkwConfig.HARVEST.get(id);
-        if (o != null) rule = own ? (rule == null ? null : rule.withTicks(NkwConfig.ticks(o, "seconds", rule.ticks))) : fromConfig(o, rule);
-        RULES.put(block, rule);
+${
+  config
+    ? `        // the config file: the harvest time of the mod's own crops and Regenerating Blocks
+        if (own && rule != null) rule = rule.withTicks(NkwConfig.harvestTicks(NkwConfig.OWN.get(id), rule.ticks));
+`
+    : ''
+}        RULES.put(block, rule);
         return rule;
     }
 
-    private static final String[] INPUTS = {"break", "click", "hold", "stand"};
-    private static final String[] AFTERS = {"normal", "replant", "regrow"};
-
-    /** A crop of the game / another mod as the config file sets it (on top of its node's settings, if any). */
-    private static Rule fromConfig(JsonObject o, Rule base) {
-        int input = NkwConfig.choice(o, "input", INPUTS, base != null ? base.input : 2);
-        if (input <= 0) return null;
-        int ticks = input == 1 ? 0 : NkwConfig.ticks(o, "seconds", base != null && base.ticks > 0 ? base.ticks : 40);
-        return new Rule(
-            input,
-            ticks,
-            NkwConfig.choice(o, "after", AFTERS, base != null ? base.after : 0),
-            NkwConfig.integer(o, "regrowStage", base != null ? base.back : 1, 0, 15),
-            base != null ? base.ui : 0,
-            NkwConfig.bool(o, "give", base != null && base.give),
-            NkwConfig.bool(o, "adventure", base == null || base.adventure),
-            NkwConfig.bool(o, "sneak", base != null && base.sneak),
-            false);
-    }
-
+${gameHelpers}
     /** The block's growth stage property ("age"), or null. */
     private static IntegerProperty age(BlockState state) {
         for (Property<?> property : state.getProperties())

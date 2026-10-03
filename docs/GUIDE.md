@@ -427,13 +427,13 @@ Category **Blocks**. Blocks of Minecraft (or another mod) that are harvested lik
 
 ### Config file (for server owners)
 
-A mod with crops picked by hand, Regenerating Blocks or Break Rules gets a config file, `config/<modid>-harvest.json`. It is written with the mod's own settings the first time the game starts (delete it to get them back); changes apply after a restart.
+A mod with crops picked by hand, Regenerating Blocks or Break Rules gets a config file, `config/<modid>-harvest.json`, written with the nodes' settings the first time the game starts (delete it to get them back; changes apply after a restart). It only changes **times** and **adds blocks** — everything else stays as set in the nodes. A section is only there when the mod has what it changes (no Break Rule node → no `breakRules`).
 
-- **harvest**: block id → `seconds` (harvest time). Crops of the game or of other mods also take `input` (`click`, `hold`, `stand`, `break` = off), `after` (`normal`, `replant`, `regrow`), `regrowStage`, `give`, `adventure`, `sneak` — add a new crop by adding its id (it needs a growth stage, `age`). Your own crops and Regenerating Blocks only take `seconds`.
-- **regrowSeconds**: Regenerating Block id → seconds before it grows back.
-- **breakRules**: block id or `#tag` → `tool` (`pickaxe`, `axe`, `shovel`, `hoe`, `sword`, `shears`, `any`), `level` (`wood` … `netherite`), `cantBreak`. Needs at least one Break Rule node in the mod.
-- Only blocks of the game or of other mods can be used; ids that are not in the game are ignored and reported in the log.
-- Server and players should use the same file, so the timer on screen matches.
+- **crops**: your crops picked by holding / standing still → `harvestSeconds`.
+- **gameCrops**: one set per **Harvest a game crop** node (`"1"`, `"2"` … in node order; `_crops` shows its crops) → `harvestSeconds`, and `add`: more crops of the game or other mods, picked the same way (they need growth stages).
+- **regenBlocks**: each Regenerating Block → `regrowSeconds`, and `harvestSeconds` for the left-click ways.
+- **breakRules**: one set per **Break Rule** node (`_rule` / `_blocks` show it) → `add`: more block ids (or `#tags`, not on 1.16.5) that follow the same rule.
+- Only blocks of the game or of other mods can be added; ids that are not in the game are ignored and reported in the log.
 
 ### Shared block settings
 

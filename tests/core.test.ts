@@ -627,7 +627,7 @@ describe('generators', () => {
         expect(rules.includes('"#minecraft:logs"})')).toBe(p.mc !== '1.16.5')
         expect(rules).not.toMatch(/ADVENTURE\.put\(RULE_1/)
         expect(java).toContain('if (!rule.adventure && !player.mayBuild()) return false;')
-        expect(java).toMatch(/GAME\.put\("minecraft:wheat", new Rule\([^)]*, true, false, false\)\);/)
+        expect(java).toMatch(/GAME\.put\("minecraft:wheat", timed\(1, new Rule\([^)]*, true, false, false\)\)\);/)
         expect(rules).toContain('add("nkwtest:ruby_wheat", PLANT_YOUNG);')
         expect(rules).toContain('add("nkwtest:ruby_bush", PLANT_NONE);')
         expect(rules).toContain('add("minecraft:carrots", PLANT_NONE);')
@@ -932,10 +932,10 @@ describe('crops', () => {
     expect(byBlock['minecraft:sweet_berry_bush']).toMatchObject({ input: 'click', after: 'regrow', back: 1 })
     expect(byBlock['minecraft:carrots']).toMatchObject({ after: 'replant', back: 0 })
     const harvest = text(files, '/NkwHarvest.java')!
-    expect(harvest).toContain('GAME.put("minecraft:wheat", new Rule(2, 20, 0, 1, 2, true, true, false, false));')
+    expect(harvest).toContain('GAME.put("minecraft:wheat", timed(1, new Rule(2, 20, 0, 1, 2, true, true, false, false)));')
     // one node, many crops (checked + typed ids), all with the same settings
     for (const id of ['farmersdelight:cabbages', 'farmersdelight:onions', 'farmersdelight:rice_panicles'])
-      expect(harvest).toContain(`GAME.put("${id}", new Rule(2, 30, 1, 0, 1, false, true, false, false));`)
+      expect(harvest).toContain(`GAME.put("${id}", timed(5, new Rule(2, 30, 1, 0, 1, false, true, false, false)));`)
     expect(gameCropIds({ crop: 'custom', block: 'a:b, c:d' })).toEqual(['a:b', 'c:d'])
     expect(gameCropIds({})).toEqual(['minecraft:wheat'])
     expect(harvest).toContain('BuiltInRegistries.BLOCK.getKey(block)')
@@ -1076,13 +1076,13 @@ describe('review fixes', () => {
     expect(ir.gameCrops.find((g) => g.block === 'minecraft:sweet_berry_bush')!.sneak).toBe(true)
     const files = generate(ir, target, { ...FALLBACK_DEPS[target.mc], ...deps } as never, read)
     const java = files.find((f) => f.path.endsWith('/NkwHarvest.java'))!.text!
-    expect(java).toMatch(/GAME\.put\("minecraft:sweet_berry_bush", new Rule\([^)]*, true, false\)\);/)
+    expect(java).toMatch(/GAME\.put\("minecraft:sweet_berry_bush", timed\(\d+, new Rule\([^)]*, true, false\)\)\);/)
     expect(java).toContain('if (rule.sneak && !player.isShiftKeyDown()) {')
     expect(java).toContain('if (s.rule.sneak && !player.isShiftKeyDown()) return 4;')
     const en = JSON.parse(files.find((f) => f.path.endsWith('lang/en_us.json'))!.text!)
     expect(en['message.nkwtest.harvest_sneak']).toBe('Sneak (Shift) and right-click to harvest')
   })
-  it('writes a config file for harvest times, grow-back times and blocks of the game / other mods', () => {
+  it('writes a config file with times and added blocks only, and only the sections the mod uses', () => {
     for (const target of [
       { loader: 'fabric', mc: '1.21.1' },
       { loader: 'forge', mc: '1.16.5' },
@@ -1092,13 +1092,14 @@ describe('review fixes', () => {
       const files = generate(ir, target, { ...FALLBACK_DEPS[target.mc], ...deps } as never, read)
       const text = (end: string) => files.find((f) => f.path.endsWith(end))?.text ?? ''
       const cfg = JSON.parse(text('src/main/resources/nkw/nkwtest-harvest.json'))
-      expect(cfg.harvest['minecraft:wheat']).toMatchObject({ input: 'hold', seconds: 1, after: 'normal', give: true, sneak: false })
-      expect(cfg.harvest['nkwtest:ruby_wheat']).toEqual({ seconds: 1.5 })
-      expect(cfg.harvest['nkwtest:node_amethyst_block']).toEqual({ seconds: 3 })
-      expect(cfg.regrowSeconds['nkwtest:regen_iron_ore']).toBe(30)
-      expect(cfg.breakRules['minecraft:oak_planks']).toEqual({ tool: 'axe', level: 'diamond', cantBreak: true })
+      expect(Object.keys(cfg).filter((k) => !k.startsWith('_'))).toEqual(['crops', 'gameCrops', 'regenBlocks', 'breakRules'])
+      expect(cfg.crops['nkwtest:ruby_wheat']).toEqual({ harvestSeconds: 1.5 })
+      expect(cfg.gameCrops['1']).toEqual({ _crops: ['minecraft:wheat'], harvestSeconds: 1, add: [] })
+      expect(cfg.regenBlocks['nkwtest:regen_iron_ore']).toEqual({ regrowSeconds: 30 })
+      expect(cfg.regenBlocks['nkwtest:node_amethyst_block']).toEqual({ harvestSeconds: 3, regrowSeconds: 60 })
+      expect(cfg.breakRules['1'].add).toEqual([])
       // 1.16.5 has no block tag keys
-      expect('#minecraft:logs' in cfg.breakRules).toBe(target.mc !== '1.16.5')
+      expect(cfg.breakRules['1']._blocks.includes('#minecraft:logs')).toBe(target.mc !== '1.16.5')
       const config = text('/NkwConfig.java')
       expect(config).toContain(
         target.loader === 'fabric'
@@ -1116,16 +1117,32 @@ describe('review fixes', () => {
       // only blocks of the game or of other mods: unknown ids are reported
       expect(config).toMatch(/known = (BuiltInRegistries|Registry)\.BLOCK\.containsKey\(/)
       const harvest = text('/NkwHarvest.java')
-      expect(harvest).toContain('JsonObject o = NkwConfig.HARVEST.get(id);')
-      expect(harvest).toContain('rule = own ? (rule == null ? null : rule.withTicks(NkwConfig.ticks(o, "seconds", rule.ticks))) : fromConfig(o, rule);')
+      expect(harvest).toContain('if (own && rule != null) rule = rule.withTicks(NkwConfig.harvestTicks(NkwConfig.OWN.get(id), rule.ticks));')
+      expect(harvest).toMatch(/added\(1, timed\(1, new Rule\(/)
       expect(text('/NkwDepletedBlock.java')).toContain('int ticks = NkwConfig.regrowTicks(id, this.ticks);')
-      expect(text('/ModBlocks.java')).toContain('"nkwtest:regen_iron_ore", () -> ModBlocks.REGEN_IRON_ORE')
       const rules = text('/NkwBreakRules.java')
-      expect(rules).toContain('for (Map.Entry<String, JsonObject> e : NkwConfig.BREAK.entrySet()) {')
-      expect(rules).toContain('if (same && cancel == old.cancel) continue;')
-      // the names the config uses are declared before the static block that reads them
-      expect(rules.indexOf('TOOL_NAMES = {')).toBeLessThan(rules.indexOf('static {'))
-      expect(rules.includes('TAG_NAMES.put("#minecraft:logs", RULE_0);')).toBe(target.mc !== '1.16.5')
+      expect(rules).toContain('for (String id : NkwConfig.added(NkwConfig.BREAK.get(String.valueOf(i + 1)))) {')
+      expect(rules).toContain('if (!BLOCKS.containsKey(id)) BLOCKS.put(id, sets[i]);')
+      expect(rules.includes('TAG_RULES.add(sets[i]);')).toBe(target.mc !== '1.16.5')
     }
+    // no Break Rule node: no breakRules section (plants that drop nothing do not count)
+    const p = structuredClone(project)
+    p.graph.nodes = p.graph.nodes.filter((n) => n.type !== 'breakRule')
+    const target = { loader: 'fabric', mc: '1.21.1' } as const
+    const files = generate(compile(p, target).ir, target, { ...FALLBACK_DEPS[target.mc], ...deps } as never, read)
+    const cfg = JSON.parse(files.find((f) => f.path.endsWith('nkw/nkwtest-harvest.json'))!.text!)
+    expect('breakRules' in cfg).toBe(false)
+    expect(files.find((f) => f.path.endsWith('/NkwBreakRules.java'))!.text).not.toContain('NkwConfig')
+  })
+  it('writes no config file when the mod has nothing it can change', () => {
+    const p = structuredClone(project)
+    p.graph.nodes = p.graph.nodes.filter((n) => !['gameCrop', 'regenBlock', 'breakRule'].includes(n.type))
+    for (const n of p.graph.nodes) if (n.type === 'crop') n.data.input = 'click'
+    const target = { loader: 'fabric', mc: '1.21.1' } as const
+    const { ir, diagnostics } = compile(p, target)
+    expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
+    const files = generate(ir, target, { ...FALLBACK_DEPS[target.mc], ...deps } as never, read)
+    expect(files.some((f) => f.path.endsWith('nkw/nkwtest-harvest.json') || f.path.endsWith('/NkwConfig.java'))).toBe(false)
+    expect(files.filter((f) => f.text?.includes('NkwConfig')).map((f) => f.path)).toEqual([])
   })
 })
