@@ -26,6 +26,10 @@ export interface VanillaData {
   crops?: string[]
   /** display name of a mod linked from Modrinth or a .jar file */
   title?: string
+  /** the mod's id in game (fabric.mod.json / mods.toml) */
+  modId?: string
+  /** loaders a .jar is made for (from its metadata files) */
+  loaders?: string[]
 }
 
 /** Id of a mod linked to a project: its Modrinth slug, or file_<name> for a .jar picked on disk. */

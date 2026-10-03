@@ -391,6 +391,8 @@ export interface ModIR {
   mobs: MobIR[]
   gameCrops: GameCropIR[]
   breakRules: BreakRuleIR[]
+  /** linked mods the mod's metadata depends on (required, or optional) */
+  dependsOn: { modId: string; title: string; required: boolean }[]
   /** animated textures (asset path → .mcmeta animation settings) */
   textureAnims: Record<string, { frametime: number; interpolate: boolean }>
 }

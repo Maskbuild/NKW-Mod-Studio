@@ -36,6 +36,10 @@ export interface ResolvedDeps {
   appleSkin?: string | null
   /** Cloth Config, which AppleSkin needs on Fabric / Quilt (test runs only) */
   clothConfig?: string | null
+  /** linked Modrinth mods for test runs, with the mods they require (maven.modrinth:slug:version) */
+  linkedMods?: string[]
+  /** linked .jar files for test runs (ids; the builder copies them to nkw-mods/<id>-1.jar) */
+  localMods?: string[]
 }
 
 export interface AssetReader {

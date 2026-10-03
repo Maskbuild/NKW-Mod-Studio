@@ -1,7 +1,7 @@
 import { NKW_ICON_PNG_BASE64 } from './icon'
 import { scriptAppliesTo } from '../scriptApi'
 import { LINK_RE, shippedCredits, type ProjectMeta } from '../project'
-import { RES, json, type GenCtx } from './types'
+import { RES, json, type GenCtx, type ResolvedDeps } from './types'
 
 const FORGE_LOADER_RANGE: Record<string, string> = {
   '1.16.5': '[36,)',
@@ -17,6 +17,25 @@ const MODRINTH_REPO = `    maven {
         name = 'Modrinth'
         url = 'https://api.modrinth.com/maven'
         content { includeGroup 'maven.modrinth' }
+    }`
+
+/** Slug of a maven.modrinth:<slug>:<version> coordinate. */
+const mrSlug = (c: string) => /^maven\.modrinth:([a-z0-9_-]+):/.exec(c)?.[1]
+
+/** Linked Modrinth mods for test runs that are not added already (Farmer's Delight, AppleSkin …). */
+function linkedTestMods(deps: ResolvedDeps, present: (string | null | undefined)[]): string[] {
+  const have = new Set(['fabric-api', 'qsl', ...present.map((c) => (c ? mrSlug(c) : undefined)).filter(Boolean)])
+  return (deps.linkedMods ?? []).filter((c) => /^maven\.modrinth:[a-z0-9_-]+:[A-Za-z0-9]+$/.test(c) && !have.has(mrSlug(c)!))
+}
+
+/** A linked .jar file copied next to the build (nkw-mods/<id>-1.jar). */
+const localJar = (id: string) => `nkw-mods/${id}-1.jar`
+
+/** Flat folder repository for linked .jar files (ForgeGradle deobfuscates them like Maven mods). */
+const LOCAL_REPO = `
+    flatDir {
+        dir 'nkw-mods'
+        content { includeGroup 'nkwlocal' }
     }`
 
 /**
@@ -172,6 +191,10 @@ ${
     if (deps.appleSkin && deps.clothConfig) extraDeps.push(`    modRuntimeOnly '${deps.clothConfig}'`)
     if (fdDep) extraDeps.push(`    modRuntimeOnly '${fdDep}'`)
     if (geckoDep) extraDeps.push(`    modImplementation '${geckoDep}'`)
+    // linked mods (test runs): from Modrinth, and .jar files picked on disk
+    const linked = linkedTestMods(deps, [fdDep, geckoDep, deps.modMenu, deps.appleSkin, deps.clothConfig])
+    for (const c of linked) extraDeps.push(`    modRuntimeOnly '${c}'`)
+    for (const id of deps.localMods ?? []) extraDeps.push(`    modRuntimeOnly files('${localJar(id)}')`)
     files.push({
       path: 'build.gradle',
       text: `plugins {
@@ -196,7 +219,7 @@ dependencies {
     modImplementation 'net.fabricmc.fabric-api:fabric-api:${deps.fabricApi}'
 ${extraDeps.join('\n')}
 }
-${fabricBundledMods([fdDep, geckoDep].filter((d): d is string => !!d))}
+${fabricBundledMods([fdDep, geckoDep, ...linked].filter((d): d is string => !!d))}
 loom {
     runs {${
       loader === 'quilt'
@@ -247,8 +270,12 @@ ${toolchain}
             minecraft: mcRange,
             java: `>=${p.java}`,
             [apiId]: '*',
-            ...(geckoDep ? { geckolib: '*' } : {})
-          }
+            ...(geckoDep ? { geckolib: '*' } : {}),
+            ...Object.fromEntries(ctx.ir.dependsOn.filter((d) => d.required).map((d) => [d.modId, '*']))
+          },
+          ...(ctx.ir.dependsOn.some((d) => !d.required)
+            ? { suggests: Object.fromEntries(ctx.ir.dependsOn.filter((d) => !d.required).map((d) => [d.modId, '*'])) }
+            : {})
         })
       })
     else
@@ -277,7 +304,13 @@ ${toolchain}
             },
             intermediate_mappings: 'net.fabricmc:intermediary',
             entrypoints: { main: [`${pkg}.NkwMod`, ...entry('main')], client: [`${pkg}.NkwClient`, ...entry('client')] },
-            depends: [{ id: 'quilt_loader', versions: '>=0.17.0' }, { id: 'minecraft', versions: mcRange }, apiId, ...(geckoDep ? ['geckolib'] : [])]
+            depends: [
+              { id: 'quilt_loader', versions: '>=0.17.0' },
+              { id: 'minecraft', versions: mcRange },
+              apiId,
+              ...(geckoDep ? ['geckolib'] : []),
+              ...ctx.ir.dependsOn.map((d) => (d.required ? d.modId : { id: d.modId, optional: true }))
+            ]
           }
         })
       })
@@ -296,7 +329,18 @@ displayName=${q(meta.name)}
 authors=${q(meta.authors || 'Nam Kueap Wan (NKW)')}
 description=${q(meta.description || meta.name)}
 logoFile="nkw_logo.png"
-${links.homepage ? `displayURL=${q(links.homepage)}\n` : ''}${credits.length ? `credits=${q('\n' + credits.map(creditLine).join('\n'))}\n` : ''}`
+${links.homepage ? `displayURL=${q(links.homepage)}\n` : ''}${credits.length ? `credits=${q('\n' + credits.map(creditLine).join('\n'))}\n` : ''}${ctx.ir.dependsOn
+    .map(
+      (d) => `
+[[dependencies.${ns}]]
+modId=${q(d.modId)}
+${loader === 'neoforge' ? `type=${q(d.required ? 'required' : 'optional')}` : `mandatory=${d.required}`}
+versionRange="*"
+ordering="NONE"
+side="BOTH"
+`
+    )
+    .join('')}`
   const tomlName = loader === 'neoforge' && p.mc !== '1.20.4' ? 'neoforge.mods.toml' : 'mods.toml'
   files.push({ path: `${RES}/META-INF/${tomlName}`, text: toml })
   const pack: Record<string, unknown> = { description: `${meta.name} resources`, pack_format: p.dataPack }
@@ -311,6 +355,8 @@ ${links.homepage ? `displayURL=${q(links.homepage)}\n` : ''}${credits.length ? `
     if (fdDep) extraDeps.push(`    runtimeOnly ${deobf(fdDep)}`)
     if (deps.appleSkin) extraDeps.push(`    runtimeOnly ${deobf(deps.appleSkin)}`)
     if (geckoDep) extraDeps.push(`    implementation ${deobf(geckoDep)}`)
+    for (const c of linkedTestMods(deps, [fdDep, geckoDep, deps.appleSkin])) extraDeps.push(`    runtimeOnly ${deobf(c)}`)
+    for (const id of deps.localMods ?? []) extraDeps.push(`    runtimeOnly ${deobf(`nkwlocal:${id}:1`)}`)
     files.push({
       path: 'build.gradle',
       text: `plugins {
@@ -358,7 +404,7 @@ ${quickPlay('args')}        }
 }
 
 repositories {
-${MODRINTH_REPO}
+${MODRINTH_REPO}${deps.localMods?.length ? LOCAL_REPO : ''}
 }
 
 dependencies {
@@ -388,6 +434,8 @@ tasks.named('jar', Jar).configure {
   if (fdDep) extraDeps.push(`    runtimeOnly '${fdDep}'`)
   if (deps.appleSkin) extraDeps.push(`    runtimeOnly '${deps.appleSkin}'`)
   if (geckoDep) extraDeps.push(`    implementation '${geckoDep}'`)
+  for (const c of linkedTestMods(deps, [fdDep, geckoDep, deps.appleSkin])) extraDeps.push(`    runtimeOnly '${c}'`)
+  for (const id of deps.localMods ?? []) extraDeps.push(`    runtimeOnly files('${localJar(id)}')`)
   files.push({
     path: 'build.gradle',
     text: `plugins {

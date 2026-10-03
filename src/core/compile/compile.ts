@@ -496,6 +496,7 @@ export function compile(project: Project, target?: Target): CompileResult {
     mobs: [],
     gameCrops: [],
     breakRules: [],
+    dependsOn: [],
     textureAnims: {}
   }
 
@@ -1334,6 +1335,19 @@ export function compile(project: Project, target?: Target): CompileResult {
   }
 
   ir.tabs.push(...regenTabs)
+
+  // linked mods set as required / optional: dependencies in the mod's metadata (by their id in game)
+  for (const m of project.mods ?? []) {
+    if (m.role !== 'required' && m.role !== 'optional') continue
+    if (!m.modId)
+      warn(
+        undefined,
+        `${m.title}: its mod id is not known yet, so it is not listed as a dependency. Load its items once (Game items) first.`,
+        `${m.title}: ยังไม่รู้ ID ม็อดของมัน จึงยังไม่ใส่เป็น dependency ให้โหลดไอเทมของม็อดนี้ (แท็บไอเทมเกม) ก่อนหนึ่งครั้ง`
+      )
+    else if (m.modId !== modid && !ir.dependsOn.some((d) => d.modId === m.modId))
+      ir.dependsOn.push({ modId: m.modId, title: m.title, required: m.role === 'required' })
+  }
 
   // tools / armor without a material use iron (armor also looks like iron armor when worn)
   if (usesDefaultTool)

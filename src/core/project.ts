@@ -125,7 +125,23 @@ export const ProjectSchema = z.object({
     .optional(),
   /** other mods whose items, blocks and crops the editor lists (Modrinth slug, or file_<name> for a .jar on disk) */
   mods: z
-    .array(z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/), title: z.string().max(100), source: z.enum(['modrinth', 'file']) }))
+    .array(
+      z.object({
+        id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/),
+        title: z.string().max(100),
+        source: z.enum(['modrinth', 'file']),
+        /**
+         * in test runs and in the mod's metadata: none (item list only), test (test runs only),
+         * optional (test runs + an optional dependency), required (test runs + a required dependency)
+         */
+        role: z.enum(['none', 'test', 'optional', 'required']).optional(),
+        /** the mod's id in game (read from its jar), for the metadata dependency */
+        modId: z
+          .string()
+          .regex(/^[a-z][a-z0-9_-]{1,63}$/)
+          .optional()
+      })
+    )
     .max(200)
     .optional()
 })

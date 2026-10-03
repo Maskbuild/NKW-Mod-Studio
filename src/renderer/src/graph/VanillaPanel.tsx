@@ -8,6 +8,7 @@ import { L } from '../i18n'
 import { api, vanillaIconUrl, type ItemSource } from '../api'
 import { useStore } from '../store'
 import type { LinkedMod } from '@core/project'
+import { MOD_ROLES, ModGallery, setModRole } from './ModGallery'
 import { useAddCentered } from './Library'
 import { ISearch, IDownload } from '../components/Icons'
 
@@ -103,113 +104,15 @@ const Tile = memo(function Tile({ it, mc, ns, icon, onAdd }: { it: VanillaItem; 
 /** Error text of an IPC call without Electron's prefix. */
 const errText = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
-/** Adds mods to the project: search Modrinth, or pick .jar files / a mods folder on this computer. */
-function ModPicker({ mc, onAdded, onClose }: { mc: string; onAdded: (source: ItemSource) => void; onClose: () => void }) {
-  const [q, setQ] = useState('')
-  const [hits, setHits] = useState<{ slug: string; title: string; description: string; downloads: number }[] | null>(null)
-  const [busy, setBusy] = useState(false)
-  const mods = useStore((s) => s.mods)
-  const toast = useStore((s) => s.toast)
-  const link = (add: LinkedMod[]) => {
-    const now = useStore.getState().mods
-    const next = [...now, ...add.filter((m) => !now.some((x) => x.id === m.id))]
-    if (next.length !== now.length) useStore.getState().setMods(next)
-  }
-  const search = async () => {
-    setBusy(true)
-    try {
-      setHits(await api.searchMods(q.trim(), mc))
-    } catch (e) {
-      toast(errText(e), true)
-    } finally {
-      setBusy(false)
-    }
-  }
-  const pick = async (folder: boolean) => {
-    setBusy(true)
-    try {
-      const r = await api.importModJars(mc, folder)
-      link(r.mods.map((m) => ({ id: m.id, title: m.title, source: 'file' as const })))
-      // re-read: a .jar picked again replaces what was read before
-      for (const m of r.mods) requested.delete(key(`mod:${m.id}`, mc))
-      useStore.setState((s) => {
-        const vanilla = { ...s.vanilla }
-        for (const m of r.mods) delete vanilla[key(`mod:${m.id}`, mc)]
-        return { vanilla }
-      })
-      if (r.errors.length) toast(r.errors.slice(0, 3).join('\n') + (r.errors.length > 3 ? `\n+${r.errors.length - 3}` : ''), true)
-      if (r.mods.length) {
-        toast(L({ en: `Added ${r.mods.length} mod(s)`, th: `เพิ่มแล้ว ${r.mods.length} ม็อด` }))
-        onAdded(`mod:${r.mods[0].id}`)
-      }
-    } catch (e) {
-      toast(errText(e), true)
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <div className="mod-picker">
-      <div className="row" style={{ marginBottom: 6 }}>
-        <div className="lib-search grow" style={{ marginBottom: 0 }}>
-          <ISearch size={14} />
-          <input
-            className="input"
-            autoFocus
-            placeholder={L({ en: `Search Modrinth (Minecraft ${mc})`, th: `ค้นหาม็อดใน Modrinth (Minecraft ${mc})` })}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void search()}
-          />
-        </div>
-        <button className="btn" disabled={busy} onClick={() => void search()}>
-          {L({ en: 'Search', th: 'ค้นหา' })}
-        </button>
-        <button className="btn ghost" onClick={onClose} title={L({ en: 'Close', th: 'ปิด' })}>
-          ✕
-        </button>
-      </div>
-      <div className="row" style={{ marginBottom: 6 }}>
-        <button className="btn grow" disabled={busy} onClick={() => void pick(false)}>
-          {L({ en: 'Pick .jar files…', th: 'เลือกไฟล์ .jar…' })}
-        </button>
-        <button className="btn grow" disabled={busy} onClick={() => void pick(true)}>
-          {L({ en: 'Pick a mods folder…', th: 'เลือกโฟลเดอร์ mods…' })}
-        </button>
-      </div>
-      {hits && !hits.length && <p className="muted">{L({ en: 'No mods found for this version.', th: 'ไม่พบม็อดสำหรับเวอร์ชันนี้' })}</p>}
-      {hits?.map((h) => {
-        const linked = mods.some((m) => m.id === h.slug)
-        return (
-          <div key={h.slug} className="lib-item mod-hit" title={h.description}>
-            <div className="grow">
-              <span>{h.title}</span>
-              <small className="ellipsis">{h.description}</small>
-              <small className="faint">
-                {h.slug} · {h.downloads.toLocaleString()} {L({ en: 'downloads', th: 'ดาวน์โหลด' })}
-              </small>
-            </div>
-            <button
-              className="btn"
-              disabled={linked}
-              onClick={() => {
-                link([{ id: h.slug, title: h.title, source: 'modrinth' }])
-                onAdded(`mod:${h.slug}`)
-              }}
-            >
-              {linked ? L({ en: 'Added', th: 'เพิ่มแล้ว' }) : L({ en: 'Add', th: 'เพิ่ม' })}
-            </button>
-          </div>
-        )
-      })}
-      <p className="faint" style={{ margin: '6px 2px' }}>
-        {L({
-          en: "Only the mods' item list is read (names, icons, tags, crops) for the editor; your mod does not need them to run.",
-          th: 'อ่านแค่รายการไอเทมของม็อด (ชื่อ ไอคอน แท็ก พืช) มาใช้ในแอป ม็อดของเราไม่ต้องพึ่งม็อดเหล่านี้ตอนเล่น'
-        })}
-      </p>
-    </div>
-  )
+/** Reads a source's data again (a .jar picked again replaces what was read before). */
+export function reloadSource(source: ItemSource, mc: string) {
+  const k = key(source, mc)
+  requested.delete(k)
+  useStore.setState((s) => {
+    const vanilla = { ...s.vanilla }
+    delete vanilla[k]
+    return { vanilla }
+  })
 }
 
 export function VanillaPanel() {
@@ -226,6 +129,13 @@ export function VanillaPanel() {
     if (source.startsWith('mod:') && !mod) setSource('minecraft')
   }, [source, mod])
   const data = useVanilla(mc, source)
+  // the mod's id in game (read from its jar) is what the metadata dependency needs
+  useEffect(() => {
+    if (mod && data?.modId && mod.modId !== data.modId) {
+      const s = useStore.getState()
+      s.setMods(s.mods.map((m) => (m.id === mod.id ? { ...m, modId: data.modId } : m)))
+    }
+  }, [mod, data])
   const [q, setQ] = useState('')
   const [group, setGroup] = useState<GroupId | 'all' | 'tags'>('all')
   const [loading, setLoading] = useState<{ msg: string; done?: number; total?: number } | null>(null)
@@ -299,6 +209,21 @@ export function VanillaPanel() {
           ))}
         </select>
         {mod && (
+          <select
+            className="input"
+            style={{ width: 150 }}
+            value={mod.role ?? 'none'}
+            onChange={(e) => setModRole(mod.id, e.target.value as NonNullable<LinkedMod['role']>)}
+            title={L({ en: 'What the mod is for (test runs, dependency)', th: 'ใช้ม็อดนี้ทำอะไร (ตอนทดสอบ, dependency)' })}
+          >
+            {MOD_ROLES.map((r) => (
+              <option key={r.value} value={r.value}>
+                {L(r)}
+              </option>
+            ))}
+          </select>
+        )}
+        {mod && (
           <button className="btn ghost" onClick={unlink} title={L({ en: 'Remove this mod from the project', th: 'เอาม็อดนี้ออกจากโปรเจกต์' })}>
             ✕
           </button>
@@ -312,10 +237,11 @@ export function VanillaPanel() {
         </button>
       </div>
       {adding && (
-        <ModPicker
+        <ModGallery
           mc={mc}
           onClose={() => setAdding(false)}
           onAdded={(src) => {
+            reloadSource(src, mc)
             setSource(src)
             setAdding(false)
           }}

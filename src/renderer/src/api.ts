@@ -77,10 +77,12 @@ export const api = {
     }),
   vanilla: (mc: string, source: ItemSource = 'minecraft') => call<VanillaData | null>('vanilla:get', { mc, source }),
   downloadVanilla: (mc: string, source: ItemSource = 'minecraft', title?: string) => call<VanillaData | null>('vanilla:download', { mc, source, title }),
-  /** mods on Modrinth for a Minecraft version */
-  searchMods: (query: string, mc: string) => call<{ slug: string; title: string; description: string; downloads: number }[]>('mods:search', { query, mc }),
+  /** mods on Modrinth for a Minecraft version (24 per page) */
+  searchMods: (query: string, mc: string, sort: ModSort = 'relevance', offset = 0) =>
+    call<{ hits: ModrinthHit[]; total: number }>('mods:search', { query, mc, sort, offset }),
   /** reads .jar files (or every .jar of a folder) picked on disk */
-  importModJars: (mc: string, folder: boolean) => call<{ mods: { id: string; title: string }[]; errors: string[] }>('mods:importJars', { mc, folder }),
+  importModJars: (mc: string, folder: boolean) =>
+    call<{ mods: { id: string; title: string; modId?: string }[]; errors: string[] }>('mods:importJars', { mc, folder }),
   toolchain: () => call<{ jdks: { major: number; home: string; managed: boolean }[]; toolsDir: string }>('toolchain:status'),
   previewCode: (project: Project, target: Target) => call<{ path: string; text: string | null; generated?: string }[]>('code:preview', { project, target }),
   startBuild: (project: Project, target: Target, task: 'runClient' | 'build' | 'compileJava') => call<boolean>('build:start', { project, target, task }),
@@ -89,6 +91,20 @@ export const api = {
   cleanBuild: (t: Target) => call<boolean>('build:clean', t),
   openExternal: (url: string) => call<boolean>('shell:openExternal', { url }),
   on: <T>(channel: 'build:log' | 'build:progress' | 'build:done' | 'vanilla:progress', cb: (p: T) => void) => window.nkw.on(channel, cb as (p: unknown) => void)
+}
+
+export type ModSort = 'relevance' | 'downloads' | 'follows' | 'newest' | 'updated'
+/** A mod in the Modrinth gallery. */
+export interface ModrinthHit {
+  slug: string
+  title: string
+  description: string
+  author: string
+  downloads: number
+  categories: string[]
+  loaders: string[]
+  icon: string | null
+  image: string | null
 }
 
 export const assetUrl = (asset: string) => `nkw-asset://project/${asset}`

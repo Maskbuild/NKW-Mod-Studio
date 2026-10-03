@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import yauzl from 'yauzl'
 import {
@@ -308,6 +308,9 @@ const modDir = (toolsDir: string, mc: string, id: string): string => {
   return join(vanillaDir(toolsDir, mc), 'mods', id)
 }
 
+/** A .jar picked on disk, kept for test runs. */
+export const modJarPath = (toolsDir: string, mc: string, id: string) => join(modDir(toolsDir, mc, id), 'mod.jar')
+
 export async function loadMod(toolsDir: string, mc: string, id: string): Promise<VanillaData | null> {
   return readData(join(modDir(toolsDir, mc, id), 'data.json'))
 }
@@ -321,15 +324,44 @@ async function vanillaModels(toolsDir: string, mc: string): Promise<Record<strin
   }
 }
 
+const MOD_META = /^(fabric\.mod\.json|quilt\.mod\.json|META-INF\/(neoforge\.)?mods\.toml)$/
+
+/** The mod's id in game, from its fabric.mod.json / quilt.mod.json / mods.toml (the first mod listed). */
+function jarModId(files: Map<string, Buffer>): string | undefined {
+  const ok = (v: unknown): v is string => typeof v === 'string' && /^[a-z][a-z0-9_-]{1,63}$/.test(v)
+  const fabric = json<{ id?: string }>(files.get('fabric.mod.json'))
+  if (ok(fabric?.id)) return fabric.id
+  const quilt = json<{ quilt_loader?: { id?: string } }>(files.get('quilt.mod.json'))
+  if (ok(quilt?.quilt_loader?.id)) return quilt.quilt_loader.id
+  for (const f of ['META-INF/neoforge.mods.toml', 'META-INF/mods.toml']) {
+    const m = /^\s*modId\s*=\s*"([^"]+)"/m.exec(files.get(f)?.toString('utf8') ?? '')
+    if (ok(m?.[1])) return m[1]
+  }
+  return undefined
+}
+
+/** Loaders a jar is made for, from its metadata files. */
+function jarLoaders(files: Map<string, Buffer>): string[] {
+  const out: string[] = []
+  if (files.has('fabric.mod.json')) out.push('fabric', 'quilt')
+  if (files.has('quilt.mod.json') && !out.includes('quilt')) out.push('quilt')
+  if (files.has('META-INF/neoforge.mods.toml')) out.push('neoforge')
+  const toml = files.get('META-INF/mods.toml')?.toString('utf8')
+  if (toml) out.push(/modId\s*=\s*"neoforge"/.test(toml) ? 'neoforge' : 'forge')
+  return out
+}
+
 /** Items, blocks, crops and tags of a mod jar, saved under the mod's id. */
 async function extractMod(toolsDir: string, mc: string, id: string, jar: string, title: string, progress: Progress): Promise<VanillaData> {
-  const names = await readZip(jar, (n) => /^assets\/[a-z0-9_.-]+\/(models\/(item|block)|items|lang)\//.test(n) && n.endsWith('.json'))
+  const names = await readZip(jar, (n) => MOD_META.test(n) || (/^assets\/[a-z0-9_.-]+\/(models\/(item|block)|items|lang)\//.test(n) && n.endsWith('.json')))
   const ns = mainNamespace([...names.keys()])
   if (!ns) throw new Error('No items or blocks found in this mod')
   const dir = modDir(toolsDir, mc, id)
   await mkdir(dir, { recursive: true })
   const { data } = await extractItems(jar, ns, mc, join(dir, 'icons'), {}, progress, await vanillaModels(toolsDir, mc))
-  const out: VanillaData = { ...data, title }
+  const modId = jarModId(names)
+  const loaders = jarLoaders(names)
+  const out: VanillaData = { ...data, title, ...(modId ? { modId } : {}), ...(loaders.length ? { loaders } : {}) }
   await writeFile(join(dir, 'data.json'), JSON.stringify(out))
   return out
 }
@@ -338,22 +370,43 @@ export interface ModrinthHit {
   slug: string
   title: string
   description: string
+  author: string
   downloads: number
+  categories: string[]
+  /** loaders the mod has builds for (fabric, forge, neoforge, quilt) */
+  loaders: string[]
+  /** icon and a picture of the mod (Modrinth's CDN only) */
+  icon: string | null
+  image: string | null
 }
 
-/** Mods on Modrinth for a Minecraft version (any loader: only the items are read). */
-export async function searchModrinth(query: string, mc: string): Promise<ModrinthHit[]> {
+const LOADERS = ['fabric', 'forge', 'neoforge', 'quilt']
+/** Only pictures from Modrinth's CDN are shown (the app's image policy allows that host only). */
+const cdn = (v: unknown): string | null => (typeof v === 'string' && /^https:\/\/cdn\.modrinth\.com\/[^\s"'<>]+$/.test(v) ? v : null)
+
+/** Mods on Modrinth for a Minecraft version, 24 per page; sort: relevance, downloads, follows, newest, updated. */
+export async function searchModrinth(query: string, mc: string, sort = 'relevance', offset = 0): Promise<{ hits: ModrinthHit[]; total: number }> {
   const facets = JSON.stringify([['project_type:mod'], [`versions:${mc}`]])
-  const url = `https://api.modrinth.com/v2/search?limit=20&query=${encodeURIComponent(query)}&facets=${encodeURIComponent(facets)}`
-  const res = await getJson<{ hits?: ModrinthHit[] }>(url)
-  return (res.hits ?? [])
+  const url = `https://api.modrinth.com/v2/search?limit=24&offset=${offset}&index=${encodeURIComponent(sort)}&query=${encodeURIComponent(query)}&facets=${encodeURIComponent(facets)}`
+  const res = await getJson<{ hits?: Record<string, unknown>[]; total_hits?: number }>(url)
+  const hits = (res.hits ?? [])
     .filter((h) => typeof h.slug === 'string' && LINKED_MOD_RE.test(h.slug))
-    .map((h) => ({
-      slug: h.slug,
-      title: String(h.title).slice(0, 100),
-      description: String(h.description ?? '').slice(0, 300),
-      downloads: Number(h.downloads) || 0
-    }))
+    .map((h) => {
+      const gallery = Array.isArray(h.gallery) ? h.gallery : []
+      const cats = Array.isArray(h.categories) ? h.categories.map(String) : []
+      return {
+        slug: String(h.slug),
+        title: String(h.title ?? h.slug).slice(0, 100),
+        description: String(h.description ?? '').slice(0, 400),
+        author: String(h.author ?? '').slice(0, 60),
+        downloads: Number(h.downloads) || 0,
+        categories: cats.filter((c) => !LOADERS.includes(c)).slice(0, 4),
+        loaders: cats.filter((c) => LOADERS.includes(c)),
+        icon: cdn(h.icon_url),
+        image: cdn(h.featured_gallery) ?? cdn(gallery[0])
+      }
+    })
+  return { hits, total: Number(res.total_hits) || hits.length }
 }
 
 /** The newest file of a Modrinth project for a Minecraft version (release first, the first loader that has one). */
@@ -394,7 +447,10 @@ export async function importModJar(toolsDir: string, mc: string, jar: string, pr
   const name = basename(jar, extname(jar))
   const id = `file_${toId(name.replace(/[-+_ ]?(mc|fabric|forge|neoforge|quilt)?[-+_ ]?\d+(\.\d+)+.*$/i, '')).slice(0, 50)}`
   progress(`Reading ${name}`)
-  return { id, data: await extractMod(toolsDir, mc, id, jar, name, progress) }
+  const data = await extractMod(toolsDir, mc, id, jar, name, progress)
+  // kept for test runs (the project can add it to the game it starts)
+  await copyFile(jar, modJarPath(toolsDir, mc, id))
+  return { id, data }
 }
 
 export function loadFarmersDelight(toolsDir: string, mc: string): Promise<VanillaData | null> {

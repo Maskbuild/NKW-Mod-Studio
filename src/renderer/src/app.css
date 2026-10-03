@@ -974,20 +974,127 @@ img.frame0 {
   max-width: 100%;
   line-height: 1.25;
 }
-.mod-picker {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px;
-  margin-bottom: 8px;
-  max-height: 360px;
-  overflow: auto;
+.dialog.mod-gallery {
+  width: min(1180px, calc(100vw - 48px));
+  height: min(820px, calc(100vh - 80px));
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-.mod-hit {
+.mod-gallery-head {
+  display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
-.mod-hit small {
-  display: block;
+.mod-gallery-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.mod-gallery-grid {
+  flex: 1;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  align-content: start;
+  padding: 2px;
+}
+.mod-gallery-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.mod-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.mod-card.linked {
+  border-color: var(--ok);
+}
+.mod-card-img {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--panel-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mod-card-img > img:first-child {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.mod-card-ph {
+  font-size: 42px;
+  color: var(--faint);
+}
+.mod-card-icon {
+  position: absolute;
+  left: 10px;
+  bottom: -18px;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  border: 2px solid var(--panel);
+  background: var(--panel);
+  object-fit: cover;
+}
+.mod-card-body {
+  padding: 22px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+.mod-card-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mod-card-desc {
+  margin: 2px 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mod-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.mod-tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
+.mod-tag.on {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.mod-card-warn {
+  color: var(--warn);
+}
+.mod-card-foot {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 12px;
+}
+.mod-card-foot select {
+  flex: 1;
+  min-width: 0;
 }
 .v-empty {
   display: flex;

@@ -245,13 +245,16 @@ You can also add these nodes by hand from **Utility**: **Existing Item** (`minec
 
 ### Items of other mods (Modrinth or .jar files)
 
-Click **+ Mod** in the Game items tab to link other mods to the project; pick them in the list above the items.
+Click **+ Mod** in the Game items tab: a gallery of Modrinth mods for the selected Minecraft version opens, with a picture, the description, downloads, loaders and categories of each. Search, sort (relevance, downloads, newest …), **Show more**, or **↗** to open the mod's page. **Pick .jar files…** / **Pick a mods folder…** read mods already on this computer instead.
 
-- **Search Modrinth** by name (only mods that have the selected Minecraft version) and click **Add**. The first time you open it, click **Load items** — the app downloads the mod from Modrinth (checksum-checked) and reads its items.
-- **Pick .jar files…** or **Pick a mods folder…** reads mods already on this computer (from anywhere, e.g. CurseForge). A .jar is for one Minecraft version: pick it again for another version.
-- You get each mod's items and blocks (English names, icons), its tags and its **crops** (blocks with growth stages). They show in the item lists, the Break Rule / Regenerating Blocks block pickers, Item Tag previews and the crop list of **Harvest a game crop**.
-- Only the item list is read and kept on this computer. Your mod does not depend on those mods: anything of a mod that is not installed is skipped in game (recipes using its items are left out with a line in the log).
-- **✕** next to the list removes a mod from the project.
+Each linked mod has a role (in the gallery, or next to the list in Game items):
+
+- **Item list only**: its items, blocks (English names, icons), tags and **crops** show in the item lists, block pickers, Item Tag previews and the crop list of **Harvest a game crop**.
+- **In test runs**: also added to the game **Test in game** starts (the build for the project's loader, with the mods it requires). Your mod does not depend on it.
+- **Optional dependency**: in test runs, and listed as optional in your mod's metadata (fabric.mod.json `suggests`, mods.toml `mandatory=false` / `type="optional"`).
+- **Required dependency**: in test runs, and players must install it too (the game refuses to start without it).
+
+Notes: a mod without a build for the project's loader is left out of the test (the log says so). A .jar is for one Minecraft version and one loader: pick the right one again for another target. Dependencies use the mod's id in game, which is read when its items are loaded — load them once before building. Picked files go into test runs; a whole mods folder is linked for its item list (change the role per mod). **✕** removes a mod from the project.
 
 > Steve/Alex skins for the armor preview also come from these downloaded game files. The app doesn't ship any Mojang files.
 

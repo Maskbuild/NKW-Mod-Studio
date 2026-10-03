@@ -5,7 +5,9 @@ import { crc32 } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { ProjectSchema } from '../src/core/project'
 import { LINKED_MOD_RE, isGrowingBlockstate, mainNamespace } from '../src/core/vanilla'
-import { importModJar, loadMod, vanillaIconPath } from '../src/main/services/vanilla'
+import { importModJar, loadMod, modJarPath, vanillaIconPath } from '../src/main/services/vanilla'
+import { compile } from '../src/core/compile/compile'
+import { FALLBACK_DEPS, TOOL_VERSIONS, generate } from '../src/core/gen/index'
 import { encodePng } from '../src/main/services/png'
 import { writeFixture } from '../scripts/fixture'
 
@@ -85,13 +87,16 @@ describe('linked mods', () => {
         'assets/ricecraft/textures/item/rice.png': png,
         'assets/ricecraft/blockstates/rice_crop.json': JSON.stringify({ variants: { 'age=0': {}, 'age=1': {}, 'age=2': {} } }),
         'assets/ricecraft/blockstates/rice_bag.json': JSON.stringify({ variants: { '': {} } }),
-        'data/ricecraft/tags/item/grains.json': JSON.stringify({ values: ['ricecraft:rice'] })
+        'data/ricecraft/tags/item/grains.json': JSON.stringify({ values: ['ricecraft:rice'] }),
+        'fabric.mod.json': JSON.stringify({ schemaVersion: 1, id: 'ricecraft', version: '2.0.3' })
       })
     )
     const { id, data } = await importModJar(tools, '1.21.1', jar, () => undefined)
     // the version is left out of the id, so the same mod picked again for another version keeps its id
     expect(id).toBe('file_ricecraft')
-    expect(data).toMatchObject({ ns: 'ricecraft', title: 'ricecraft-1.21.1-2.0.3', crops: ['rice_crop'] })
+    expect(data).toMatchObject({ ns: 'ricecraft', title: 'ricecraft-1.21.1-2.0.3', crops: ['rice_crop'], modId: 'ricecraft', loaders: ['fabric', 'quilt'] })
+    // the jar is kept for test runs
+    expect(readFileSync(modJarPath(tools, '1.21.1', id)).equals(readFileSync(jar))).toBe(true)
     expect(data.items.map((i) => [i.id, i.en, i.icon])).toEqual([['rice', 'Rice', true]])
     expect(data.tags).toEqual([{ id: 'ricecraft:grains', values: ['ricecraft:rice'] }])
     expect(await loadMod(tools, '1.21.1', id)).toEqual(data)
@@ -100,5 +105,67 @@ describe('linked mods', () => {
     // ids are checked before they become paths
     expect(vanillaIconPath(tools, '1.21.1', 'rice', 'mod:../x')).toBeNull()
     await expect(loadMod(tools, '1.21.1', '../x')).rejects.toThrow()
+  })
+
+  it('adds linked mods to test runs and as dependencies of the mod', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'nkw-mods-'))
+    const project = writeFixture(dir)
+    project.mods = [
+      { id: 'jei', title: 'JEI', source: 'modrinth', role: 'test' },
+      { id: 'rice', title: 'Rice', source: 'modrinth', role: 'required', modId: 'ricemod' },
+      { id: 'file_spice', title: 'Spice', source: 'file', role: 'optional', modId: 'spice' },
+      { id: 'big', title: 'Big', source: 'modrinth', role: 'optional' },
+      { id: 'list', title: 'List only', source: 'modrinth', role: 'none', modId: 'listonly' }
+    ]
+    const read = { readText: (a: string) => readFileSync(join(dir, 'assets', a), 'utf8') }
+    const linked = {
+      linkedMods: [
+        'maven.modrinth:jei:AAAA1111',
+        'maven.modrinth:rice:BBBB2222',
+        'maven.modrinth:architectury-api:CCCC3333',
+        'maven.modrinth:farmers-delight:DDDD4444'
+      ],
+      localMods: ['file_spice']
+    }
+    const gen = (loader: 'fabric' | 'forge' | 'neoforge' | 'quilt', mc: string) => {
+      const { ir, diagnostics } = compile(project, { loader, mc })
+      const deps = { ...TOOL_VERSIONS, ...FALLBACK_DEPS[mc], farmersDelight: 'maven.modrinth:farmers-delight:DDDD4444', ...linked }
+      const files = generate(ir, { loader, mc }, deps as never, read)
+      return { ir, diagnostics, text: (end: string) => files.find((f) => f.path.endsWith(end))?.text ?? '' }
+    }
+    const fabric = gen('fabric', '1.21.1')
+    // only required / optional mods with a known id become dependencies; the others warn
+    expect(fabric.ir.dependsOn).toEqual([
+      { modId: 'ricemod', title: 'Rice', required: true },
+      { modId: 'spice', title: 'Spice', required: false }
+    ])
+    expect(fabric.diagnostics.some((d) => d.severity === 'warning' && d.message.en.startsWith('Big: its mod id is not known'))).toBe(true)
+    const meta = JSON.parse(fabric.text('fabric.mod.json'))
+    expect(meta.depends.ricemod).toBe('*')
+    expect(meta.suggests).toEqual({ spice: '*' })
+    const gradle = fabric.text('build.gradle')
+    expect(gradle).toContain("modRuntimeOnly 'maven.modrinth:jei:AAAA1111'")
+    expect(gradle).toContain("modRuntimeOnly 'maven.modrinth:architectury-api:CCCC3333'")
+    expect(gradle).toContain("modRuntimeOnly files('nkw-mods/file_spice-1.jar')")
+    // Farmer's Delight is already in the test run: not twice
+    expect(gradle.match(/modRuntimeOnly 'maven\.modrinth:farmers-delight:/g)?.length).toBe(1)
+
+    const quilt = JSON.parse(gen('quilt', '1.21.1').text('quilt.mod.json'))
+    expect(quilt.quilt_loader.depends).toContainEqual('ricemod')
+    expect(quilt.quilt_loader.depends).toContainEqual({ id: 'spice', optional: true })
+
+    const forge = gen('forge', '1.20.1')
+    expect(forge.text('build.gradle')).toContain("runtimeOnly fg.deobf('maven.modrinth:jei:AAAA1111')")
+    expect(forge.text('build.gradle')).toContain("runtimeOnly fg.deobf('nkwlocal:file_spice:1')")
+    expect(forge.text('build.gradle')).toContain("dir 'nkw-mods'")
+    const toml = forge.text('META-INF/mods.toml')
+    expect(toml).toContain('[[dependencies.nkwtest]]\nmodId="ricemod"\nmandatory=true')
+    expect(toml).toContain('modId="spice"\nmandatory=false')
+
+    const neo = gen('neoforge', '1.21.1')
+    expect(neo.text('build.gradle')).toContain("runtimeOnly 'maven.modrinth:rice:BBBB2222'")
+    expect(neo.text('build.gradle')).toContain("runtimeOnly files('nkw-mods/file_spice-1.jar')")
+    expect(neo.text('META-INF/neoforge.mods.toml')).toContain('modId="ricemod"\ntype="required"')
+    expect(neo.text('META-INF/neoforge.mods.toml')).toContain('modId="spice"\ntype="optional"')
   })
 })

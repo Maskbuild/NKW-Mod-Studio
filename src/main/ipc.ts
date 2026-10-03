@@ -295,7 +295,16 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
   })
 
   // ───────── mods: search Modrinth, or read .jar files picked on disk ─────────
-  handle('mods:search', z.object({ query: z.string().max(100), mc: MC }), ({ query, mc }) => searchModrinth(query, mc))
+  handle(
+    'mods:search',
+    z.object({
+      query: z.string().max(100),
+      mc: MC,
+      sort: z.enum(['relevance', 'downloads', 'follows', 'newest', 'updated']).default('relevance'),
+      offset: z.number().int().min(0).max(10000).default(0)
+    }),
+    ({ query, mc, sort, offset }) => searchModrinth(query, mc, sort, offset)
+  )
   handle('mods:importJars', z.object({ mc: MC, folder: z.boolean() }), async ({ mc, folder }) => {
     const th = settings.get().language === 'th'
     const r = await dialog.showOpenDialog(win, {
@@ -305,12 +314,12 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
     })
     if (r.canceled || !r.filePaths.length) return { mods: [], errors: [] }
     const jars = folder ? (await readdir(r.filePaths[0])).filter((f) => f.toLowerCase().endsWith('.jar')).map((f) => join(r.filePaths[0], f)) : r.filePaths
-    const mods: { id: string; title: string }[] = []
+    const mods: { id: string; title: string; modId?: string }[] = []
     const errors: string[] = []
     for (const jar of jars.slice(0, 200)) {
       try {
         const { id, data } = await importModJar(toolsDir(), mc, jar, (msg, done, total) => send('vanilla:progress', { mc, source: 'import', msg, done, total }))
-        if (LINKED_MOD_RE.test(id)) mods.push({ id, title: data.title ?? id })
+        if (LINKED_MOD_RE.test(id)) mods.push({ id, title: data.title ?? id, modId: data.modId })
       } catch (e) {
         errors.push(`${basename(jar)}: ${(e as Error).message}`)
       }
