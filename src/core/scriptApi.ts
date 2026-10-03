@@ -1,4 +1,4 @@
-import type { L10n } from './nodes/defs'
+import { t, type L10n } from './l10n'
 import type { Loader, Target } from './project'
 
 /**
@@ -7,8 +7,6 @@ import type { Loader, Target } from './project'
  * class detection, the package line, which targets a file applies to, an import catalogue for
  * completion, ready-made examples per loader/version, and javac error parsing.
  */
-
-const t = (en: string, th: string): L10n => ({ en, th })
 
 /** Java keywords and built-in types (completion in the editor, colours in the canvas preview). */
 export const JAVA_KEYWORDS = [
@@ -62,7 +60,7 @@ export const JAVA_KEYWORDS = [
 ]
 
 /** Classes the generator writes itself; a script may not use these names. */
-export const RESERVED_CLASSES = new Set([
+const RESERVED_CLASSES = new Set([
   'NkwMod',
   'NkwClient',
   'NkwTags',

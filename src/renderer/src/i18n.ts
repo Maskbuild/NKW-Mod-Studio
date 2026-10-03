@@ -340,7 +340,7 @@ const en = {
     openJson: 'Model editor controls as JSON (model-controls.json)',
     jsonHint: 'Edit the controls as JSON — valid changes apply at once.'
   },
-  targets: { title: 'Loaders & versions', done: 'Done', atLeastOne: 'Select at least one target' },
+  targets: { atLeastOne: 'Select at least one target' },
   settings: {
     title: 'Settings',
     tab: { app: 'App', game: 'Test game', model: 'Model editor' },
@@ -692,7 +692,7 @@ const th: Dict = {
     openJson: 'การควบคุมโปรแกรมทำโมเดลแบบ JSON (model-controls.json)',
     jsonHint: 'แก้การควบคุมแบบ JSON — แก้ถูกต้องแล้วใช้ได้ทันที'
   },
-  targets: { title: 'Mod loader และเวอร์ชัน', done: 'เสร็จ', atLeastOne: 'เลือกอย่างน้อย 1 เป้าหมาย' },
+  targets: { atLeastOne: 'เลือกอย่างน้อย 1 เป้าหมาย' },
   settings: {
     title: 'ตั้งค่า',
     tab: { app: 'แอป', game: 'เกมตอนทดสอบ', model: 'โปรแกรมทำโมเดล' },

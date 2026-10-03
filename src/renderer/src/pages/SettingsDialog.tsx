@@ -9,7 +9,7 @@ import { ModelControlsSettings } from './ModelControlsSettings'
 export type SettingsSection = 'app' | 'game' | 'model'
 
 /** Theme, language, memory, downloads, Java list and about. */
-export function GeneralSettings() {
+function GeneralSettings() {
   const { t } = useTranslation()
   const settings = useStore((s) => s.settings)!
   const [jdks, setJdks] = useState<{ major: number; home: string; managed: boolean }[] | null>(null)

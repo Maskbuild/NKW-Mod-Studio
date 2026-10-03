@@ -306,7 +306,7 @@ export const NodeView = memo(function NodeView({ id, type, data, selected }: Nod
   )
 })
 
-export const CommentView = memo(function CommentView({ data, selected }: NodeProps<FlowNode>) {
+const CommentView = memo(function CommentView({ data, selected }: NodeProps<FlowNode>) {
   return (
     <>
       <NodeResizer
@@ -323,7 +323,7 @@ export const CommentView = memo(function CommentView({ data, selected }: NodePro
   )
 })
 
-export const RerouteView = memo(function RerouteView() {
+const RerouteView = memo(function RerouteView() {
   return (
     <div className="nk-reroute">
       <Handle type="target" position={Position.Left} id="in" />

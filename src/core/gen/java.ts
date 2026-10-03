@@ -2514,6 +2514,6 @@ ${items.map((it) => `        if (item == ${get('ModItems', it.id)}) return true;
 }
 
 /** Hidden items that exist only to show a tab's logo texture as its icon. */
-export function tabIconItems(ctx: GenCtx): { id: string; texture: string }[] {
+function tabIconItems(ctx: GenCtx): { id: string; texture: string }[] {
   return ctx.ir.tabs.filter((t) => t.logo && !t.icon).map((t) => ({ id: `${t.id}_tab_icon`, texture: t.logo! }))
 }

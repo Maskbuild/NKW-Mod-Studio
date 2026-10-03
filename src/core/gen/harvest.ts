@@ -4,7 +4,7 @@ import { mcAtLeast } from './profiles'
 import { fabricLike, type GenCtx } from './types'
 
 /** The timer window used when a node has no Timer window node: text above the hotbar (white). */
-export const DEFAULT_HARVEST_UI: HarvestUiIR = {
+const DEFAULT_HARVEST_UI: HarvestUiIR = {
   style: 'text',
   color: 0xffffff,
   back: 0,
@@ -19,7 +19,7 @@ export const DEFAULT_HARVEST_UI: HarvestUiIR = {
 }
 
 /** Every timer window of the mod, the default first; a node's window is its index here. */
-export function harvestUis(ir: ModIR): HarvestUiIR[] {
+function harvestUis(ir: ModIR): HarvestUiIR[] {
   const list = [DEFAULT_HARVEST_UI]
   const keys = [JSON.stringify(DEFAULT_HARVEST_UI)]
   const used = [...ir.blocks.flatMap((b) => [b.crop?.ui, b.regen?.ui]), ...ir.gameCrops.map((g) => g.ui), ...ir.breakRules.map((r) => (r.timer ? r.ui : null))]

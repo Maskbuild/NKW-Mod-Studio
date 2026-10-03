@@ -23,7 +23,7 @@ export const TargetSchema = z.object({
 })
 export type Target = z.infer<typeof TargetSchema>
 
-export const GraphNodeSchema = z.object({
+const GraphNodeSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
   type: z.string().regex(/^[a-zA-Z0-9]{1,40}$/),
   position: z.object({ x: z.number().finite(), y: z.number().finite() }),
@@ -33,7 +33,7 @@ export const GraphNodeSchema = z.object({
 })
 export type GraphNode = z.infer<typeof GraphNodeSchema>
 
-export const GraphEdgeSchema = z.object({
+const GraphEdgeSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_:.-]{1,200}$/),
   source: z.string(),
   sourceHandle: z.string(),
@@ -106,7 +106,7 @@ export function shippedCredits(meta: ProjectMeta): Credit[] {
 }
 
 /** "fabric-1.21.1:src/main/java/…/ModItems.java" — a plain relative path, no ".." */
-export const OVERRIDE_KEY_RE = /^[a-z]+-[0-9.]+:(?!.*\.\.)[A-Za-z0-9_][A-Za-z0-9_./-]{0,300}$/
+const OVERRIDE_KEY_RE = /^[a-z]+-[0-9.]+:(?!.*\.\.)[A-Za-z0-9_][A-Za-z0-9_./-]{0,300}$/
 
 export const ProjectSchema = z.object({
   schemaVersion: z.literal(1),

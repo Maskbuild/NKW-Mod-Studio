@@ -20,10 +20,11 @@ import {
   moveAsset,
   readModel,
   type AssetKind,
+  type ImportedAsset,
   writeModel,
   writeTexture
 } from './services/assets'
-import { CONVERTIBLE } from './services/audio'
+import { CONVERTIBLE, type ConvertOptions } from './services/audio'
 import { ensureFarmersDelight, ensureVanilla, loadFarmersDelight, loadVanilla, vanillaIconPath, vanillaSkinPath } from './services/vanilla'
 import { assetPath, buildDir, findJar, previewFiles, startBuild, type RunningBuild } from './services/builder'
 import { createProjectDir, readProject, saveProject, type SettingsStore } from './services/store'
@@ -72,6 +73,22 @@ export function registerAssetProtocol() {
       return new Response('Not found', { status: 404 })
     }
   })
+}
+
+/** Imports files one by one (kind detected from content when not given); a bad file does not stop the rest. */
+async function importEach(dir: string, paths: string[], kind: AssetKind | undefined, audio: ConvertOptions, folder?: string) {
+  const imported: ImportedAsset[] = []
+  const errors: string[] = []
+  for (const p of paths) {
+    try {
+      const k = kind ?? (await detectKind(p))
+      if (!k) throw new Error('Unsupported file')
+      imported.push(...(await importAsset(dir, p, k, audio, folder)))
+    } catch (e) {
+      errors.push(`${basename(p)}: ${(e as Error).message}`)
+    }
+  }
+  return { imported, errors }
 }
 
 type Handler<S extends z.ZodTypeAny> = (arg: z.infer<S>, win: BrowserWindow) => unknown
@@ -183,19 +200,8 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
       filters: [{ name: th ? 'ไฟล์ที่รองรับทั้งหมด' : 'All supported files', extensions: all }]
     })
     if (r.canceled) return { imported: [], errors: [] }
-    const out = []
-    const errors: string[] = []
-    for (const p of r.filePaths.slice(0, 32)) {
-      try {
-        const k = await detectKind(p)
-        if (!k) throw new Error('Unsupported file')
-        // keep the chosen folder only when it matches the file's section
-        out.push(...(await importAsset(dir, p, k, audio, folder)))
-      } catch (e) {
-        errors.push(`${basename(p)}: ${(e as Error).message}`)
-      }
-    }
-    return { imported: out, errors }
+    // keep the chosen folder only when it matches the file's section
+    return importEach(dir, r.filePaths.slice(0, 32), undefined, audio, folder)
   })
   handle('assets:import', z.object({ kind: KIND, folder: FOLDER, audio: AUDIO }), async ({ kind, folder, audio }) => {
     const dir = requireProject()
@@ -218,21 +224,7 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
   handle(
     'assets:importPaths',
     z.object({ paths: z.array(z.string().min(3).max(1024)).max(32), kind: KIND.optional(), folder: FOLDER, audio: AUDIO }),
-    async ({ paths, kind, folder, audio }) => {
-      const dir = requireProject()
-      const out = []
-      const errors: string[] = []
-      for (const p of paths) {
-        try {
-          const k = kind ?? (await detectKind(p))
-          if (!k) throw new Error('Unsupported file')
-          out.push(...(await importAsset(dir, p, k, audio, folder)))
-        } catch (e) {
-          errors.push(`${basename(p)}: ${(e as Error).message}`)
-        }
-      }
-      return { imported: out, errors }
-    }
+    async ({ paths, kind, folder, audio }) => importEach(requireProject(), paths, kind, audio, folder)
   )
 
   // Audio converter: pick audio/video files, convert to .ogg inside the project
@@ -245,16 +237,7 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
       filters: [{ name: th ? 'เสียง / วิดีโอ' : 'Audio / video', extensions: CONVERTIBLE }]
     })
     if (r.canceled) return { imported: [], errors: [] }
-    const out = []
-    const errors: string[] = []
-    for (const p of r.filePaths.slice(0, 32)) {
-      try {
-        out.push(...(await importAsset(dir, p, 'sound', audio, folder)))
-      } catch (e) {
-        errors.push(`${basename(p)}: ${(e as Error).message}`)
-      }
-    }
-    return { imported: out, errors }
+    return importEach(dir, r.filePaths.slice(0, 32), 'sound', audio, folder)
   })
 
   // ───────── asset tree: folders, rename, move, delete ─────────

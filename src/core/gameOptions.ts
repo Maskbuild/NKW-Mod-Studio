@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { L10n } from './nodes/defs'
+import { t, type L10n } from './l10n'
 
 /**
  * Minecraft settings for test runs ("Test in game"), written into the run folder's options.txt before
@@ -34,8 +34,6 @@ export const GameOptionsSchema = z.object({
   keys: z.record(z.string().regex(/^key\.[a-zA-Z.]{1,40}$/), z.string().regex(MC_KEY_RE)).default({})
 })
 export type GameOptions = z.infer<typeof GameOptionsSchema>
-
-const t = (en: string, th: string): L10n => ({ en, th })
 
 /** The key bindings offered in Settings, with Minecraft's defaults. */
 export const KEY_ACTIONS: { id: string; label: L10n; def: string }[] = [

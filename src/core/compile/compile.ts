@@ -34,8 +34,8 @@ const ARMOR_NAME: Record<ArmorSlot, L10n> = {
 }
 
 type Data = Record<string, unknown>
-const str = (d: Data, k: string, def = ''): string => (typeof d[k] === 'string' ? (d[k] as string) : def)
-const num = (d: Data, k: string, def = 0): number => (typeof d[k] === 'number' && Number.isFinite(d[k]) ? (d[k] as number) : def)
+export const str = (d: Data, k: string, def = ''): string => (typeof d[k] === 'string' ? (d[k] as string) : def)
+export const num = (d: Data, k: string, def = 0): number => (typeof d[k] === 'number' && Number.isFinite(d[k]) ? (d[k] as number) : def)
 const bool = (d: Data, k: string, def = false): boolean => (typeof d[k] === 'boolean' ? (d[k] as boolean) : def)
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 /** Whole number in a range (counts, protection points … that the game reads as integers). */
@@ -133,7 +133,7 @@ const LEVEL_NAME: Record<BreakRuleIR['level'], L10n> = {
 }
 
 /** The action-bar text of a Break Rule, e.g. "Needs an iron pickaxe or better to drop anything". */
-export function breakRuleMessage(r: Pick<BreakRuleIR, 'tool' | 'level' | 'onFail'>): L10n {
+function breakRuleMessage(r: Pick<BreakRuleIR, 'tool' | 'level' | 'onFail'>): L10n {
   const tool = TOOL_NAME[r.tool]
   const leveled = r.tool !== 'shears' && r.level !== 'wood'
   const lv = LEVEL_NAME[r.level]

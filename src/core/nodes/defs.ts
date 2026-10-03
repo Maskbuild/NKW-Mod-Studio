@@ -1,4 +1,5 @@
 import { SCRIPT_STARTER } from '../scriptApi'
+import { t, type L10n } from '../l10n'
 /**
  * Node catalogue shared by the editor (rendering, inspector) and the compiler.
  * Every pin has a type; the editor refuses connections whose types don't match.
@@ -23,10 +24,7 @@ export type PinType =
   | 'harvestUi'
   | 'any'
 
-export interface L10n {
-  en: string
-  th: string
-}
+export type { L10n }
 
 export const PIN_COLORS: Record<PinType, string> = {
   item: '#3b82f6',
@@ -125,7 +123,6 @@ export interface NodeDef {
   hidden?: boolean
 }
 
-const t = (en: string, th: string): L10n => ({ en, th })
 const opt = (value: string, en: string, th: string) => ({ value, label: t(en, th) })
 
 /** Block ids a "Harvest a game crop" node covers (checked crops + typed ids; older nodes had one "crop"). */
@@ -292,6 +289,31 @@ const blockCommon: PropDef[] = [
   { key: 'dropMin', label: t('Drop count min', 'จำนวนดรอปต่ำสุด'), kind: 'int', default: 1, min: 0, max: 64 },
   { key: 'dropMax', label: t('Drop count max', 'จำนวนดรอปสูงสุด'), kind: 'int', default: 1, min: 0, max: 64 }
 ]
+
+/** Hand harvest time (crops, game crops, Regenerating Blocks). */
+const harvestSecondsProp = (showIf: PropDef['showIf']): PropDef => ({
+  key: 'harvestSeconds',
+  label: t('Harvest time (seconds)', 'เวลาเก็บ (วินาที)'),
+  kind: 'float',
+  default: 2,
+  min: 0.1,
+  max: 120,
+  step: 0.1,
+  showIf
+})
+
+/** The harvest goes straight into the inventory. */
+const giveProp = (showIf?: PropDef['showIf']): PropDef => ({
+  key: 'give',
+  label: t('Harvest goes into the inventory', 'ผลผลิตเข้าตัวทันที'),
+  kind: 'bool',
+  default: false,
+  hint: t(
+    'Off: drops on the ground like normal. On: straight into the inventory (what does not fit drops at your feet).',
+    'ปิด: ดรอปบนพื้นแบบปกติ · เปิด: เข้าช่องเก็บของเลย (ถ้าเต็มจะดรอปที่เท้า)'
+  ),
+  ...(showIf ? { showIf } : {})
+})
 
 const countProp = (label = t('Result count', 'จำนวนที่ได้')): PropDef => ({
   key: 'count',
@@ -849,16 +871,7 @@ export const NODE_DEFS: NodeDef[] = [
           'ทุบ: ขุดเหมือนบล็อกทั่วไป (ต้องใช้อุปกรณ์ถูกถึงจะได้ของ เหมือนต้นฉบับ) · แบบคลิกซ้าย: ทุบบล็อกไม่ได้ แขนจะแกว่งตอนกดค้าง · ในโหมดผจญภัย "กดค้าง" จะทำงานแบบ "คลิกครั้งเดียวแล้วยืนนิ่ง"'
         )
       },
-      {
-        key: 'harvestSeconds',
-        label: t('Harvest time (seconds)', 'เวลาเก็บ (วินาที)'),
-        kind: 'float',
-        default: 2,
-        min: 0.1,
-        max: 120,
-        step: 0.1,
-        showIf: (d) => d.input === 'hold' || d.input === 'stand'
-      },
+      harvestSecondsProp((d) => d.input === 'hold' || d.input === 'stand'),
       {
         key: 'timer',
         label: t('Show a timer while breaking', 'แสดงเวลาตอนทุบ'),
@@ -917,12 +930,7 @@ export const NODE_DEFS: NodeDef[] = [
         hint: t('Only used when an item is wired into "Drops instead".', 'ใช้เมื่อต่อไอเทมเข้าขา "ดรอปแทน" เท่านั้น')
       },
       { key: 'dropMax', label: t('"Drops instead" count max', 'จำนวน "ดรอปแทน" สูงสุด'), kind: 'int', default: 1, min: 1, max: 64 },
-      {
-        key: 'give',
-        label: t('Harvest goes into the inventory', 'ผลผลิตเข้าตัวทันที'),
-        kind: 'bool',
-        default: false
-      },
+      giveProp(),
       {
         key: 'toolWear',
         label: t('Tool durability used per harvest', 'ค่าคงทนเครื่องมือที่เสียต่อครั้ง'),
@@ -1029,27 +1037,8 @@ export const NODE_DEFS: NodeDef[] = [
           'กดค้าง: ปล่อยปุ่มแล้วหยุด · ยืนนิ่ง: ขยับแล้วหยุด ต้องคลิกใหม่ · มีเวลาแสดงเหนือแถบไอเทม'
         )
       },
-      {
-        key: 'harvestSeconds',
-        label: t('Harvest time (seconds)', 'เวลาเก็บ (วินาที)'),
-        kind: 'float',
-        default: 2,
-        min: 0.1,
-        max: 120,
-        step: 0.1,
-        showIf: (d) => d.input === 'hold' || d.input === 'stand'
-      },
-      {
-        key: 'give',
-        label: t('Harvest goes into the inventory', 'ผลผลิตเข้าตัวทันที'),
-        kind: 'bool',
-        default: false,
-        hint: t(
-          'Off: drops on the ground like normal. On: straight into the inventory (what does not fit drops at your feet).',
-          'ปิด: ดรอปบนพื้นแบบปกติ · เปิด: เข้าช่องเก็บของเลย (ถ้าเต็มจะดรอปที่เท้า)'
-        ),
-        showIf: (d) => d.input === 'click' || d.input === 'hold' || d.input === 'stand' || d.mode === 'regrow' || d.mode === 'auto'
-      },
+      harvestSecondsProp((d) => d.input === 'hold' || d.input === 'stand'),
+      giveProp((d) => d.input === 'click' || d.input === 'hold' || d.input === 'stand' || d.mode === 'regrow' || d.mode === 'auto'),
       { key: 'produceMin', label: t('Harvest count min', 'จำนวนผลผลิตต่ำสุด'), kind: 'int', default: 1, min: 1, max: 64 },
       { key: 'produceMax', label: t('Harvest count max', 'จำนวนผลผลิตสูงสุด'), kind: 'int', default: 2, min: 1, max: 64 },
       {
@@ -1123,16 +1112,7 @@ export const NODE_DEFS: NodeDef[] = [
         ],
         hint: t('Breaking the crop still works like in the game.', 'ทุบพืชยังได้เหมือนในเกม')
       },
-      {
-        key: 'harvestSeconds',
-        label: t('Harvest time (seconds)', 'เวลาเก็บ (วินาที)'),
-        kind: 'float',
-        default: 2,
-        min: 0.1,
-        max: 120,
-        step: 0.1,
-        showIf: (d) => d.input !== 'click'
-      },
+      harvestSecondsProp((d) => d.input !== 'click'),
       {
         key: 'after',
         label: t('After harvest', 'หลังเก็บเกี่ยว'),
@@ -1158,16 +1138,7 @@ export const NODE_DEFS: NodeDef[] = [
         hint: t('0 = the start. It then grows again like in the game.', '0 = เริ่มต้น จากนั้นโตใหม่ตามปกติของเกม'),
         showIf: (d) => d.after === 'regrow'
       },
-      {
-        key: 'give',
-        label: t('Harvest goes into the inventory', 'ผลผลิตเข้าตัวทันที'),
-        kind: 'bool',
-        default: false,
-        hint: t(
-          'Off: drops on the ground like normal. On: straight into the inventory (what does not fit drops at your feet).',
-          'ปิด: ดรอปบนพื้นแบบปกติ · เปิด: เข้าช่องเก็บของเลย (ถ้าเต็มจะดรอปที่เท้า)'
-        )
-      },
+      giveProp(),
       breakDropsProp(
         t(
           'Only breaking by a player counts: picking by hand still gives the harvest. Creative mode is not affected.',

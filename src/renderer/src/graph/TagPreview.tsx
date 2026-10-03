@@ -13,7 +13,7 @@ export interface TagEntry {
 }
 
 /** Every item of an item tag (nested #tags followed) from the game and Farmer's Delight data of the active version. */
-export function useTagItems(tagId: string): { items: TagEntry[]; found: boolean; mc: string; loaded: boolean } {
+function useTagItems(tagId: string): { items: TagEntry[]; found: boolean; mc: string; loaded: boolean } {
   const mc = useActiveMc()
   const data = useVanilla(mc)
   const fd = useVanilla(mc, 'farmersdelight')

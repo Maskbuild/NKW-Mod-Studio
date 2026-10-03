@@ -7,14 +7,13 @@ import type { JavaModel } from './gen/model'
  */
 
 export type EditElement = NonNullable<JavaModel['elements']>[number]
-export type EditFace = EditElement['faces'][string]
 
 export const FACES: Face[] = ['north', 'south', 'east', 'west', 'up', 'down']
 /** Java models only allow these rotation angles, around one axis. */
 export const ANGLES = [-45, -22.5, 0, 22.5, 45]
 /** Java models must stay inside −16…32 on every axis. */
-export const MIN = -16
-export const MAX = 32
+const MIN = -16
+const MAX = 32
 
 const r = (n: number, step = 0.25) => Math.round(n / step) * step
 const clampC = (n: number) => Math.min(MAX, Math.max(MIN, n))

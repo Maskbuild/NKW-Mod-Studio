@@ -16,7 +16,7 @@ async function writeAtomic(path: string, data: string | Buffer): Promise<void> {
 
 // ───────── settings ─────────
 
-export const SettingsSchema = z.object({
+const SettingsSchema = z.object({
   theme: z.enum(['system', 'light', 'dark']).default('system'),
   language: z.enum(['th', 'en']).default('th'),
   memoryMb: z.number().int().min(1024).max(16384).default(4096),

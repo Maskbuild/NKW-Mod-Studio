@@ -49,18 +49,23 @@ const json = <T>(b: Buffer | undefined): T | null => {
   }
 }
 
-export function vanillaDir(toolsDir: string, mc: string): string {
+function vanillaDir(toolsDir: string, mc: string): string {
   if (!VERSION_RE.test(mc)) throw new Error('Bad Minecraft version')
   return join(toolsDir, 'vanilla', mc)
 }
 
-export async function loadVanilla(toolsDir: string, mc: string): Promise<VanillaData | null> {
+/** Extracted item data saved earlier, or null (missing, unreadable or from an older app version). */
+async function readData(file: string): Promise<VanillaData | null> {
   try {
-    const d = JSON.parse(await readFile(join(vanillaDir(toolsDir, mc), 'data.json'), 'utf8')) as VanillaData
+    const d = JSON.parse(await readFile(file, 'utf8')) as VanillaData
     return d.v === VANILLA_DATA_VERSION ? d : null
   } catch {
     return null
   }
+}
+
+export function loadVanilla(toolsDir: string, mc: string): Promise<VanillaData | null> {
+  return readData(join(vanillaDir(toolsDir, mc), 'data.json'))
 }
 
 /**
@@ -246,12 +251,8 @@ interface ModrinthVersion {
 /** Farmer's Delight items for a Minecraft version (from whichever loader build exists on Modrinth). */
 export async function ensureFarmersDelight(toolsDir: string, mc: string, progress: Progress): Promise<VanillaData | null> {
   const dir = join(vanillaDir(toolsDir, mc), 'farmersdelight')
-  try {
-    const d = JSON.parse(await readFile(join(dir, 'data.json'), 'utf8')) as VanillaData
-    if (d.v === VANILLA_DATA_VERSION) return d
-  } catch {
-    /* not cached */
-  }
+  const cached = await readData(join(dir, 'data.json'))
+  if (cached) return cached
   progress(`Looking up Farmer's Delight for ${mc}`)
   let file: ModrinthVersion['files'][number] | undefined
   for (const [slug, loaders] of [
@@ -283,13 +284,8 @@ export async function ensureFarmersDelight(toolsDir: string, mc: string, progres
   return data
 }
 
-export async function loadFarmersDelight(toolsDir: string, mc: string): Promise<VanillaData | null> {
-  try {
-    const d = JSON.parse(await readFile(join(vanillaDir(toolsDir, mc), 'farmersdelight', 'data.json'), 'utf8')) as VanillaData
-    return d.v === VANILLA_DATA_VERSION ? d : null
-  } catch {
-    return null
-  }
+export function loadFarmersDelight(toolsDir: string, mc: string): Promise<VanillaData | null> {
+  return readData(join(vanillaDir(toolsDir, mc), 'farmersdelight', 'data.json'))
 }
 
 /**

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { num, str } from '@core/compile/compile'
 import { useTranslation } from 'react-i18next'
 
 /** Size of the pretend game screen, in GUI pixels (like 854×480 at GUI scale 2). */
@@ -7,8 +8,6 @@ const H = 240
 /** Seconds one pretend harvest takes. */
 const LOOP = 2
 
-const num = (d: Record<string, unknown>, k: string, def: number) => (typeof d[k] === 'number' ? (d[k] as number) : def)
-const str = (d: Record<string, unknown>, k: string, def: string) => (typeof d[k] === 'string' ? (d[k] as string) : def)
 const rgba = (hex: string, alpha: number) => {
   const v = /^#[0-9a-f]{6}$/i.test(hex) ? parseInt(hex.slice(1), 16) : 0
   return `rgba(${v >> 16}, ${(v >> 8) & 255}, ${v & 255}, ${alpha})`
