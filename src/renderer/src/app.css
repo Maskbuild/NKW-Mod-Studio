@@ -2684,3 +2684,22 @@ img.frame0 {
   border-color: var(--ok);
   color: #fff;
 }
+.mod-role-row {
+  margin: 0 0 8px;
+  gap: 6px;
+  font-size: 12px;
+  align-items: center;
+}
+.mod-role-row .mod-role {
+  width: auto;
+  max-width: 70%;
+  min-height: 28px;
+  height: auto;
+  font-size: 12px;
+  padding: 2px 6px;
+}
+.mod-role-row .btn {
+  min-height: 28px;
+  height: auto;
+  padding: 0 8px;
+}

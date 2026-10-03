@@ -198,7 +198,13 @@ export function VanillaPanel() {
   return (
     <div className="vanilla">
       <div className="row" style={{ marginBottom: 8 }}>
-        <select className="input grow" value={source} onChange={(e) => setSource(e.target.value as ItemSource)} title={L({ en: 'Items of', th: 'ไอเทมของ' })}>
+        <select
+          className="input grow"
+          style={{ minWidth: 0 }}
+          value={source}
+          onChange={(e) => setSource(e.target.value as ItemSource)}
+          title={L({ en: 'Items of', th: 'ไอเทมของ' })}
+        >
           <option value="minecraft">Minecraft</option>
           <option value="farmersdelight">Farmer's Delight</option>
           {mods.map((m) => (
@@ -208,10 +214,20 @@ export function VanillaPanel() {
             </option>
           ))}
         </select>
-        {mod && (
+        <button
+          className={`btn${adding ? ' primary' : ''}`}
+          onClick={() => setAdding((a) => !a)}
+          title={L({ en: 'Add mods (Modrinth or .jar files)', th: 'เพิ่มม็อด (Modrinth หรือไฟล์ .jar)' })}
+        >
+          + {L({ en: 'Mod', th: 'ม็อด' })}
+        </button>
+      </div>
+      {/* the selected mod: what it is for (smaller than its name) and remove */}
+      {mod && (
+        <div className="row mod-role-row">
+          <span className="faint">{L({ en: 'Use:', th: 'ใช้แบบ:' })}</span>
           <select
-            className="input"
-            style={{ width: 150 }}
+            className="input mod-role"
             value={mod.role ?? 'none'}
             onChange={(e) => setModRole(mod.id, e.target.value as NonNullable<LinkedMod['role']>)}
             title={L({ en: 'What the mod is for (test runs, dependency)', th: 'ใช้ม็อดนี้ทำอะไร (ตอนทดสอบ, dependency)' })}
@@ -222,20 +238,11 @@ export function VanillaPanel() {
               </option>
             ))}
           </select>
-        )}
-        {mod && (
           <button className="btn ghost" onClick={unlink} title={L({ en: 'Remove this mod from the project', th: 'เอาม็อดนี้ออกจากโปรเจกต์' })}>
             ✕
           </button>
-        )}
-        <button
-          className={`btn${adding ? ' primary' : ''}`}
-          onClick={() => setAdding((a) => !a)}
-          title={L({ en: 'Add mods (Modrinth or .jar files)', th: 'เพิ่มม็อด (Modrinth หรือไฟล์ .jar)' })}
-        >
-          + {L({ en: 'Mod', th: 'ม็อด' })}
-        </button>
-      </div>
+        </div>
+      )}
       {adding && (
         <ModGallery
           mc={mc}
