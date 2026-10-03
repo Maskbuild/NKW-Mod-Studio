@@ -153,7 +153,7 @@ ${ev.tickHandler()}`
   }
   const games = ir.gameCrops.map(
     (g) =>
-      `        GAME.put("${g.block}", new Rule(${INPUT[g.input]}, ${g.harvestTicks}, ${AFTER[g.after]}, ${g.back}, ${harvestUiIndex(ir, g.ui)}, ${g.give}, ${g.adventure}, false));`
+      `        GAME.put("${g.block}", new Rule(${INPUT[g.input]}, ${g.harvestTicks}, ${AFTER[g.after]}, ${g.back}, ${harvestUiIndex(ir, g.ui)}, ${g.give}, ${g.adventure}, ${g.sneak}, false));`
   )
   // the mod's own crops (only when it has any: NkwCropBlock is not generated otherwise)
   const ownCrops = ir.blocks.some((b) => b.crop)
@@ -162,13 +162,13 @@ ${ev.tickHandler()}`
   const regenRule = regen
     ? `        if (block instanceof NkwRegenBlock) {
             NkwRegenBlock r = (NkwRegenBlock) block;
-            if (r.input > 0) rule = new Rule(r.input, r.harvestTicks, 3, 0, r.ui, r.give, r.adventure, true);
+            if (r.input > 0) rule = new Rule(r.input, r.harvestTicks, 3, 0, r.ui, r.give, r.adventure, false, true);
         } else `
     : ''
   const ownRule = ownCrops
     ? `        ${regenRule.trimStart()}if (block instanceof NkwCropBlock) {
             NkwCropBlock crop = (NkwCropBlock) block;
-            if (crop.input > 0) rule = new Rule(crop.input, crop.harvestTicks, crop.regrow ? 2 : crop.replant ? 1 : 0, crop.replant ? 0 : crop.regrowAge, crop.ui, crop.give, crop.adventure, false);
+            if (crop.input > 0) rule = new Rule(crop.input, crop.harvestTicks, crop.regrow ? 2 : crop.replant ? 1 : 0, crop.replant ? 0 : crop.regrowAge, crop.ui, crop.give, crop.adventure, crop.sneak, false);
         } else `
     : regen
       ? regenRule
@@ -193,10 +193,12 @@ public final class NkwHarvest {
         public final boolean give;
         /** players in adventure mode may pick it */
         public final boolean adventure;
+        /** picked only while sneaking */
+        public final boolean sneak;
         /** picked with the left mouse button (Regenerating Blocks), else the right */
         public final boolean left;
 
-        Rule(int input, int ticks, int after, int back, int ui, boolean give, boolean adventure, boolean left) {
+        Rule(int input, int ticks, int after, int back, int ui, boolean give, boolean adventure, boolean sneak, boolean left) {
             this.input = input;
             this.ticks = Math.max(1, ticks);
             this.after = after;
@@ -204,6 +206,7 @@ public final class NkwHarvest {
             this.ui = ui;
             this.give = give;
             this.adventure = adventure;
+            this.sneak = sneak;
             this.left = left;
         }
     }
@@ -284,6 +287,11 @@ ${ownRule}if (!GAME.isEmpty()) {
         if (rule == null || rule.left) return false;
         // adventure mode (players who may not build): picking by hand only when the crop allows it
         if (!rule.adventure && !player.mayBuild()) return false;
+        // sneaking only: a normal right-click does what it does in the game, with a hint
+        if (rule.sneak && !player.isShiftKeyDown()) {
+            if (!level.isClientSide && hand == InteractionHand.MAIN_HAND) player.displayClientMessage(${tr(`message.${ns}.harvest_sneak`)}, true);
+            return false;
+        }
         if (hand != InteractionHand.MAIN_HAND) return true;
         long now = level.getGameTime();
         if (level.isClientSide) {
@@ -307,9 +315,10 @@ ${ownRule}if (!GAME.isEmpty()) {
         return new Session(pos, rule, now, player);
     }
 
-    /** 0 still going, 1 the crop is gone, 2 the button was let go, 3 the player moved. */
+    /** 0 still going, 1 the crop is gone, 2 the button was let go, 3 the player moved, 4 the player stood up (sneaking only). */
     private static int check(Session s, Player player, Level level, long now) {
         if (grown(level.getBlockState(s.pos)) != s.rule) return 1;
+        if (s.rule.sneak && !player.isShiftKeyDown()) return 4;
         if (s.rule.input == 2 && now - s.lastUse > (s.rule.left ? LEFT_GAP : 7)) return 2;
         if (s.rule.input == 3 && player.distanceToSqr(s.x, s.y, s.z) > 0.04) return 3;
         return 0;
@@ -391,6 +400,7 @@ ${ownRule}if (!GAME.isEmpty()) {
             if (stop != 0) {
                 SESSIONS.remove(player.getUUID());
                 if (stop == 2) player.displayClientMessage(s.rule.left ? ${tr(`message.${ns}.harvest_released_left`)} : ${tr(`message.${ns}.harvest_released`)}, true);
+                if (stop == 4) player.displayClientMessage(${tr(`message.${ns}.harvest_sneak`)}, true);
                 if (stop == 3) player.displayClientMessage(s.rule.left ? ${tr(`message.${ns}.harvest_moved_left`)} : ${tr(`message.${ns}.harvest_moved`)}, true);
                 continue;
             }

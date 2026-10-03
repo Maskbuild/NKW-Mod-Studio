@@ -162,6 +162,19 @@ const harvestAdventureProp = (showIf?: PropDef['showIf']): PropDef => ({
   showIf
 })
 
+/** Picking by hand only while sneaking (crouching): right-clicking otherwise does what it does in the game. */
+const harvestSneakProp = (showIf?: PropDef['showIf']): PropDef => ({
+  key: 'sneak',
+  label: t('Only while sneaking (Shift)', 'ต้องย่อตัว (Shift) ถึงจะเก็บได้'),
+  kind: 'bool',
+  default: false,
+  hint: t(
+    'On: crouch and right-click to pick it; standing up stops a running harvest. A normal right-click does what it does in the game.',
+    'เปิด: ต้องย่อตัวแล้วคลิกขวาถึงจะเก็บได้ ลุกขึ้นระหว่างเก็บจะหยุด · คลิกขวาปกติจะทำงานแบบเดิมของเกม'
+  ),
+  showIf
+})
+
 /** Tools a Break Rule can ask for. */
 export const BREAK_TOOLS = ['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'shears', 'any'] as const
 export const TOOL_LEVELS = ['wood', 'stone', 'iron', 'diamond', 'netherite'] as const
@@ -1056,7 +1069,8 @@ export const NODE_DEFS: NodeDef[] = [
           'มีผลเฉพาะตอนผู้เล่นทุบ: การเก็บด้วยมือยังได้ผลผลิตตามปกติ · ถ้าเลือก "ไม่ได้อะไรเลย" แต่ตั้งวิธีเก็บเป็น "ทุบ" จะไม่ได้อะไรเลย'
         )
       ),
-      harvestAdventureProp((d) => (d.input !== undefined && d.input !== 'break') || d.mode === 'regrow' || d.mode === 'auto')
+      harvestAdventureProp((d) => (d.input !== undefined && d.input !== 'break') || d.mode === 'regrow' || d.mode === 'auto'),
+      harvestSneakProp((d) => (d.input !== undefined && d.input !== 'break') || d.mode === 'regrow' || d.mode === 'auto')
     ]
   },
 
@@ -1144,7 +1158,8 @@ export const NODE_DEFS: NodeDef[] = [
           'มีผลเฉพาะตอนผู้เล่นทุบ: การเก็บด้วยมือยังได้ผลผลิตตามปกติ (โหมดสร้างสรรค์ไม่มีผล)'
         )
       ),
-      harvestAdventureProp()
+      harvestAdventureProp(),
+      harvestSneakProp()
     ]
   },
 

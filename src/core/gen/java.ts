@@ -1147,7 +1147,7 @@ function blocksClass(ctx: GenCtx): string {
     s += '.noCollission().randomTicks().instabreak().sound(SoundType.CROP)'
     const seed = ir.items.find((i) => i.places === b.id)
     const input = ['break', 'click', 'hold', 'stand'].indexOf(cr.input)
-    const args = `${s}, ${cr.soil === 'dirt'}, ${cr.growStep}, ${cr.mode === 'regrow'}, ${cr.regrowAge}, ${cr.regrowTicks}, ${input}, ${cr.harvestTicks}, ${harvestUiIndex(ir, cr.ui)}, ${cr.give}, ${cr.adventure}, ${cr.mode === 'auto'}`
+    const args = `${s}, ${cr.soil === 'dirt'}, ${cr.growStep}, ${cr.mode === 'regrow'}, ${cr.regrowAge}, ${cr.regrowTicks}, ${input}, ${cr.harvestTicks}, ${harvestUiIndex(ir, cr.ui)}, ${cr.give}, ${cr.adventure}, ${cr.sneak}, ${cr.mode === 'auto'}`
     if (!seed) return `new NkwCropBlock(${args})`
     j.use(MC.ItemLike)
     const ref = fab ? `ModItems.${C(seed.id)}` : `ModItems.${C(seed.id)}.get()`
@@ -2057,10 +2057,12 @@ public class NkwCropBlock extends CropBlock {
     public final boolean give;
     /** players in adventure mode may pick it by hand */
     public final boolean adventure;
+    /** picked by hand only while sneaking */
+    public final boolean sneak;
     /** a hand harvest replants it (one seed is used) */
     public final boolean replant;
 
-    public NkwCropBlock(BlockBehaviour.Properties properties, boolean dirt, int growStep, boolean regrow, int regrowAge, int regrowTicks, int input, int harvestTicks, int ui, boolean give, boolean adventure, boolean replant) {
+    public NkwCropBlock(BlockBehaviour.Properties properties, boolean dirt, int growStep, boolean regrow, int regrowAge, int regrowTicks, int input, int harvestTicks, int ui, boolean give, boolean adventure, boolean sneak, boolean replant) {
         super(properties);
         this.dirt = dirt;
         this.growStep = growStep;
@@ -2072,6 +2074,7 @@ public class NkwCropBlock extends CropBlock {
         this.ui = ui;
         this.give = give;
         this.adventure = adventure;
+        this.sneak = sneak;
         this.replant = replant;
     }
 

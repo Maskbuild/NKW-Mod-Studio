@@ -134,6 +134,8 @@ export interface CropIR {
   breakDrops: BreakDrops
   /** players in adventure mode may pick it by hand */
   adventure: boolean
+  /** picked by hand only while sneaking */
+  sneak: boolean
 }
 
 /** Drops when a player breaks a plant (hand harvests are not affected). */
@@ -174,6 +176,8 @@ export interface GameCropIR {
   breakDrops: BreakDrops
   /** players in adventure mode may pick it by hand */
   adventure: boolean
+  /** picked by hand only while sneaking */
+  sneak: boolean
 }
 
 /** Blocks (of any mod, or #tags) that need a tool type / mining level (Break Rule node). */

@@ -627,7 +627,7 @@ describe('generators', () => {
         expect(rules.includes('"#minecraft:logs"})')).toBe(p.mc !== '1.16.5')
         expect(rules).not.toMatch(/ADVENTURE\.put\(RULE_1/)
         expect(java).toContain('if (!rule.adventure && !player.mayBuild()) return false;')
-        expect(java).toMatch(/GAME\.put\("minecraft:wheat", new Rule\([^)]*, true, false\)\);/)
+        expect(java).toMatch(/GAME\.put\("minecraft:wheat", new Rule\([^)]*, true, false, false\)\);/)
         expect(rules).toContain('add("nkwtest:ruby_wheat", PLANT_YOUNG);')
         expect(rules).toContain('add("nkwtest:ruby_bush", PLANT_NONE);')
         expect(rules).toContain('add("minecraft:carrots", PLANT_NONE);')
@@ -673,7 +673,7 @@ describe('generators', () => {
         expect(en['message.nkwtest.regen_tool']).toBe('Needs a better tool')
         expect(text(files, '/NkwHarvestHud.java')).toContain('if (s != null && s.rule.left && s.rule.input == 2 && !mc.options.keyAttack.isDown()) s = null;')
         expect(java).toContain(p.stackId ? 'player.pick(player.blockInteractionRange(), 1.0F, false)' : 'player.pick(4.5, 1.0F, false)')
-        expect(java).toContain('if (r.input > 0) rule = new Rule(r.input, r.harvestTicks, 3, 0, r.ui, r.give, r.adventure, true);')
+        expect(java).toContain('if (r.input > 0) rule = new Rule(r.input, r.harvestTicks, 3, 0, r.ui, r.give, r.adventure, false, true);')
         expect(en['message.nkwtest.harvest_released_left']).toBe('Keep holding left-click to harvest')
         // placing a block / using an item swings the arm too: that is no left click
         expect(java).toContain('long started = level.getGameTime() - Math.max(0, player.swingTime) - right;')
@@ -904,7 +904,7 @@ describe('crops', () => {
     expect(JSON.parse(text(files, '/loot_table/blocks/ruby_bush.json')!).pools[1].entries[0].children).toHaveLength(1)
     const blocks = text(files, '/ModBlocks.java')!
     expect(blocks).toContain(
-      'new NkwCropBlock(BlockBehaviour.Properties.of().noCollission().randomTicks().instabreak().sound(SoundType.CROP), false, 0, false, 0, 1200, 2, 30, 1, false, true, false)'
+      'new NkwCropBlock(BlockBehaviour.Properties.of().noCollission().randomTicks().instabreak().sound(SoundType.CROP), false, 0, false, 0, 1200, 2, 30, 1, false, true, false, false)'
     )
     expect(blocks).toContain('return ModItems.RUBY_WHEAT_SEEDS;')
     expect(text(files, '/NkwCropBlock.java')).toContain('level.scheduleTick(pos, this, ticks);')
@@ -932,10 +932,10 @@ describe('crops', () => {
     expect(byBlock['minecraft:sweet_berry_bush']).toMatchObject({ input: 'click', after: 'regrow', back: 1 })
     expect(byBlock['minecraft:carrots']).toMatchObject({ after: 'replant', back: 0 })
     const harvest = text(files, '/NkwHarvest.java')!
-    expect(harvest).toContain('GAME.put("minecraft:wheat", new Rule(2, 20, 0, 1, 2, true, true, false));')
+    expect(harvest).toContain('GAME.put("minecraft:wheat", new Rule(2, 20, 0, 1, 2, true, true, false, false));')
     // one node, many crops (checked + typed ids), all with the same settings
     for (const id of ['farmersdelight:cabbages', 'farmersdelight:onions', 'farmersdelight:rice_panicles'])
-      expect(harvest).toContain(`GAME.put("${id}", new Rule(2, 30, 1, 0, 1, false, true, false));`)
+      expect(harvest).toContain(`GAME.put("${id}", new Rule(2, 30, 1, 0, 1, false, true, false, false));`)
     expect(gameCropIds({ crop: 'custom', block: 'a:b, c:d' })).toEqual(['a:b', 'c:d'])
     expect(gameCropIds({})).toEqual(['minecraft:wheat'])
     expect(harvest).toContain('BuiltInRegistries.BLOCK.getKey(block)')
@@ -1067,5 +1067,19 @@ describe('review fixes', () => {
     const { ir } = compile(p, { loader: 'fabric', mc: '1.21.1' })
     expect(ir.blocks.find((b) => b.id === 'node_amethyst_block')!.regen!.input).toBe('hold')
     expect(NODE_DEF_MAP.regenBlock.props.find((x) => x.key === 'input')!.options!.map((o) => o.value)).toEqual(['break', 'hold', 'stand'])
+  })
+  it('picks crops only while sneaking when asked', () => {
+    const p = structuredClone(project)
+    p.graph.nodes.find((n) => n.id === 'g_berries')!.data.sneak = true
+    const target = { loader: 'fabric', mc: '1.21.1' } as const
+    const { ir } = compile(p, target)
+    expect(ir.gameCrops.find((g) => g.block === 'minecraft:sweet_berry_bush')!.sneak).toBe(true)
+    const files = generate(ir, target, { ...FALLBACK_DEPS[target.mc], ...deps } as never, read)
+    const java = files.find((f) => f.path.endsWith('/NkwHarvest.java'))!.text!
+    expect(java).toMatch(/GAME\.put\("minecraft:sweet_berry_bush", new Rule\([^)]*, true, false\)\);/)
+    expect(java).toContain('if (rule.sneak && !player.isShiftKeyDown()) {')
+    expect(java).toContain('if (s.rule.sneak && !player.isShiftKeyDown()) return 4;')
+    const en = JSON.parse(files.find((f) => f.path.endsWith('lang/en_us.json'))!.text!)
+    expect(en['message.nkwtest.harvest_sneak']).toBe('Sneak (Shift) and right-click to harvest')
   })
 })

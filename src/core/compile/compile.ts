@@ -699,7 +699,8 @@ export function compile(project: Project, target?: Target): CompileResult {
             ui: harvestUi(n.id),
             give: bool(d, 'give', false),
             breakDrops: breakDropsOf(d),
-            adventure: bool(d, 'adventure', true)
+            adventure: bool(d, 'adventure', true),
+            sneak: bool(d, 'sneak', false)
           }
         }
         if (b.crop!.breakDrops === 'none' && b.crop!.input === 'break')
@@ -923,7 +924,8 @@ export function compile(project: Project, target?: Target): CompileResult {
             ui: harvestUi(n.id),
             give: bool(d, 'give', false),
             breakDrops: breakDropsOf(d),
-            adventure: bool(d, 'adventure', true)
+            adventure: bool(d, 'adventure', true),
+            sneak: bool(d, 'sneak', false)
           })
         }
         break

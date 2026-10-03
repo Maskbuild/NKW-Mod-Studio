@@ -366,6 +366,7 @@ Category **Farming**. A plant that grows in up to 8 stages.
   - _Replants itself_ (like **Harvest a game crop**): picking it gives the harvest and the seeds back minus the one that goes back into the ground, and the crop grows again from the start. Needs a right-click harvest.
   - _Stays and grows back_: picking it gives the harvest, then it goes back to the stage you choose and grows again after the **cooldown**.
 - **How to harvest**: break it, right-click, **hold right-click** for the harvest time, or **right-click once and stand still** for the harvest time (moving cancels and you must click again). While harvesting, a timer shows on screen; wire a **Timer window** node into **Timer window** to choose how it looks (without one: text above the hotbar).
+- **Only while sneaking (Shift)**: crouch and right-click to pick it by hand (standing up stops a running harvest); a normal right-click does what it does in the game.
 - **Harvest count min / max**.
 - **When a player breaks it**: _drops like normal_, _drops only when fully grown_ (breaking a young plant gives nothing, not even the seed), or _gives nothing_ (only picking by hand gives the harvest — pair it with a right-click harvest). Picking by hand is never affected, and neither is creative mode.
 - **Can be picked in adventure mode** (shown for right-click harvests): off = players in adventure mode cannot pick it by hand.
@@ -376,6 +377,7 @@ Gives a crop of Minecraft, Farmer's Delight or another mod the same hand harvest
 
 - **Crop**: wheat, carrots, potatoes, beetroots, nether wart, sweet berry bush, cocoa, or Farmer's Delight cabbages, onions, tomatoes and rice. **Another block** takes any block ID with an `age` property (a crop of another mod).
 - **How to harvest**: right-click, hold right-click, or right-click once and stand still, with the **harvest time**.
+- **Only while sneaking (Shift)**: like the Crop node.
 - **After harvest**:
   - _Like the game / the mod_: berries and tomatoes are picked and stay; everything else breaks like when you break it (the normal drops).
   - _Replants itself_: the normal drops minus one seed, and the crop starts again from the beginning.

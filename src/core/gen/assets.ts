@@ -258,6 +258,7 @@ export function genAssets(ctx: GenCtx): void {
     put(`message.${ns}.harvest_done`, 'Harvested!', 'เก็บแล้ว!')
     put(`message.${ns}.harvest_moved`, 'You moved: right-click again to harvest', 'ขยับแล้ว: คลิกขวาใหม่เพื่อเก็บ')
     put(`message.${ns}.harvest_released`, 'Keep holding right-click to harvest', 'กดคลิกขวาค้างไว้เพื่อเก็บ')
+    put(`message.${ns}.harvest_sneak`, 'Sneak (Shift) and right-click to harvest', 'ย่อตัว (Shift) แล้วคลิกขวาเพื่อเก็บ')
     put(`message.${ns}.harvest_released_left`, 'Keep holding left-click to harvest', 'กดคลิกซ้ายค้างไว้เพื่อเก็บ')
     put(`message.${ns}.harvest_moved_left`, 'You moved: left-click again to harvest', 'ขยับแล้ว: คลิกซ้ายใหม่เพื่อเก็บ')
   }
