@@ -65,6 +65,7 @@ export function genHarvest(ctx: GenCtx, out: (cls: string, text: string) => void
   const { pkg, loader, p, ns, ir } = ctx
   const fab = fabricLike(loader)
   const j = new JavaFile(pkg, 'NkwHarvest').use(
+    'com.google.gson.JsonObject',
     MC.Level,
     MC.ServerLevel,
     MC.BlockPos,
@@ -162,12 +163,14 @@ ${ev.tickHandler()}`
   const regenRule = regen
     ? `        if (block instanceof NkwRegenBlock) {
             NkwRegenBlock r = (NkwRegenBlock) block;
+            own = true;
             if (r.input > 0) rule = new Rule(r.input, r.harvestTicks, 3, 0, r.ui, r.give, r.adventure, false, true);
         } else `
     : ''
   const ownRule = ownCrops
     ? `        ${regenRule.trimStart()}if (block instanceof NkwCropBlock) {
             NkwCropBlock crop = (NkwCropBlock) block;
+            own = true;
             if (crop.input > 0) rule = new Rule(crop.input, crop.harvestTicks, crop.regrow ? 2 : crop.replant ? 1 : 0, crop.replant ? 0 : crop.regrowAge, crop.ui, crop.give, crop.adventure, crop.sneak, false);
         } else `
     : regen
@@ -208,6 +211,11 @@ public final class NkwHarvest {
             this.adventure = adventure;
             this.sneak = sneak;
             this.left = left;
+        }
+
+        /** The same rule with another harvest time (config file). */
+        Rule withTicks(int t) {
+            return t == ticks ? this : new Rule(input, t, after, back, ui, give, adventure, sneak, left);
         }
     }
 
@@ -252,12 +260,38 @@ ${hooks}
     /** How a block is picked by hand, or null. */
     public static Rule ruleOf(Block block) {
         if (RULES.containsKey(block)) return RULES.get(block);
+        NkwConfig.check();
+        String id = String.valueOf(${blockKey});
         Rule rule = null;
+        boolean own = false;
 ${ownRule}if (!GAME.isEmpty()) {
-            rule = GAME.get(String.valueOf(${blockKey}));
+            rule = GAME.get(id);
         }
+        // the config file: the harvest time, and crops of the game / other mods (all settings) added there
+        JsonObject o = NkwConfig.HARVEST.get(id);
+        if (o != null) rule = own ? (rule == null ? null : rule.withTicks(NkwConfig.ticks(o, "seconds", rule.ticks))) : fromConfig(o, rule);
         RULES.put(block, rule);
         return rule;
+    }
+
+    private static final String[] INPUTS = {"break", "click", "hold", "stand"};
+    private static final String[] AFTERS = {"normal", "replant", "regrow"};
+
+    /** A crop of the game / another mod as the config file sets it (on top of its node's settings, if any). */
+    private static Rule fromConfig(JsonObject o, Rule base) {
+        int input = NkwConfig.choice(o, "input", INPUTS, base != null ? base.input : 2);
+        if (input <= 0) return null;
+        int ticks = input == 1 ? 0 : NkwConfig.ticks(o, "seconds", base != null && base.ticks > 0 ? base.ticks : 40);
+        return new Rule(
+            input,
+            ticks,
+            NkwConfig.choice(o, "after", AFTERS, base != null ? base.after : 0),
+            NkwConfig.integer(o, "regrowStage", base != null ? base.back : 1, 0, 15),
+            base != null ? base.ui : 0,
+            NkwConfig.bool(o, "give", base != null && base.give),
+            NkwConfig.bool(o, "adventure", base == null || base.adventure),
+            NkwConfig.bool(o, "sneak", base != null && base.sneak),
+            false);
     }
 
     /** The block's growth stage property ("age"), or null. */

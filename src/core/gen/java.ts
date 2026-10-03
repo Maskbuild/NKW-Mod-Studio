@@ -5,6 +5,7 @@ import { geckoArmorSource } from './gecko'
 import { genHarvest, genHarvestHud, harvestUiIndex, usesHarvest, usesHud } from './harvest'
 import { genBreakRules, usesBreakRules } from './breakRules'
 import { genRegen, regenCtor, usesRegen } from './regen'
+import { genConfig, usesConfig } from './config'
 import { toMcp1165 } from './mcp'
 import { parseJavaModel, rotateBoxes, shapeBoxes, type Box } from './model'
 import { mcAtLeast, type VersionProfile } from './profiles'
@@ -461,6 +462,7 @@ ${wornEffectsMethod()}
   if (usesHarvest(ir)) genHarvest(ctx, out)
   if (usesHud(ir)) genHarvestHud(ctx, out)
   if (usesBreakRules(ir)) genBreakRules(ctx, out)
+  if (usesConfig(ir)) genConfig(ctx, out)
 
   if (fab && !p.jukeboxSongs && ir.items.some((i) => i.disc)) {
     const j = new JavaFile(pkg, 'NkwDiscItem').use(MC.RecordItem, MC.SoundEvent, MC.Item)

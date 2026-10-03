@@ -425,6 +425,16 @@ Category **Blocks**. Blocks of Minecraft (or another mod) that are harvested lik
 - **Harvest goes into the inventory**, **Can be picked in adventure mode** (right-click ways).
 - **Only operators (OP)** can place these blocks; anyone else gets a message. They are in their own **creative tab** (**Creative tab title** EN/TH), after your tabs; every Regenerating Blocks node with the same **ID prefix** adds its blocks to that one tab (use another prefix for a separate tab). In creative mode an OP removes them by breaking them as usual.
 
+### Config file (for server owners)
+
+A mod with crops picked by hand, Regenerating Blocks or Break Rules gets a config file, `config/<modid>-harvest.json`. It is written with the mod's own settings the first time the game starts (delete it to get them back); changes apply after a restart.
+
+- **harvest**: block id → `seconds` (harvest time). Crops of the game or of other mods also take `input` (`click`, `hold`, `stand`, `break` = off), `after` (`normal`, `replant`, `regrow`), `regrowStage`, `give`, `adventure`, `sneak` — add a new crop by adding its id (it needs a growth stage, `age`). Your own crops and Regenerating Blocks only take `seconds`.
+- **regrowSeconds**: Regenerating Block id → seconds before it grows back.
+- **breakRules**: block id or `#tag` → `tool` (`pickaxe`, `axe`, `shovel`, `hoe`, `sword`, `shears`, `any`), `level` (`wood` … `netherite`), `cantBreak`. Needs at least one Break Rule node in the mod.
+- Only blocks of the game or of other mods can be used; ids that are not in the game are ignored and reported in the log.
+- Server and players should use the same file, so the timer on screen matches.
+
 ### Shared block settings
 
 - Has its own block item (turn off for crops placed by seeds).

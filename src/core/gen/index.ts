@@ -4,6 +4,7 @@ import { genAssets } from './assets'
 import { genBuild } from './build'
 import { genData } from './data'
 import { genJava } from './java'
+import { configResource, usesConfig } from './config'
 import { farmersDelightFor, getProfile } from './profiles'
 import type { AssetReader, GenCtx, GenFile, ResolvedDeps } from './types'
 
@@ -60,6 +61,7 @@ export function generate(ir: ModIR, target: Target, deps: ResolvedDeps, read: As
   genJava(ctx)
   genAssets(ctx)
   genData(ctx)
+  if (usesConfig(ir)) ctx.files.push(configResource(ir, target.mc))
   return ctx.files
 }
 

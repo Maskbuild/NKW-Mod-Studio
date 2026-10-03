@@ -1082,4 +1082,50 @@ describe('review fixes', () => {
     const en = JSON.parse(files.find((f) => f.path.endsWith('lang/en_us.json'))!.text!)
     expect(en['message.nkwtest.harvest_sneak']).toBe('Sneak (Shift) and right-click to harvest')
   })
+  it('writes a config file for harvest times, grow-back times and blocks of the game / other mods', () => {
+    for (const target of [
+      { loader: 'fabric', mc: '1.21.1' },
+      { loader: 'forge', mc: '1.16.5' },
+      { loader: 'neoforge', mc: '1.21.4' }
+    ] as const) {
+      const { ir } = compile(project, target)
+      const files = generate(ir, target, { ...FALLBACK_DEPS[target.mc], ...deps } as never, read)
+      const text = (end: string) => files.find((f) => f.path.endsWith(end))?.text ?? ''
+      const cfg = JSON.parse(text('src/main/resources/nkw/nkwtest-harvest.json'))
+      expect(cfg.harvest['minecraft:wheat']).toMatchObject({ input: 'hold', seconds: 1, after: 'normal', give: true, sneak: false })
+      expect(cfg.harvest['nkwtest:ruby_wheat']).toEqual({ seconds: 1.5 })
+      expect(cfg.harvest['nkwtest:node_amethyst_block']).toEqual({ seconds: 3 })
+      expect(cfg.regrowSeconds['nkwtest:regen_iron_ore']).toBe(30)
+      expect(cfg.breakRules['minecraft:oak_planks']).toEqual({ tool: 'axe', level: 'diamond', cantBreak: true })
+      // 1.16.5 has no block tag keys
+      expect('#minecraft:logs' in cfg.breakRules).toBe(target.mc !== '1.16.5')
+      const config = text('/NkwConfig.java')
+      expect(config).toContain(
+        target.loader === 'fabric'
+          ? 'FabricLoader.getInstance().getConfigDir().resolve("nkwtest-harvest.json")'
+          : 'FMLPaths.CONFIGDIR.get().resolve("nkwtest-harvest.json")'
+      )
+      expect(config).toContain(
+        target.loader === 'neoforge'
+          ? 'import net.neoforged.fml.loading.FMLPaths;'
+          : target.loader === 'forge'
+            ? 'import net.minecraftforge.fml.loading.FMLPaths;'
+            : 'FabricLoader'
+      )
+      expect(config).toContain('getResourceAsStream("/nkw/nkwtest-harvest.json")')
+      // only blocks of the game or of other mods: unknown ids are reported
+      expect(config).toMatch(/known = (BuiltInRegistries|Registry)\.BLOCK\.containsKey\(/)
+      const harvest = text('/NkwHarvest.java')
+      expect(harvest).toContain('JsonObject o = NkwConfig.HARVEST.get(id);')
+      expect(harvest).toContain('rule = own ? (rule == null ? null : rule.withTicks(NkwConfig.ticks(o, "seconds", rule.ticks))) : fromConfig(o, rule);')
+      expect(text('/NkwDepletedBlock.java')).toContain('int ticks = NkwConfig.regrowTicks(id, this.ticks);')
+      expect(text('/ModBlocks.java')).toContain('"nkwtest:regen_iron_ore", () -> ModBlocks.REGEN_IRON_ORE')
+      const rules = text('/NkwBreakRules.java')
+      expect(rules).toContain('for (Map.Entry<String, JsonObject> e : NkwConfig.BREAK.entrySet()) {')
+      expect(rules).toContain('if (same && cancel == old.cancel) continue;')
+      // the names the config uses are declared before the static block that reads them
+      expect(rules.indexOf('TOOL_NAMES = {')).toBeLessThan(rules.indexOf('static {'))
+      expect(rules.includes('TAG_NAMES.put("#minecraft:logs", RULE_0);')).toBe(target.mc !== '1.16.5')
+    }
+  })
 })

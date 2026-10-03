@@ -12,7 +12,7 @@ const INPUT = { break: 0, hold: 2, stand: 3 } as const
 export function regenCtor(ctx: GenCtx, b: BlockIR, props: string): string {
   const fab = fabricLike(ctx.loader)
   const ref = (id: string) => (fab ? `ModBlocks.${id.toUpperCase()}` : `ModBlocks.${id.toUpperCase()}.get()`)
-  if (b.depleted) return `new NkwDepletedBlock(${props}, () -> ${ref(b.depleted.restore)}, ${b.depleted.ticks})`
+  if (b.depleted) return `new NkwDepletedBlock(${props}, "${ctx.ns}:${b.depleted.restore}", () -> ${ref(b.depleted.restore)}, ${b.depleted.ticks})`
   const r = b.regen!
   const ui = harvestUiIndex(ctx.ir, r.ui)
   const drop = r.drop ? `"${r.drop.item}", ${r.drop.min}, ${r.drop.max}` : 'null, 0, 0'
@@ -207,11 +207,14 @@ public class NkwRegenBlock extends Block {
       j.render(`
 /** A harvested Regenerating Blocks block: cannot be broken, turns back after a while. */
 public class NkwDepletedBlock extends Block {
+    /** id of the block it grows back into (its grow-back time can be changed in the config file) */
+    private final String id;
     private final Supplier<Block> restore;
     private final int ticks;
 
-    public NkwDepletedBlock(BlockBehaviour.Properties properties, Supplier<Block> restore, int ticks) {
+    public NkwDepletedBlock(BlockBehaviour.Properties properties, String id, Supplier<Block> restore, int ticks) {
         super(properties);
+        this.id = id;
         this.restore = restore;
         this.ticks = ticks;
     }
@@ -219,7 +222,10 @@ public class NkwDepletedBlock extends Block {
     @Override
     public void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean moved) {
         super.onPlace(state, level, pos, oldState, moved);
-        if (!level.isClientSide) ${schedule};
+        if (!level.isClientSide) {
+            int ticks = NkwConfig.regrowTicks(id, this.ticks);
+            ${schedule};
+        }
     }
 
     @Override
