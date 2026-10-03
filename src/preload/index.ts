@@ -23,6 +23,8 @@ const INVOKE = new Set([
   'audio:convert',
   'vanilla:get',
   'vanilla:download',
+  'mods:search',
+  'mods:importJars',
   'toolchain:status',
   'build:start',
   'assets:writeModel',

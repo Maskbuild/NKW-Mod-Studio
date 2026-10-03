@@ -122,9 +122,15 @@ export const ProjectSchema = z.object({
   overrides: z
     .record(z.string().regex(OVERRIDE_KEY_RE), z.string().max(1_000_000))
     .refine((o) => Object.keys(o).length <= 300, 'Too many edited files')
+    .optional(),
+  /** other mods whose items, blocks and crops the editor lists (Modrinth slug, or file_<name> for a .jar on disk) */
+  mods: z
+    .array(z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/), title: z.string().max(100), source: z.enum(['modrinth', 'file']) }))
+    .max(200)
     .optional()
 })
 export type Project = z.infer<typeof ProjectSchema>
+export type LinkedMod = NonNullable<Project['mods']>[number]
 
 /** Key of an edited generated file: the target plus the file's path in the generated project. */
 export const overrideKey = (t: Target, path: string) => `${t.loader}-${t.mc}:${path}`

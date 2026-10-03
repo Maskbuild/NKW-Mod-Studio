@@ -25,7 +25,20 @@ import {
   writeTexture
 } from './services/assets'
 import { CONVERTIBLE, type ConvertOptions } from './services/audio'
-import { ensureFarmersDelight, ensureVanilla, loadFarmersDelight, loadVanilla, vanillaIconPath, vanillaSkinPath } from './services/vanilla'
+import {
+  ensureFarmersDelight,
+  ensureModrinthMod,
+  ensureVanilla,
+  importModJar,
+  loadFarmersDelight,
+  loadMod,
+  loadVanilla,
+  searchModrinth,
+  vanillaIconPath,
+  vanillaSkinPath
+} from './services/vanilla'
+import { LINKED_MOD_RE } from '@core/vanilla'
+import { readdir } from 'node:fs/promises'
 import { assetPath, buildDir, findJar, previewFiles, startBuild, type RunningBuild } from './services/builder'
 import { createProjectDir, readProject, saveProject, type SettingsStore } from './services/store'
 import { TEMPLATE_IDS, applyTemplate } from './templates'
@@ -60,8 +73,10 @@ export function registerAssetProtocol() {
       let file: string | null
       if (url.hostname === 'vanilla') {
         const skin = /^(\d+\.\d+(?:\.\d+)?)\/skins\/(steve|alex)\.png$/.exec(rel)
-        const m = /^(\d+\.\d+(?:\.\d+)?)\/(?:(farmersdelight)\/)?([a-z0-9_]{1,64})\.png$/.exec(rel)
-        file = skin ? vanillaSkinPath(toolsDir(), skin[1], skin[2]) : m ? vanillaIconPath(toolsDir(), m[1], m[3], m[2] ?? 'minecraft') : null
+        // <mc>/<item>.png, <mc>/farmersdelight/<item>.png, <mc>/mod/<mod id>/<item>.png
+        const m = /^(\d+\.\d+(?:\.\d+)?)\/(?:(farmersdelight)\/|mod\/([a-z0-9][a-z0-9_-]{0,63})\/)?([a-z0-9_]{1,64})\.png$/.exec(rel)
+        const source = m?.[2] ?? (m?.[3] ? `mod:${m[3]}` : 'minecraft')
+        file = skin ? vanillaSkinPath(toolsDir(), skin[1], skin[2]) : m ? vanillaIconPath(toolsDir(), m[1], m[4], source) : null
         if (!file) return new Response('Not found', { status: 404 })
       } else file = assetPath(requireProject(), rel)
       const res = await net.fetch(pathToFileURL(file).toString())
@@ -257,11 +272,50 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
   })
 
   // ───────── vanilla items ─────────
-  const VSRC = z.object({ mc: z.string().regex(/^\d+\.\d+(\.\d+)?$/), source: z.enum(['minecraft', 'farmersdelight']).default('minecraft') })
-  handle('vanilla:get', VSRC, ({ mc, source }) => (source === 'farmersdelight' ? loadFarmersDelight(toolsDir(), mc) : loadVanilla(toolsDir(), mc)))
-  handle('vanilla:download', VSRC, ({ mc, source }) => {
+  const MC = z.string().regex(/^\d+\.\d+(\.\d+)?$/)
+  // minecraft, farmersdelight, or mod:<id> (a mod linked from Modrinth or a .jar file)
+  const SOURCE = z.string().regex(/^(minecraft|farmersdelight|mod:[a-z0-9][a-z0-9_-]{0,63})$/)
+  const VSRC = z.object({ mc: MC, source: SOURCE.default('minecraft'), title: z.string().max(100).optional() })
+  handle('vanilla:get', VSRC, ({ mc, source }) =>
+    source === 'farmersdelight'
+      ? loadFarmersDelight(toolsDir(), mc)
+      : source.startsWith('mod:')
+        ? loadMod(toolsDir(), mc, source.slice(4))
+        : loadVanilla(toolsDir(), mc)
+  )
+  handle('vanilla:download', VSRC, ({ mc, source, title }) => {
     const progress = (msg: string, done?: number, total?: number) => send('vanilla:progress', { mc, source, msg, done, total })
-    return source === 'farmersdelight' ? ensureFarmersDelight(toolsDir(), mc, progress) : ensureVanilla(toolsDir(), mc, progress)
+    if (source === 'farmersdelight') return ensureFarmersDelight(toolsDir(), mc, progress)
+    if (source.startsWith('mod:')) {
+      const id = source.slice(4)
+      // a .jar picked on disk cannot be downloaded again: pick it again for this version
+      return id.startsWith('file_') ? null : ensureModrinthMod(toolsDir(), mc, id, title ?? id, progress)
+    }
+    return ensureVanilla(toolsDir(), mc, progress)
+  })
+
+  // ───────── mods: search Modrinth, or read .jar files picked on disk ─────────
+  handle('mods:search', z.object({ query: z.string().max(100), mc: MC }), ({ query, mc }) => searchModrinth(query, mc))
+  handle('mods:importJars', z.object({ mc: MC, folder: z.boolean() }), async ({ mc, folder }) => {
+    const th = settings.get().language === 'th'
+    const r = await dialog.showOpenDialog(win, {
+      title: folder ? (th ? 'เลือกโฟลเดอร์ mods' : 'Choose a mods folder') : th ? 'เลือกไฟล์ม็อด (.jar)' : 'Choose mod files (.jar)',
+      properties: folder ? ['openDirectory'] : ['openFile', 'multiSelections'],
+      filters: folder ? undefined : [{ name: 'Minecraft mod', extensions: ['jar'] }]
+    })
+    if (r.canceled || !r.filePaths.length) return { mods: [], errors: [] }
+    const jars = folder ? (await readdir(r.filePaths[0])).filter((f) => f.toLowerCase().endsWith('.jar')).map((f) => join(r.filePaths[0], f)) : r.filePaths
+    const mods: { id: string; title: string }[] = []
+    const errors: string[] = []
+    for (const jar of jars.slice(0, 200)) {
+      try {
+        const { id, data } = await importModJar(toolsDir(), mc, jar, (msg, done, total) => send('vanilla:progress', { mc, source: 'import', msg, done, total }))
+        if (LINKED_MOD_RE.test(id)) mods.push({ id, title: data.title ?? id })
+      } catch (e) {
+        errors.push(`${basename(jar)}: ${(e as Error).message}`)
+      }
+    }
+    return { mods, errors }
   })
 
   // ───────── build / run ─────────

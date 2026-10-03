@@ -1,8 +1,18 @@
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { basename, extname, join } from 'node:path'
 import yauzl from 'yauzl'
-import { VANILLA_DATA_VERSION, groupOf, type VanillaData, type VanillaItem, type VanillaTag } from '@core/vanilla'
+import {
+  LINKED_MOD_RE,
+  VANILLA_DATA_VERSION,
+  groupOf,
+  isGrowingBlockstate,
+  mainNamespace,
+  type VanillaData,
+  type VanillaItem,
+  type VanillaTag
+} from '@core/vanilla'
+import { toId } from '@core/project'
 import { download, getJson } from './net'
 import type { Progress } from './toolchain'
 import { decodePng, defaultTint, renderModel, resolveModel, type Img, type JsonModel } from './iso'
@@ -127,7 +137,7 @@ async function extractItems(
     jar,
     (n) =>
       n === `assets/${ns}/lang/en_us.json` ||
-      new RegExp(`^assets/${ns}/(models/(item|block)|items)/[a-z0-9_/]+\\.json$`).test(n) ||
+      new RegExp(`^assets/${ns}/(models/(item|block)|items|blockstates)/[a-z0-9_/]+\\.json$`).test(n) ||
       /^assets\/[a-z0-9_.-]+\/textures\/(item|block)\/[a-z0-9_/]+\.png$/.test(n) ||
       /^data\/[a-z0-9_.-]+\/tags\/items?\/[a-z0-9_/]+\.json$/.test(n)
   )
@@ -240,7 +250,14 @@ async function extractItems(
       if (j) models[`${m[1]}:${m[2]}`] = j
     }
   }
-  return { data: { v: VANILLA_DATA_VERSION, mc, ns, items, tags }, models }
+  // growing blocks (crops): a blockstate keyed by "age"
+  const crops: string[] = []
+  for (const [name, buf] of files) {
+    const m = /^assets\/([a-z0-9_.-]+)\/blockstates\/([a-z0-9_]+)\.json$/.exec(name)
+    if (m && m[1] === ns && isGrowingBlockstate(json<unknown>(buf))) crops.push(m[2])
+  }
+  crops.sort()
+  return { data: { v: VANILLA_DATA_VERSION, mc, ns, items, tags, crops }, models }
 }
 
 interface ModrinthVersion {
@@ -284,6 +301,102 @@ export async function ensureFarmersDelight(toolsDir: string, mc: string, progres
   return data
 }
 
+// ───────── mods linked from Modrinth or picked as .jar files ─────────
+
+const modDir = (toolsDir: string, mc: string, id: string): string => {
+  if (!LINKED_MOD_RE.test(id)) throw new Error('Bad mod id')
+  return join(vanillaDir(toolsDir, mc), 'mods', id)
+}
+
+export async function loadMod(toolsDir: string, mc: string, id: string): Promise<VanillaData | null> {
+  return readData(join(modDir(toolsDir, mc, id), 'data.json'))
+}
+
+/** Vanilla block models (for mods whose models inherit from them), when the game's data was extracted. */
+async function vanillaModels(toolsDir: string, mc: string): Promise<Record<string, JsonModel>> {
+  try {
+    return JSON.parse(await readFile(join(vanillaDir(toolsDir, mc), 'models.json'), 'utf8')) as Record<string, JsonModel>
+  } catch {
+    return {} // vanilla not extracted yet: the mod's blocks fall back to a flat face
+  }
+}
+
+/** Items, blocks, crops and tags of a mod jar, saved under the mod's id. */
+async function extractMod(toolsDir: string, mc: string, id: string, jar: string, title: string, progress: Progress): Promise<VanillaData> {
+  const names = await readZip(jar, (n) => /^assets\/[a-z0-9_.-]+\/(models\/(item|block)|items|lang)\//.test(n) && n.endsWith('.json'))
+  const ns = mainNamespace([...names.keys()])
+  if (!ns) throw new Error('No items or blocks found in this mod')
+  const dir = modDir(toolsDir, mc, id)
+  await mkdir(dir, { recursive: true })
+  const { data } = await extractItems(jar, ns, mc, join(dir, 'icons'), {}, progress, await vanillaModels(toolsDir, mc))
+  const out: VanillaData = { ...data, title }
+  await writeFile(join(dir, 'data.json'), JSON.stringify(out))
+  return out
+}
+
+export interface ModrinthHit {
+  slug: string
+  title: string
+  description: string
+  downloads: number
+}
+
+/** Mods on Modrinth for a Minecraft version (any loader: only the items are read). */
+export async function searchModrinth(query: string, mc: string): Promise<ModrinthHit[]> {
+  const facets = JSON.stringify([['project_type:mod'], [`versions:${mc}`]])
+  const url = `https://api.modrinth.com/v2/search?limit=20&query=${encodeURIComponent(query)}&facets=${encodeURIComponent(facets)}`
+  const res = await getJson<{ hits?: ModrinthHit[] }>(url)
+  return (res.hits ?? [])
+    .filter((h) => typeof h.slug === 'string' && LINKED_MOD_RE.test(h.slug))
+    .map((h) => ({
+      slug: h.slug,
+      title: String(h.title).slice(0, 100),
+      description: String(h.description ?? '').slice(0, 300),
+      downloads: Number(h.downloads) || 0
+    }))
+}
+
+/** The newest file of a Modrinth project for a Minecraft version (release first, the first loader that has one). */
+async function modrinthFile(slug: string, mc: string, loaders: readonly string[]): Promise<ModrinthVersion['files'][number] | undefined> {
+  for (const loader of loaders) {
+    const url = `https://api.modrinth.com/v2/project/${encodeURIComponent(slug)}/version?game_versions=${encodeURIComponent(JSON.stringify([mc]))}&loaders=${encodeURIComponent(JSON.stringify([loader]))}`
+    const list = await getJson<ModrinthVersion[]>(url)
+    const v = list.find((x) => x.version_type === 'release') ?? list[0]
+    const file = v?.files.find((x) => x.primary) ?? v?.files[0]
+    if (file) return file
+  }
+  return undefined
+}
+
+/** Downloads a Modrinth mod for a Minecraft version (checksum-checked) and reads its items; null when it has no build for it. */
+export async function ensureModrinthMod(toolsDir: string, mc: string, slug: string, title: string, progress: Progress): Promise<VanillaData | null> {
+  const cached = await loadMod(toolsDir, mc, slug)
+  if (cached) return cached
+  progress(`Looking up ${title} for ${mc}`)
+  const file = await modrinthFile(slug, mc, ['fabric', 'neoforge', 'forge', 'quilt'])
+  if (!file) return null
+  const dir = modDir(toolsDir, mc, slug)
+  await mkdir(dir, { recursive: true })
+  const jar = join(dir, 'mod.jar')
+  await download(file.url, jar, file.hashes.sha1, (d, t) => progress(`Downloading ${title}`, d, t), 'sha1')
+  try {
+    return await extractMod(toolsDir, mc, slug, jar, title, progress)
+  } finally {
+    await rm(jar, { force: true })
+  }
+}
+
+/** Reads the items of a .jar picked on disk; its id is file_<name without the version>. */
+export async function importModJar(toolsDir: string, mc: string, jar: string, progress: Progress): Promise<{ id: string; data: VanillaData }> {
+  const info = await stat(jar)
+  if (!info.isFile() || extname(jar).toLowerCase() !== '.jar') throw new Error('Not a .jar file')
+  if (info.size > 512 * 1024 * 1024) throw new Error('The file is too large')
+  const name = basename(jar, extname(jar))
+  const id = `file_${toId(name.replace(/[-+_ ]?(mc|fabric|forge|neoforge|quilt)?[-+_ ]?\d+(\.\d+)+.*$/i, '')).slice(0, 50)}`
+  progress(`Reading ${name}`)
+  return { id, data: await extractMod(toolsDir, mc, id, jar, name, progress) }
+}
+
 export function loadFarmersDelight(toolsDir: string, mc: string): Promise<VanillaData | null> {
   return readData(join(vanillaDir(toolsDir, mc), 'farmersdelight', 'data.json'))
 }
@@ -310,9 +423,17 @@ export function vanillaSkinPath(toolsDir: string, mc: string, name: string): str
   return existsSync(p) ? p : null
 }
 
-export function vanillaIconPath(toolsDir: string, mc: string, id: string, ns = 'minecraft'): string | null {
+/** Icon of an item: of the game, Farmer's Delight, or a linked mod (source "mod:<id>"). */
+export function vanillaIconPath(toolsDir: string, mc: string, id: string, source = 'minecraft'): string | null {
   if (!/^[a-z0-9_]{1,64}$/.test(id)) return null
   const base = vanillaDir(toolsDir, mc)
-  const p = ns === 'farmersdelight' ? join(base, 'farmersdelight', 'icons', `${id}.png`) : join(base, 'icons', `${id}.png`)
+  const mod = source.startsWith('mod:') ? source.slice(4) : null
+  if (mod !== null && !LINKED_MOD_RE.test(mod)) return null
+  const p =
+    mod !== null
+      ? join(base, 'mods', mod, 'icons', `${id}.png`)
+      : source === 'farmersdelight'
+        ? join(base, 'farmersdelight', 'icons', `${id}.png`)
+        : join(base, 'icons', `${id}.png`)
   return existsSync(p) ? p : null
 }

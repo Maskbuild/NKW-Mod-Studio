@@ -2,29 +2,29 @@ import { useMemo } from 'react'
 import type { VanillaData, VanillaItem } from '@core/vanilla'
 import { L } from '../i18n'
 import { vanillaIconUrl } from '../api'
-import { prettyId as pretty, useActiveMc, useVanilla } from './VanillaPanel'
+import { prettyId as pretty, useActiveMc, useItemSources } from './VanillaPanel'
 
 export interface TagEntry {
   /** namespaced item id */
   id: string
-  /** the item in the loaded game data (null: another mod's item, or not loaded) */
+  /** the item in the loaded data (null: a mod that is not linked, or not loaded) */
   item: VanillaItem | null
+  /** icon source (minecraft, farmersdelight, mod:<id>) */
   ns: string
 }
 
-/** Every item of an item tag (nested #tags followed) from the game and Farmer's Delight data of the active version. */
+/** Every item of an item tag (nested #tags followed) from the game, Farmer's Delight and linked mods of the active version. */
 function useTagItems(tagId: string): { items: TagEntry[]; found: boolean; mc: string; loaded: boolean } {
   const mc = useActiveMc()
-  const data = useVanilla(mc)
-  const fd = useVanilla(mc, 'farmersdelight')
+  const sources = useItemSources(mc)
   const id = tagId.replace(/^#/, '')
-  const items = useMemo(() => resolveTag(id, [data, fd]), [id, data, fd])
-  return { ...items, mc, loaded: !!data }
+  const items = useMemo(() => resolveTag(id, sources), [id, sources])
+  return { ...items, mc, loaded: sources.some((x) => x.source === 'minecraft') }
 }
 
-function resolveTag(id: string, sources: (VanillaData | undefined)[]): { items: TagEntry[]; found: boolean } {
+function resolveTag(id: string, sources: { data: VanillaData; source: string }[]): { items: TagEntry[]; found: boolean } {
   const tags = new Map<string, string[]>()
-  for (const s of sources) for (const tg of s?.tags ?? []) tags.set(tg.id, [...(tags.get(tg.id) ?? []), ...tg.values])
+  for (const { data } of sources) for (const tg of data.tags) tags.set(tg.id, [...(tags.get(tg.id) ?? []), ...tg.values])
   const out: TagEntry[] = []
   const seen = new Set<string>()
   const visit = (tag: string, depth: number) => {
@@ -37,8 +37,8 @@ function resolveTag(id: string, sources: (VanillaData | undefined)[]): { items: 
       if (seen.has(v)) continue
       seen.add(v)
       const [ns, path] = v.includes(':') ? v.split(':') : ['minecraft', v]
-      const src = sources.find((s) => s?.ns === ns)
-      out.push({ id: `${ns}:${path}`, ns, item: src?.items.find((i) => i.id === path) ?? null })
+      const src = sources.find((s) => s.data.ns === ns)
+      out.push({ id: `${ns}:${path}`, ns: src?.source ?? ns, item: src?.data.items.find((i) => i.id === path) ?? null })
     }
   }
   visit(id, 0)

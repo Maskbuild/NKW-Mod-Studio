@@ -7,7 +7,7 @@ import { ASSET_RE, FOLDER_RE, ID_RE, LICENSES, LINK_RE, MetaSchema, NSID_RE, toI
 import { L } from '../i18n'
 import { api, assetUrl, vanillaIconUrl, type AssetKind, type ImportedAsset } from '../api'
 import { hasFiles, importDropped } from '../drop'
-import { useActiveMc, useItemInfo, useVanilla } from './VanillaPanel'
+import { prettyId, useActiveMc, useItemInfo, useItemSources, useVanilla } from './VanillaPanel'
 import { newId, useStore, edgeStyle, inputSource, type FlowNode } from '../store'
 import { TargetPicker } from '../components/TargetPicker'
 import { IAlert, IUpload, Logo } from '../components/Icons'
@@ -271,17 +271,40 @@ function AnimNameField({ node, p }: { node: FlowNode; p: PropDef }) {
   )
 }
 
+/** Crops found in the downloaded game data and in the mods linked to the project (Harvest a game crop). */
+function MoreCrops({ known, list, toggle }: { known: string[]; list: string[]; toggle: (v: string) => void }) {
+  const sources = useItemSources(useActiveMc())
+  const crops = sources.flatMap(({ data, source }) =>
+    (data.crops ?? [])
+      .map((c) => `${data.ns}:${c}`)
+      .filter((id) => !known.includes(id))
+      .map((id) => ({ id, from: data.title ?? (source === 'minecraft' ? 'Minecraft' : "Farmer's Delight") }))
+  )
+  return (
+    <>
+      {crops.map((c) => (
+        <label key={c.id} className={`multi-opt${list.includes(c.id) ? ' on' : ''}`} title={c.id}>
+          <input type="checkbox" checked={list.includes(c.id)} onChange={() => toggle(c.id)} />
+          {prettyId(c.id)} <span className="faint">({c.from})</span>
+        </label>
+      ))}
+    </>
+  )
+}
+
 /** Item id / tag field backed by the full vanilla list of the active Minecraft version. */
 function NsidField({ node, p }: { node: FlowNode; p: PropDef }) {
   const { i18n } = useTranslation()
   const mc = useActiveMc()
   const data = useVanilla(mc)
-  const fd = useVanilla(mc, 'farmersdelight')
+  const sources = useItemSources(mc)
   const value = String(node.data[p.key] ?? '')
   const isTag = node.type === 'tagRef'
+  // the game's list (or a short built-in one before it is downloaded), Farmer's Delight and linked mods
+  const others = sources.filter((x) => x.source !== 'minecraft')
   const list = isTag
-    ? [...(data ? data.tags.map((t) => t.id) : COMMON_TAGS), ...(fd?.tags.map((t) => t.id) ?? [])]
-    : [...(data ? data.items.map((i) => `minecraft:${i.id}`) : VANILLA_ITEMS), ...(fd?.items.map((i) => `farmersdelight:${i.id}`) ?? [])]
+    ? [...(data ? data.tags.map((t) => t.id) : COMMON_TAGS), ...others.flatMap((x) => x.data.tags.map((t) => t.id))]
+    : [...(data ? data.items.map((i) => `minecraft:${i.id}`) : VANILLA_ITEMS), ...others.flatMap((x) => x.data.items.map((i) => `${x.data.ns}:${i.id}`))]
   const match = useItemInfo(isTag ? '' : value)
   return (
     <div className="field">
@@ -560,6 +583,7 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
                 {L(o.label)}
               </label>
             ))}
+            {def.type === 'gameCrop' && <MoreCrops known={p.options?.map((o) => o.value) ?? []} list={list} toggle={toggle} />}
           </div>
           {p.hint && <span className="hint">{L(p.hint)}</span>}
         </div>

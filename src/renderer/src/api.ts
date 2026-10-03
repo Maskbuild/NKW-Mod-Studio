@@ -76,7 +76,11 @@ export const api = {
       audio
     }),
   vanilla: (mc: string, source: ItemSource = 'minecraft') => call<VanillaData | null>('vanilla:get', { mc, source }),
-  downloadVanilla: (mc: string, source: ItemSource = 'minecraft') => call<VanillaData | null>('vanilla:download', { mc, source }),
+  downloadVanilla: (mc: string, source: ItemSource = 'minecraft', title?: string) => call<VanillaData | null>('vanilla:download', { mc, source, title }),
+  /** mods on Modrinth for a Minecraft version */
+  searchMods: (query: string, mc: string) => call<{ slug: string; title: string; description: string; downloads: number }[]>('mods:search', { query, mc }),
+  /** reads .jar files (or every .jar of a folder) picked on disk */
+  importModJars: (mc: string, folder: boolean) => call<{ mods: { id: string; title: string }[]; errors: string[] }>('mods:importJars', { mc, folder }),
   toolchain: () => call<{ jdks: { major: number; home: string; managed: boolean }[]; toolsDir: string }>('toolchain:status'),
   previewCode: (project: Project, target: Target) => call<{ path: string; text: string | null; generated?: string }[]>('code:preview', { project, target }),
   startBuild: (project: Project, target: Target, task: 'runClient' | 'build' | 'compileJava') => call<boolean>('build:start', { project, target, task }),
@@ -88,8 +92,10 @@ export const api = {
 }
 
 export const assetUrl = (asset: string) => `nkw-asset://project/${asset}`
-export type ItemSource = 'minecraft' | 'farmersdelight'
+/** where item data comes from: the game, Farmer's Delight, or a mod linked to the project (mod:<id>) */
+export type ItemSource = 'minecraft' | 'farmersdelight' | `mod:${string}`
 /** The game's Steve / Alex skin, extracted from the downloaded Minecraft files. */
 export const vanillaSkinUrl = (mc: string, slim: boolean) => `nkw-asset://vanilla/${mc}/skins/${slim ? 'alex' : 'steve'}.png`
+/** Icon of an item; `ns` is the item's namespace, or a source (mod:<id>) for items of linked mods. */
 export const vanillaIconUrl = (mc: string, id: string, ns: string = 'minecraft') =>
-  `nkw-asset://vanilla/${mc}/${ns === 'farmersdelight' ? 'farmersdelight/' : ''}${id}.png`
+  `nkw-asset://vanilla/${mc}/${ns === 'farmersdelight' ? 'farmersdelight/' : ns.startsWith('mod:') ? `mod/${ns.slice(4)}/` : ''}${id}.png`

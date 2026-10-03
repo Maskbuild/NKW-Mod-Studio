@@ -5,7 +5,7 @@ import { breakRuleEntries, type PropDef } from '@core/nodes/defs'
 import { NSID_RE } from '@core/project'
 import { L } from '../i18n'
 import { vanillaIconUrl } from '../api'
-import { prettyId as pretty, useActiveMc, useItemInfo, useVanilla } from './VanillaPanel'
+import { prettyId as pretty, useActiveMc, useItemInfo, useItemSources } from './VanillaPanel'
 import { useStore, type FlowNode } from '../store'
 
 /** Block tags that are handy in Break Rules (they exist on every supported version that has tags). */
@@ -58,8 +58,7 @@ function Icon({ id }: { id: string }) {
  */
 export function BlockListField({ node, p }: { node: FlowNode; p: PropDef }) {
   const mc = useActiveMc()
-  const data = useVanilla(mc)
-  const fd = useVanilla(mc, 'farmersdelight')
+  const sources = useItemSources(mc)
   const modId = useStore((s) => s.meta?.modId ?? '')
   const types = modBlockTypes(node.type)
   const modBlocks = useStoreWithEqualityFn(
@@ -94,14 +93,11 @@ export function BlockListField({ node, p }: { node: FlowNode; p: PropDef }) {
       const [id, name] = m.split('|')
       return { id: `${modId}:${id}`, name, thName: '' }
     })
-    for (const [src, ns] of [
-      [data, 'minecraft'],
-      [fd, 'farmersdelight']
-    ] as const)
-      for (const it of src?.items ?? []) if (it.kind === 'block') out.push({ id: `${ns}:${it.id}`, name: it.en, thName: it.th })
+    // game blocks, Farmer's Delight and the mods linked to the project (block items)
+    for (const { data } of sources) for (const it of data.items) if (it.kind === 'block') out.push({ id: `${data.ns}:${it.id}`, name: it.en, thName: it.th })
     if (!p.noTags) for (const tg of BLOCK_TAGS) out.push({ id: `#${tg}`, name: `#${tg.replace('minecraft:', '')}`, thName: '' })
     return out
-  }, [modBlocks, modId, data, fd, p.noTags])
+  }, [modBlocks, modId, sources, p.noTags])
 
   const needle = q.trim().toLowerCase()
   const hits = useMemo(
@@ -202,7 +198,9 @@ export function BlockListField({ node, p }: { node: FlowNode; p: PropDef }) {
           </span>
         )}
       </div>
-      {!data && <span className="hint">{tr('Load the full block list in the "Game items" tab', 'โหลดรายการบล็อกทั้งหมดได้ที่แท็บ "ไอเทมเกม"')}</span>}
+      {!sources.some((x) => x.source === 'minecraft') && (
+        <span className="hint">{tr('Load the full block list in the "Game items" tab', 'โหลดรายการบล็อกทั้งหมดได้ที่แท็บ "ไอเทมเกม"')}</span>
+      )}
       {p.hint && <span className="hint">{L(p.hint)}</span>}
     </div>
   )

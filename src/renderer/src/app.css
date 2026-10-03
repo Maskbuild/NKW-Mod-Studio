@@ -974,6 +974,21 @@ img.frame0 {
   max-width: 100%;
   line-height: 1.25;
 }
+.mod-picker {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+.mod-hit {
+  align-items: center;
+  gap: 8px;
+}
+.mod-hit small {
+  display: block;
+}
 .v-empty {
   display: flex;
   flex-direction: column;

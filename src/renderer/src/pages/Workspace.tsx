@@ -64,6 +64,7 @@ function useAutosave() {
           s.meta !== prev.meta ||
           s.targets !== prev.targets ||
           s.overrides !== prev.overrides ||
+          s.mods !== prev.mods ||
           !prev.dirty)
       ) {
         clearTimeout(timer)

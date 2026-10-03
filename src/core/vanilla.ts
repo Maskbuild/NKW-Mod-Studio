@@ -22,6 +22,31 @@ export interface VanillaData {
   ns: string
   items: VanillaItem[]
   tags: VanillaTag[]
+  /** blocks that grow (a blockstate with an "age" property), without namespace */
+  crops?: string[]
+  /** display name of a mod linked from Modrinth or a .jar file */
+  title?: string
+}
+
+/** Id of a mod linked to a project: its Modrinth slug, or file_<name> for a .jar picked on disk. */
+export const LINKED_MOD_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
+
+/** Whether a blockstate file describes a growing block (variants or multipart keyed by "age"). */
+export function isGrowingBlockstate(json: unknown): boolean {
+  if (!json || typeof json !== 'object') return false
+  const j = json as { variants?: Record<string, unknown>; multipart?: { when?: unknown }[] }
+  if (j.variants && Object.keys(j.variants).some((k) => /(^|,)age=([1-9]\d*)/.test(k))) return true
+  return JSON.stringify(j.multipart?.map((m) => m.when) ?? []).includes('"age"')
+}
+
+/** The mod's own namespace in a jar: the one with the most item / block models (not minecraft). */
+export function mainNamespace(paths: string[]): string | null {
+  const count = new Map<string, number>()
+  for (const p of paths) {
+    const m = /^assets\/([a-z0-9_.-]+)\/(models\/(item|block)|items|lang)\//.exec(p)
+    if (m && m[1] !== 'minecraft') count.set(m[1], (count.get(m[1]) ?? 0) + 1)
+  }
+  return [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
 }
 
 /** 4: block items get 3D (isometric) icons · 5: Steve/Alex skins for the armor preview */

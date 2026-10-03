@@ -3,7 +3,7 @@ import { parseJavacError } from '@core/scriptApi'
 import { create } from 'zustand'
 import { NODE_DEF_MAP, PIN_COLORS, defaultData, pinOf } from '@core/nodes/defs'
 import type { Diagnostic } from '@core/ir'
-import { toId, type GraphEdge, type GraphNode, type Project, type Target } from '@core/project'
+import { toId, type LinkedMod, type GraphEdge, type GraphNode, type Project, type Target } from '@core/project'
 import { api, type AssetEntry, type Settings } from './api'
 import type { VanillaData } from '@core/vanilla'
 
@@ -102,6 +102,8 @@ interface State {
   targets: Target[]
   /** generated files edited in the code view (Project.overrides) */
   overrides: Record<string, string>
+  /** other mods linked to the project (Modrinth or .jar files): their items show in the editor */
+  mods: LinkedMod[]
   activeTarget: number
   nodes: FlowNode[]
   edges: Edge[]
@@ -132,6 +134,7 @@ interface State {
   updateData(id: string, patch: NodeData): void
   setMeta(meta: Project['meta']): void
   /** edits (text) or reverts (null) a generated file of a target */
+  setMods(mods: LinkedMod[]): void
   setOverride(key: string, text: string | null): void
   setTargets(t: Target[], active?: number): void
   setDiagnostics(d: Diagnostic[]): void
@@ -162,6 +165,7 @@ export const useStore = create<State>((set, get) => ({
   meta: null,
   targets: [],
   overrides: {},
+  mods: [],
   activeTarget: 0,
   nodes: [],
   edges: [],
@@ -193,6 +197,7 @@ export const useStore = create<State>((set, get) => ({
       meta: p.meta,
       targets: p.targets,
       overrides: p.overrides ?? {},
+      mods: p.mods ?? [],
       activeTarget: Math.min(p.activeTarget, p.targets.length - 1),
       nodes: f.nodes,
       edges: f.edges,
@@ -222,7 +227,8 @@ export const useStore = create<State>((set, get) => ({
       targets: s.targets,
       activeTarget: s.activeTarget,
       graph: fromFlow(s.nodes, s.edges),
-      ...(Object.keys(s.overrides).length ? { overrides: s.overrides } : {})
+      ...(Object.keys(s.overrides).length ? { overrides: s.overrides } : {}),
+      ...(s.mods.length ? { mods: s.mods } : {})
     }
   },
   setGraph(nodes, edges, record = false) {
@@ -274,6 +280,9 @@ export const useStore = create<State>((set, get) => ({
   },
   setMeta(meta) {
     set({ meta, dirty: true })
+  },
+  setMods(mods) {
+    set({ mods, dirty: true })
   },
   setOverride(key, text) {
     set((s) => {
@@ -333,7 +342,8 @@ export const useStore = create<State>((set, get) => ({
           s.meta === before.meta &&
           s.targets === before.targets &&
           s.activeTarget === before.activeTarget &&
-          s.overrides === before.overrides
+          s.overrides === before.overrides &&
+          s.mods === before.mods
         if (same) set({ dirty: false })
       } catch (e) {
         get().toast(String((e as Error).message ?? e), true)

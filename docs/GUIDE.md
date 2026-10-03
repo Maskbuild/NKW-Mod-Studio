@@ -243,6 +243,16 @@ The **Game items** tab lists every item of the selected Minecraft version, with 
 
 You can also add these nodes by hand from **Utility**: **Existing Item** (`minecraft:diamond`, or an item from another mod) and **Item Tag** (`minecraft:planks`). An Item Tag node shows the items of its tag as icons (a grid in the right panel, a few on the node); hover an icon to see the item's name.
 
+### Items of other mods (Modrinth or .jar files)
+
+Click **+ Mod** in the Game items tab to link other mods to the project; pick them in the list above the items.
+
+- **Search Modrinth** by name (only mods that have the selected Minecraft version) and click **Add**. The first time you open it, click **Load items** — the app downloads the mod from Modrinth (checksum-checked) and reads its items.
+- **Pick .jar files…** or **Pick a mods folder…** reads mods already on this computer (from anywhere, e.g. CurseForge). A .jar is for one Minecraft version: pick it again for another version.
+- You get each mod's items and blocks (English names, icons), its tags and its **crops** (blocks with growth stages). They show in the item lists, the Break Rule / Regenerating Blocks block pickers, Item Tag previews and the crop list of **Harvest a game crop**.
+- Only the item list is read and kept on this computer. Your mod does not depend on those mods: anything of a mod that is not installed is skipped in game (recipes using its items are left out with a line in the log).
+- **✕** next to the list removes a mod from the project.
+
 > Steve/Alex skins for the armor preview also come from these downloaded game files. The app doesn't ship any Mojang files.
 
 ## 7. Items
