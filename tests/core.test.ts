@@ -663,7 +663,8 @@ describe('generators', () => {
         expect(java).toContain('if (r.input > 0) rule = new Rule(r.input, r.harvestTicks, 3, 0, r.ui, r.give, r.adventure, true);')
         expect(en['message.nkwtest.harvest_released_left']).toBe('Keep holding left-click to harvest')
         // placing a block / using an item swings the arm too: that is no left click
-        expect(java).toContain('if (right != null && Math.abs(level.getGameTime() - right) <= 8) return null;')
+        expect(java).toContain('long started = level.getGameTime() - Math.max(0, player.swingTime) - right;')
+        expect(java).toContain('if (started >= -1 && started <= 2) return null;')
         expect(java).toMatch(/static boolean use\([^)]*\) \{\s+rightClicked\(player, level\);/)
         if (loader === 'fabric' || loader === 'quilt') {
           expect(java).toContain('UseEntityCallback.EVENT.register')

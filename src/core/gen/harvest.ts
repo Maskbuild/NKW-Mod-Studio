@@ -352,9 +352,13 @@ ${ownRule}if (!GAME.isEmpty()) {
      */
     private static BlockPos swingTarget(Player player, Level level) {
         if (!player.swinging || player.isSpectator()) return null;
-        // the swing of a right-click (placing a block, using an item …) is no left click
+        // the swing of a right-click (placing a block, using an item …) is no left click: a swing that started
+        // within 2 ticks (0.1 s) of a right-click is ignored for as long as it lasts, later swings count right away
         Long right = RIGHT_CLICKED.get(player.getUUID());
-        if (right != null && Math.abs(level.getGameTime() - right) <= 8) return null;
+        if (right != null) {
+            long started = level.getGameTime() - Math.max(0, player.swingTime) - right;
+            if (started >= -1 && started <= 2) return null;
+        }
         HitResult hit = player.pick(${p.stackId ? 'player.blockInteractionRange()' : '4.5'}, 1.0F, false);
         if (!(hit instanceof BlockHitResult) || hit.getType() != HitResult.Type.BLOCK) return null;
         BlockPos pos = ((BlockHitResult) hit).getBlockPos().immutable();
