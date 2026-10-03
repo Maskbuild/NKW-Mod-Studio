@@ -554,14 +554,22 @@ ${[harvest ? harvestPart : '', breaking ? `        ${breakPart}` : ''].filter(Bo
         if (ui < 0) return;`
   // adventure mode cannot mine, so the game stops swinging the tool after the first hit: keep it swinging
   // while the left button is held on a block picked with it (the swings also reach the server)
+  const BOB_FIELD = '    /** game time of the last up-down bob of the item in hand (adventure mode) */\n    private static long lastBob = -1;\n\n'
   let adventureSwing = ''
   if (ir.blocks.some((b) => b.regen && b.regen.input !== 'break' && b.regen.adventure)) {
     j.use('net.minecraft.world.phys.BlockHitResult', 'net.minecraft.world.phys.HitResult', 'net.minecraft.world.InteractionHand')
     adventureSwing = `
         if (mc.screen == null && !mc.player.mayBuild() && !mc.player.isSpectator() && mc.options.keyAttack.isDown()
                 && mc.hitResult instanceof BlockHitResult && mc.hitResult.getType() == HitResult.Type.BLOCK
-                && NkwHarvest.adventurePick(mc.level, ((BlockHitResult) mc.hitResult).getBlockPos()))
-            mc.player.swing(InteractionHand.MAIN_HAND);`
+                && NkwHarvest.adventurePick(mc.level, ((BlockHitResult) mc.hitResult).getBlockPos())) {
+            mc.player.swing(InteractionHand.MAIN_HAND);
+            // the item in hand also bobs up and down (the game's "item used" dip, every 4 ticks)
+            long now = mc.level.getGameTime();
+            if (now != lastBob && now % 4 == 0) {
+                lastBob = now;
+                ${p.mc === '1.16.5' ? 'mc.getItemInHandRenderer()' : 'mc.gameRenderer.itemInHandRenderer'}.itemUsed(InteractionHand.MAIN_HAND);
+            }
+        }`
   }
   let breakTracker = ''
   if (breaking) {
@@ -657,7 +665,7 @@ ${timerSource}
         if (time) text(graphics, I18n.get("message.${ns}.harvest_seconds", left), x + look[5] + 4, y + look[6] / 2 - 3, 0xFFFFFFFF);
     }
 
-${breakTracker}
+${adventureSwing ? BOB_FIELD : ''}${breakTracker}
     /** A circle that fills clockwise from the top (thickness >= radius: a filled disc), drawn in runs of pixels. */
     private static void ring(${G} graphics, int cx, int cy, int radius, int thickness, float progress, int color, int back) {
         float inner = Math.max(0, radius - thickness);

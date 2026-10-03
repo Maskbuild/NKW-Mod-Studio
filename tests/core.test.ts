@@ -1029,6 +1029,11 @@ describe('review fixes', () => {
       expect(hud).toContain('mc.options.keyAttack.isDown()')
       expect(hud).toMatch(/NkwHarvest\.adventurePick\(mc\.level, \(\((BlockHitResult|BlockRayTraceResult)\) mc\.hitResult\)\.getBlockPos\(\)\)\)/)
       expect(hud).toContain(target.loader === 'forge' ? 'mc.player.swing(Hand.MAIN_HAND);' : 'mc.player.swing(InteractionHand.MAIN_HAND);')
+      // the item in hand bobs up and down too
+      expect(hud).toContain(
+        `${target.mc === '1.16.5' ? 'mc.getItemInHandRenderer()' : 'mc.gameRenderer.itemInHandRenderer'}.itemUsed(${target.loader === 'forge' ? 'Hand' : 'InteractionHand'}.MAIN_HAND);`
+      )
+      expect(hud).toContain('private static long lastBob = -1;')
       // swinging still happens with the HUD hidden (F1)
       expect(hud.indexOf('mc.player.swing(')).toBeLessThan(hud.indexOf('mc.options.hideGui'))
     }

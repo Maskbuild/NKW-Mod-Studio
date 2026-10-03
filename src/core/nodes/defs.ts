@@ -854,9 +854,9 @@ export const NODE_DEFS: NodeDef[] = [
         label: t('Harvest time (seconds)', 'เวลาเก็บ (วินาที)'),
         kind: 'float',
         default: 2,
-        min: 0.5,
+        min: 0.1,
         max: 120,
-        step: 0.5,
+        step: 0.1,
         showIf: (d) => d.input === 'hold' || d.input === 'stand'
       },
       {
@@ -1034,9 +1034,9 @@ export const NODE_DEFS: NodeDef[] = [
         label: t('Harvest time (seconds)', 'เวลาเก็บ (วินาที)'),
         kind: 'float',
         default: 2,
-        min: 0.5,
+        min: 0.1,
         max: 120,
-        step: 0.5,
+        step: 0.1,
         showIf: (d) => d.input === 'hold' || d.input === 'stand'
       },
       {
@@ -1128,9 +1128,9 @@ export const NODE_DEFS: NodeDef[] = [
         label: t('Harvest time (seconds)', 'เวลาเก็บ (วินาที)'),
         kind: 'float',
         default: 2,
-        min: 0.5,
+        min: 0.1,
         max: 120,
-        step: 0.5,
+        step: 0.1,
         showIf: (d) => d.input !== 'click'
       },
       {
