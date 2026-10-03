@@ -81,7 +81,7 @@ export function BlockListField({ node, p }: { node: FlowNode; p: PropDef }) {
     const next = [...list]
     for (const raw of ids) {
       const id = raw.trim().toLowerCase()
-      if (id && valid(id) && !next.includes(id)) next.push(id)
+      if (id && valid(id) && !(p.noTags && id.startsWith('#')) && !next.includes(id)) next.push(id)
     }
     if (next.length !== list.length) save(next)
   }
@@ -98,9 +98,9 @@ export function BlockListField({ node, p }: { node: FlowNode; p: PropDef }) {
       [fd, 'farmersdelight']
     ] as const)
       for (const it of src?.items ?? []) if (it.kind === 'block') out.push({ id: `${ns}:${it.id}`, name: it.en, thName: it.th })
-    for (const tg of BLOCK_TAGS) out.push({ id: `#${tg}`, name: `#${tg.replace('minecraft:', '')}`, thName: '' })
+    if (!p.noTags) for (const tg of BLOCK_TAGS) out.push({ id: `#${tg}`, name: `#${tg.replace('minecraft:', '')}`, thName: '' })
     return out
-  }, [modBlocks, modId, data, fd])
+  }, [modBlocks, modId, data, fd, p.noTags])
 
   const needle = q.trim().toLowerCase()
   const hits = useMemo(
@@ -110,7 +110,7 @@ export function BlockListField({ node, p }: { node: FlowNode; p: PropDef }) {
   const typed = needle
     .split(/[\s,]+/)
     .filter(Boolean)
-    .filter((x) => valid(x) && !all.some((e) => e.id === x))
+    .filter((x) => valid(x) && !(p.noTags && x.startsWith('#')) && !all.some((e) => e.id === x))
   const shown = hits.slice(0, SHOWN)
   const tr = (en: string, thai: string) => L({ en, th: thai })
 
@@ -155,7 +155,11 @@ export function BlockListField({ node, p }: { node: FlowNode; p: PropDef }) {
       <div className="row">
         <input
           className="input mono grow"
-          placeholder={tr('Search, or type ids: othermod:ruby_ore #minecraft:logs', 'ค้นหา หรือพิมพ์ ID: othermod:ruby_ore #minecraft:logs')}
+          placeholder={
+            p.noTags
+              ? tr('Search, or type ids: othermod:ruby_ore', 'ค้นหา หรือพิมพ์ ID: othermod:ruby_ore')
+              : tr('Search, or type ids: othermod:ruby_ore #minecraft:logs', 'ค้นหา หรือพิมพ์ ID: othermod:ruby_ore #minecraft:logs')
+          }
           value={q}
           maxLength={2000}
           onChange={(e) => setQ(e.target.value)}

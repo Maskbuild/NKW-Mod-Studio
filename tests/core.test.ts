@@ -55,10 +55,11 @@ describe('compiler', () => {
     const boots = ir.items.find((i) => i.id === 'winged_boots')!
     expect(boots.armor!.geo!.animation).toEqual({ asset: 'animations/ruby_armor.json', name: 'animation.ruby_armor.idle' })
     expect(ir.textureAnims['textures/glow.png']).toEqual({ frametime: 4, interpolate: true })
-    expect(ir.blocks.length).toBe(8)
+    // 8 blocks + 4 Regenerating Blocks, each with its depleted form
+    expect(ir.blocks.length).toBe(16)
     expect(ir.items.find((i) => i.id === 'ruby_seeds')!.places).toBe('ruby_crop')
     expect(ir.items.find((i) => i.id === 'lamp_trophy')!.separateIcon).toBe(true)
-    expect(ir.tabs.map((tb) => tb.id)).toEqual(['main', 'gear'])
+    expect(ir.tabs.map((tb) => tb.id)).toEqual(['main', 'gear', 'regen_blocks', 'node_blocks'])
     expect(ir.tabs[1].items).toEqual(['nkwtest:ruby_sword', 'nkwtest:ruby_pickaxe', 'nkwtest:ruby_crown', 'nkwtest:ruby_helmet'])
     // by default items not wired to a tab are hidden (only /give)
     expect(ir.tabs.flatMap((tb) => tb.items)).not.toContain('nkwtest:glow_shard')
@@ -495,6 +496,34 @@ describe('compiler', () => {
     expect(ir.gameCrops.find((g) => g.block === 'minecraft:carrots')!.breakDrops).toBe('none')
     expect(ir.gameCrops.find((g) => g.block === 'minecraft:wheat')!.breakDrops).toBe('normal')
   })
+  it('makes Regenerating Blocks: a copy per picked block, its depleted form and an own creative tab', () => {
+    const { ir, diagnostics } = compile(project)
+    expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
+    const iron = ir.blocks.find((b) => b.id === 'regen_iron_ore')!
+    expect(iron).toMatchObject({ kind: 'regen', hasItem: true, hardness: 3, tool: 'pickaxe', resistance: 3600000 })
+    expect(iron.regen).toMatchObject({ original: 'minecraft:iron_ore', depleted: 'regen_iron_ore_depleted', input: 'break', timer: true })
+    expect(ir.blocks.find((b) => b.id === 'regen_iron_ore_depleted')).toMatchObject({
+      kind: 'depleted',
+      hasItem: false,
+      hardness: -1,
+      depleted: { look: 'minecraft:bedrock', restore: 'regen_iron_ore', ticks: 600 }
+    })
+    expect(ir.blocks.some((b) => b.id === 'regen_othermod_ruby_ore')).toBe(true)
+    // right-click harvests: the block itself cannot be mined
+    const node = ir.blocks.find((b) => b.id === 'node_amethyst_block')!
+    expect(node).toMatchObject({ hardness: -1, tool: 'none' })
+    expect(node.regen).toMatchObject({ input: 'hold', harvestTicks: 60, give: true, adventure: false })
+    expect(ir.blocks.find((b) => b.id === 'node_amethyst_block_depleted')!.depleted!.look).toBe('minecraft:cobblestone')
+    expect(ir.tabs.find((t) => t.id === 'regen_blocks')).toMatchObject({
+      title: 'Regenerating Blocks',
+      items: ['nkwtest:regen_iron_ore', 'nkwtest:regen_oak_log', 'nkwtest:regen_othermod_ruby_ore']
+    })
+    expect(ir.tabs.find((t) => t.id === 'node_blocks')!.title).toBe('Resource Nodes')
+    // tags cannot be regenerating blocks
+    const p = structuredClone(project) as Project
+    p.graph.nodes.find((n) => n.id === 'regen_ores')!.data.blocks = ['#minecraft:logs']
+    expect(compile(p).diagnostics.some((d) => d.nodeId === 'regen_ores' && /tags cannot be used/.test(d.message.en))).toBe(true)
+  })
   it('checks Break Rules', () => {
     const p = structuredClone(project) as Project
     const rule = p.graph.nodes.find((n) => n.id === 'rule_any')!
@@ -607,6 +636,28 @@ describe('generators', () => {
         const thLang = JSON.parse(files.find((x) => x.path.endsWith('lang/th_th.json'))!.text!)
         expect(thLang['message.nkwtest.break_rule_0']).toBe('ต้องใช้อีเต้อเหล็ก 100%%')
         expect(en['message.nkwtest.break_rule_2']).toBeUndefined()
+        // Regenerating Blocks: look like the original, operators place them, the depleted form grows back
+        const text = (all: typeof files, end: string) => all.find((f) => f.path.endsWith(end))?.text
+        const regenBlocks = files.find((x) => x.path.endsWith('/ModBlocks.java'))!.text!
+        expect(regenBlocks).toMatch(
+          /new NkwRegenBlock\([^\n]*"minecraft:iron_ore", \(\) -> ModBlocks\.REGEN_IRON_ORE_DEPLETED(\.get\(\))?, 0, 40, 0, 0, false, true\)/
+        )
+        expect(regenBlocks).toMatch(/new NkwDepletedBlock\([^\n]*strength\(-1\.0F, 3600000\.0F\)[^\n]*\(\) -> ModBlocks\.REGEN_IRON_ORE(\.get\(\))?, 600\)/)
+        expect(files.find((x) => x.path.endsWith('/ModItems.java'))!.text).toContain('new NkwRegenBlockItem(ModBlocks.REGEN_IRON_ORE')
+        expect(text(files, '/NkwRegenBlockItem.java')).toContain('player.hasPermissions(2)')
+        expect(text(files, '/NkwRegenBlock.java')).toContain('player.hasCorrectToolForDrops(from)')
+        expect(text(files, p.blockMaterial ? '/NkwDepletedBlock.java' : '/ModBlocks.java')).toContain(
+          p.blockMaterial ? 'PushReaction.BLOCK' : '.pushReaction(PushReaction.BLOCK)'
+        )
+        expect(JSON.parse(text(files, '/models/block/regen_iron_ore.json')!).parent).toBe('minecraft:block/iron_ore')
+        expect(JSON.parse(text(files, '/models/block/regen_iron_ore_depleted.json')!).parent).toBe('minecraft:block/bedrock')
+        expect(en['item.nkwtest.regen_name']).toBe('%s (Regenerating)')
+        expect(en['itemGroup.nkwtest.regen_blocks']).toBe('Regenerating Blocks')
+        expect(JSON.parse(text(files, `/${p.pluralDataDirs ? 'loot_tables' : 'loot_table'}/blocks/regen_iron_ore.json`)!).pools).toEqual([])
+        expect(java).toContain('((NkwRegenBlock) state.getBlock()).harvest(level, pos, player, player.getMainHandItem(), false);')
+        expect(text(files, '/NkwHarvestHud.java')).toContain(
+          'state.getBlock() instanceof NkwRegenBlock ? ((NkwRegenBlock) state.getBlock()).breakUi : NkwBreakRules.timerLook(state)'
+        )
         // Java string escaping of the description in metadata
         const meta = files.find((f) => /fabric\.mod\.json|quilt\.mod\.json|mods\.toml/.test(f.path))!
         expect(meta.text).toContain('Fixture \\"quoted\\" \\\\ mod')

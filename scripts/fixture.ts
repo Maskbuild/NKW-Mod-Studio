@@ -468,6 +468,20 @@ export function writeFixture(dir: string): Project {
   node('rule_sword', 'breakRule', { blocks: ['minecraft:cobweb'], tool: 'sword', level: 'netherite' })
   node('rule_any', 'breakRule', { blocks: ['minecraft:obsidian'], tool: 'any', level: 'diamond' })
 
+  // ── regenerating blocks: mined like ores, and picked by holding right-click ──
+  node('regen_ores', 'regenBlock', { blocks: ['minecraft:iron_ore', 'minecraft:oak_log', 'othermod:ruby_ore'], hardness: 3, regenSeconds: 30 })
+  node('regen_hold', 'regenBlock', {
+    prefix: 'node',
+    blocks: ['minecraft:amethyst_block'],
+    input: 'hold',
+    harvestSeconds: 3,
+    depleted: 'minecraft:cobblestone',
+    give: true,
+    adventure: false,
+    tabTitle: 'Resource Nodes'
+  })
+  wire('ui_bar', 'out', 'regen_hold', 'ui')
+
   // ── mobs: game bodies with a skin, spawn eggs, drops, natural spawning ──
   node('m_zombie', 'mob', {
     id: 'ruby_zombie',

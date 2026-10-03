@@ -34,9 +34,11 @@ export function genData(ctx: GenCtx): void {
       })
       continue
     }
-    // a block without its own item drops whatever item places it (seeds-style), or nothing
+    // a block without its own item drops whatever item places it (seeds-style), or nothing;
+    // Regenerating Blocks drop the original block's loot from Java, never themselves
     const placer = ir.items.find((i) => i.places === b.id)
-    const drop = b.drop ?? (b.hasItem ? `${ns}:${b.id}` : placer ? `${ns}:${placer.id}` : null)
+    const regen = b.kind === 'regen' || b.kind === 'depleted'
+    const drop = regen ? null : (b.drop ?? (b.hasItem ? `${ns}:${b.id}` : placer ? `${ns}:${placer.id}` : null))
     if (!drop) {
       files.push({ path: `${D}/${ns}/${dir('loot_tables', 'loot_table')}/blocks/${b.id}.json`, text: json({ type: 'minecraft:block', pools: [] }) })
       continue

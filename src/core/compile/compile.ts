@@ -96,6 +96,10 @@ export function scriptBracketProblem(code: string): { en: string; th: string; li
   return open ? { en: `"${open.ch}" is never closed (line ${open.line})`, th: `"${open.ch}" ยังไม่ได้ปิด (บรรทัด ${open.line})`, line: open.line } : null
 }
 
+/** Blocks you can see through: copies of them must not hide the faces of their neighbours. */
+const SEE_THROUGH =
+  /glass|leaves|ice$|^ice|slime|honey|_pane|bars|door|fence|wall|slab|stairs|lantern|torch|chain|scaffolding|azalea|cobweb|spawner|beacon|grate|copper_bulb|mangrove_roots/
+
 const BREAK_DROPS: BreakDrops[] = ['normal', 'grown', 'none']
 const breakDropsOf = (d: Data): BreakDrops => (BREAK_DROPS.includes(d.breakDrops as BreakDrops) ? (d.breakDrops as BreakDrops) : 'normal')
 
@@ -505,6 +509,8 @@ export function compile(project: Project, target?: Target): CompileResult {
   let usesDefaultTool = false
   let usesDefaultArmor = false
   let tabNodes = 0
+  /** creative tabs of Regenerating Blocks nodes (after the project's own tabs) */
+  const regenTabs: ModIR['tabs'] = []
 
   for (const n of nodes.values()) {
     const d = n.data
@@ -682,6 +688,95 @@ export function compile(project: Project, target?: Target): CompileResult {
             'ตั้งให้เก็บเกี่ยวด้วยการทุบ แต่ทุบแล้วไม่ได้อะไร: เลือกวิธีเก็บแบบคลิกขวา'
           )
         ir.blocks.push(b)
+        break
+      }
+      case 'regenBlock': {
+        const prefix = str(d, 'prefix', 'regen') || 'regen'
+        if (!ID_RE.test(prefix)) err(n.id, `Invalid ID prefix "${prefix}" (use a-z, 0-9, _)`, `คำนำหน้า ID "${prefix}" ไม่ถูกต้อง (ใช้ a-z, 0-9, _)`)
+        const input = (['break', 'click', 'hold', 'stand'].includes(str(d, 'input')) ? str(d, 'input') : 'break') as NonNullable<BlockIR['regen']>['input']
+        const look = str(d, 'depleted', 'minecraft:bedrock').replace(/^#/, '') || 'minecraft:bedrock'
+        if (!NSID_RE.test(look)) err(n.id, `"${look}" is not a block ID (e.g. minecraft:bedrock)`, `"${look}" ไม่ใช่ ID บล็อก (เช่น minecraft:bedrock)`)
+        const ticks = clamp(Math.round(num(d, 'regenSeconds', 60)), 1, 86400) * 20
+        const breaking = input === 'break'
+        const tool = (['none', 'pickaxe', 'axe', 'shovel', 'hoe'].includes(str(d, 'tool')) ? str(d, 'tool') : 'pickaxe') as BlockIR['tool']
+        const items: string[] = []
+        const base = (id: string, name: string): BlockIR => ({
+          id,
+          name,
+          nameTh: '',
+          nodeId: n.id,
+          kind: 'regen',
+          shape: 'cube_all',
+          textures: { side: null, top: null, bottom: null },
+          model: null,
+          rotatable: false,
+          hasItem: true,
+          solid: true,
+          // right-click harvests: the block itself cannot be mined; blocks resist explosions either way
+          hardness: breaking ? clamp(num(d, 'hardness', 3), 0, 100) : -1,
+          resistance: 3600000,
+          sound: str(d, 'sound', 'stone'),
+          tool: breaking ? tool : 'none',
+          toolLevel: 'wood',
+          requiresTool: false,
+          light: 0,
+          drop: null,
+          dropMin: 1,
+          dropMax: 1
+        })
+        const entries = breakRuleEntries(d)
+        if (!entries.length) err(n.id, 'Pick at least one block', 'เลือกบล็อกอย่างน้อย 1 อัน')
+        for (const e of entries) {
+          if (e.startsWith('#') || !NSID_RE.test(e)) {
+            err(n.id, `"${e}" is not a block ID (tags cannot be used here)`, `"${e}" ไม่ใช่ ID บล็อก (ใช้แท็กที่นี่ไม่ได้)`)
+            continue
+          }
+          const [ns, path] = e.split(':')
+          const id = `${prefix}_${ns === 'minecraft' ? '' : `${ns}_`}${path.replace(/[/.-]/g, '_')}`
+          if (!ID_RE.test(id)) {
+            err(n.id, `"${e}" makes the invalid ID "${id}"`, `"${e}" ได้ ID "${id}" ที่ไม่ถูกต้อง`)
+            continue
+          }
+          const pretty = path.replace(/[/_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+          ir.blocks.push({
+            ...base(id, `${pretty} (Regenerating)`),
+            seeThrough: SEE_THROUGH.test(path),
+            nameTh: `${pretty} (เกิดใหม่)`,
+            regen: {
+              original: e,
+              depleted: `${id}_depleted`,
+              input,
+              harvestTicks: Math.round(clamp(num(d, 'harvestSeconds', 2), 0.5, 120) * 20),
+              ui: harvestUi(n.id),
+              timer: breaking && bool(d, 'timer', true),
+              give: bool(d, 'give', false),
+              adventure: bool(d, 'adventure', true)
+            }
+          })
+          ir.blocks.push({
+            ...base(`${id}_depleted`, `${pretty} (Growing Back)`),
+            nameTh: `${pretty} (รอเกิดใหม่)`,
+            kind: 'depleted',
+            seeThrough: SEE_THROUGH.test(look.split(':')[1] ?? ''),
+            hasItem: false,
+            hardness: -1,
+            tool: 'none',
+            depleted: { look, restore: id, ticks }
+          })
+          items.push(`${modid}:${id}`)
+        }
+        if (items.length) {
+          const tabId = `${prefix}_blocks`
+          regenTabs.push({
+            id: tabId,
+            nodeId: n.id,
+            title: str(d, 'tabTitle') || 'Regenerating Blocks',
+            titleTh: str(d, 'tabTitleTh'),
+            icon: items[0],
+            logo: null,
+            items
+          })
+        }
         break
       }
       case 'breakRule': {
@@ -1194,6 +1289,8 @@ export function compile(project: Project, target?: Target): CompileResult {
       }
     }
   }
+
+  ir.tabs.push(...regenTabs)
 
   // tools / armor without a material use iron (armor also looks like iron armor when worn)
   if (usesDefaultTool)

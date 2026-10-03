@@ -410,6 +410,16 @@ Category **Blocks**. Makes blocks need a certain tool and mining (ore) level —
 - **Can be broken in adventure mode (right tool)**: nothing can be broken in adventure mode normally. On: holding a tool that passes the rule lets you break these blocks — the tool gets a hidden "can break" list of them (a list a map maker set already is kept). An empty hand cannot.
 - Creative mode is never stopped. A block in two rules follows the first one. Block tags need Minecraft 1.18.2 or newer; on 1.21.2+ swords have no mining level, so any sword counts.
 
+### Regenerating Blocks
+
+Category **Blocks**. Blocks of Minecraft (or another mod) that are harvested like crops and grow back — resource nodes for adventure maps and servers.
+
+- **Blocks (pick any number)**: e.g. iron ore, oak log, `othermod:ruby_ore`. Each one gets its own block (`regen_iron_ore` with the **ID prefix** `regen`) that looks like the original (it uses the original's model) and gives the original's drops. Full blocks such as ores, stone and logs look best; tags cannot be used.
+- **How to harvest**, like crops: _break it_ (mined like a block: **hardness**, **mined fast with**; the original's right tool is needed for drops, fortune and silk touch work; **Show a timer while breaking**), _right-click_, _hold right-click_ or _right-click and stand still_ for the **harvest time** (with the timer; wire a **Harvest timer look** node to choose its look). With the right-click ways the block cannot be mined.
+- After the harvest it turns into the **block while growing back** (`minecraft:bedrock` by default — any block id for its look). That block cannot be broken, resists explosions and pistons cannot move it; after **Grows back after** seconds it turns back.
+- **Harvest goes into the inventory**, **Can be picked in adventure mode** (right-click ways).
+- **Only operators (OP)** can place these blocks; anyone else gets a message. They are in their own **creative tab** (**Creative tab title** EN/TH), after your tabs. In creative mode an OP removes them by breaking them as usual.
+
 ### Shared block settings
 
 - Has its own block item (turn off for crops placed by seeds).

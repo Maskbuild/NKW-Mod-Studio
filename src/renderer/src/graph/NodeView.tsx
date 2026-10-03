@@ -137,6 +137,14 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
       })
       return <span title={names.join(', ')}>{names.length > 3 ? `${names.slice(0, 3).join(', ')} +${names.length - 3}` : names.join(', ') || '—'}</span>
     }
+    case 'regenBlock': {
+      const input = NODE_DEF_MAP.regenBlock.props.find((p) => p.key === 'input')?.options?.find((o) => o.value === (data.input ?? 'break'))
+      return (
+        <span>
+          {breakRuleEntries(data).length} ⬛ · {input ? L(input.label) : ''} · ♻ {String(data.regenSeconds ?? 60)}s
+        </span>
+      )
+    }
     case 'breakRule': {
       const def = NODE_DEF_MAP.breakRule.props
       const tool = def.find((p) => p.key === 'tool')?.options?.find((o) => o.value === (data.tool ?? 'pickaxe'))

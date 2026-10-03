@@ -4,6 +4,7 @@ import { geoLoopName } from './geo'
 import { geckoArmorSource } from './gecko'
 import { genHarvest, genHarvestHud, harvestUiIndex, usesHarvest, usesHud } from './harvest'
 import { genBreakRules, usesBreakRules } from './breakRules'
+import { genRegen, regenCtor, usesRegen } from './regen'
 import { toMcp1165 } from './mcp'
 import { parseJavaModel, rotateBoxes, shapeBoxes, type Box } from './model'
 import { mcAtLeast, type VersionProfile } from './profiles'
@@ -212,7 +213,7 @@ export function genJava(ctx: GenCtx): void {
   const tabIcons = tabIconItems(ctx)
   const allItemIds = [...ir.items.map((i) => i.id), ...blockItems, ...tabIcons.map((t) => t.id), ...ir.mobs.map((m) => `${m.id}_spawn_egg`)]
   const modelBlocks = ir.blocks.filter((b) => b.kind === 'model')
-  const cutoutBlocks = ir.blocks.filter((b) => b.kind === 'model' || b.kind === 'crop')
+  const cutoutBlocks = ir.blocks.filter((b) => b.kind === 'model' || b.kind === 'crop' || b.kind === 'regen' || b.kind === 'depleted')
   const needsRenderLayer = cutoutBlocks.length > 0
   const hasGeo = ctx.gecko && ir.items.some((i) => i.armor?.geo)
 
@@ -428,6 +429,7 @@ ${wornEffectsMethod()}
   }
 
   if (ir.blocks.some((b) => b.crop)) genCropBlock(ctx, out)
+  if (usesRegen(ir)) genRegen(ctx, out)
   if (ir.mobs.length) genMobs(ctx, out)
   if (usesHarvest(ir)) genHarvest(ctx, out)
   if (usesHud(ir)) genHarvestHud(ctx, out)
@@ -1092,6 +1094,14 @@ function blocksClass(ctx: GenCtx): string {
     if (b.requiresTool) s += '.requiresCorrectToolForDrops()'
     if (b.light > 0) s += `.lightLevel(state -> ${b.light})`
     if (b.kind === 'model') s += '.noOcclusion()'
+    if (b.kind === 'regen' || b.kind === 'depleted') {
+      // looks like another block (see-through ones must not hide neighbours); pistons cannot move it (1.20+: a property, before: a method)
+      if (b.seeThrough) s += '.noOcclusion()'
+      if (!p.blockMaterial) {
+        j.use('net.minecraft.world.level.material.PushReaction')
+        s += '.pushReaction(PushReaction.BLOCK)'
+      }
+    }
     if (!b.solid) s += '.noCollission()'
     return s
   }
@@ -1119,6 +1129,7 @@ function blocksClass(ctx: GenCtx): string {
   const ctorFor = (b: BlockIR): string => {
     if (b.crop) return cropCtor(b)
     const props = propsFor(b)
+    if (b.regen || b.depleted) return regenCtor(ctx, b, props)
     if (b.kind === 'model' && b.model) {
       let boxes: Box[]
       try {
@@ -1467,6 +1478,8 @@ ${lines.map((l) => `                ${l}`).join('\n')}
     return `new ForgeSpawnEggItem(${ref}, ${colours}, ${P})`
   }
   const blockItem = (id: string) => {
+    // Regenerating Blocks: operators only, named after the original block
+    if (ir.blocks.some((b) => b.id === id && b.regen)) return `new NkwRegenBlockItem(${get('ModBlocks', id)}, ${baseProps(id)})`
     j.use(MC.BlockItem)
     return `new BlockItem(${get('ModBlocks', id)}, ${baseProps(id)})`
   }

@@ -195,10 +195,31 @@ export interface BreakRuleIR {
   adventure: boolean
 }
 
+/** A block of the game / another mod that is harvested and grows back (Regenerating Blocks node). */
+export interface RegenIR {
+  /** the block it stands for: looks like it and drops its loot, e.g. minecraft:iron_ore */
+  original: string
+  /** registry id (no namespace) of the block it turns into until it grows back */
+  depleted: string
+  input: 'break' | 'click' | 'hold' | 'stand'
+  harvestTicks: number
+  ui: HarvestUiIR | null
+  /** break harvest: show the breaking time on screen */
+  timer: boolean
+  give: boolean
+  adventure: boolean
+}
+
 export interface BlockIR extends Named {
-  kind: 'cube' | 'model' | 'crop'
+  /** regen: a Regenerating Blocks block; depleted: what it is while growing back */
+  kind: 'cube' | 'model' | 'crop' | 'regen' | 'depleted'
   /** Crop node settings */
   crop?: CropIR
+  regen?: RegenIR
+  /** depleted blocks: the model they look like, the block they grow back into, after how many ticks */
+  depleted?: { look: string; restore: string; ticks: number }
+  /** regen / depleted: the block it looks like is see-through (glass, leaves …), so it must not hide its neighbours */
+  seeThrough?: boolean
   /** registers a BlockItem for the block */
   hasItem: boolean
   shape: 'cube_all' | 'cube_bottom_top' | 'pillar'

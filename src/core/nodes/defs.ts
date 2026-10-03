@@ -104,6 +104,8 @@ export interface PropDef {
   hint?: L10n
   /** only shown when predicate over current data is true */
   showIf?: (data: Record<string, unknown>) => boolean
+  /** blockList: block ids only (no #tags) */
+  noTags?: boolean
 }
 
 export type Category = 'asset' | 'item' | 'block' | 'farm' | 'armor' | 'effect' | 'sound' | 'recipe' | 'fd' | 'mob' | 'script' | 'addon' | 'util'
@@ -785,6 +787,137 @@ export const NODE_DEFS: NodeDef[] = [
           'ปกติโหมดผจญภัยทุบอะไรไม่ได้เลย · เปิด: บล็อกเหล่านี้ทุบได้ ถ้าถืออุปกรณ์ที่ผ่านกฎนี้ (อุปกรณ์จะได้รายการ "ทุบได้" ที่ซ่อนไว้)'
         )
       }
+    ]
+  },
+
+  {
+    type: 'regenBlock',
+    category: 'block',
+    title: t('Regenerating Blocks', 'บล็อกเกิดใหม่ (ทรัพยากร)'),
+    description: t(
+      "Blocks of Minecraft or other mods that are harvested like crops and grow back. Each picked block gets its own copy: it looks like the original and gives the original's drops, then turns into a block that cannot be broken (bedrock by default) and grows back after a while. Only operators (OP) can place them; they are in their own creative tab.",
+      'บล็อกของ Minecraft หรือม็อดอื่นที่เก็บได้แบบพืชและเกิดใหม่ได้ แต่ละบล็อกที่เลือกจะได้บล็อกของตัวเอง: หน้าตาเหมือนต้นฉบับและได้ของเหมือนต้นฉบับ เก็บแล้วกลายเป็นบล็อกที่ทุบไม่ได้ (ค่าเริ่มต้นคือ bedrock) แล้วเกิดใหม่ตามเวลา · วางได้เฉพาะ OP และอยู่ในแท็บครีเอทีฟของตัวเอง'
+    ),
+    icon: '♻',
+    inputs: [{ id: 'ui', label: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'), type: 'harvestUi', optional: true }],
+    outputs: [],
+    props: [
+      {
+        key: 'blocks',
+        label: t('Blocks (pick any number)', 'บล็อก (เลือกได้หลายอัน)'),
+        kind: 'blockList',
+        noTags: true,
+        default: ['minecraft:iron_ore'],
+        hint: t(
+          'Full blocks (ores, stone, logs, wood …) look best: the copy uses the original block model.',
+          'บล็อกเต็มก้อน (แร่ หิน ท่อนไม้ ไม้ …) จะสวยที่สุด เพราะบล็อกที่สร้างใช้โมเดลของบล็อกต้นฉบับ'
+        )
+      },
+      {
+        key: 'prefix',
+        label: t('ID prefix', 'คำนำหน้า ID'),
+        kind: 'id',
+        default: 'regen',
+        hint: t('regen → regen_iron_ore, regen_iron_ore_depleted', 'regen → regen_iron_ore, regen_iron_ore_depleted')
+      },
+      {
+        key: 'input',
+        label: t('How to harvest', 'วิธีเก็บเกี่ยว'),
+        kind: 'select',
+        default: 'break',
+        options: [
+          opt('break', 'Break it (mine)', 'ทุบ (ขุด)'),
+          opt('click', 'Right-click', 'คลิกขวา'),
+          opt('hold', 'Hold right-click for a while', 'กดคลิกขวาค้างตามเวลา'),
+          opt('stand', 'Right-click once, then stand still', 'คลิกขวาครั้งเดียวแล้วยืนนิ่งตามเวลา')
+        ],
+        hint: t(
+          'Break: mined like a block (the right tool is needed for drops, like the original). Right-click ways: the block cannot be mined.',
+          'ทุบ: ขุดเหมือนบล็อกทั่วไป (ต้องใช้อุปกรณ์ถูกถึงจะได้ของ เหมือนต้นฉบับ) · แบบคลิกขวา: ทุบบล็อกไม่ได้'
+        )
+      },
+      {
+        key: 'harvestSeconds',
+        label: t('Harvest time (seconds)', 'เวลาเก็บ (วินาที)'),
+        kind: 'float',
+        default: 2,
+        min: 0.5,
+        max: 120,
+        step: 0.5,
+        showIf: (d) => d.input === 'hold' || d.input === 'stand'
+      },
+      {
+        key: 'timer',
+        label: t('Show a timer while breaking', 'แสดงเวลาตอนทุบ'),
+        kind: 'bool',
+        default: true,
+        showIf: (d) => (d.input ?? 'break') === 'break'
+      },
+      {
+        key: 'hardness',
+        label: t('Hardness (mining time)', 'ความแข็ง (เวลาขุด)'),
+        kind: 'float',
+        default: 3,
+        min: 0,
+        max: 100,
+        step: 0.5,
+        hint: t('Iron ore: 3, stone: 1.5, logs: 2, obsidian: 50', 'แร่เหล็ก: 3, หิน: 1.5, ท่อนไม้: 2, ออบซิเดียน: 50'),
+        showIf: (d) => (d.input ?? 'break') === 'break'
+      },
+      {
+        key: 'tool',
+        label: t('Mined fast with', 'ขุดเร็วด้วย'),
+        kind: 'select',
+        default: 'pickaxe',
+        options: [
+          opt('none', 'Hand / any', 'มือเปล่า / อะไรก็ได้'),
+          opt('pickaxe', 'Pickaxe', 'อีเต้อ'),
+          opt('axe', 'Axe', 'ขวาน'),
+          opt('shovel', 'Shovel', 'พลั่ว'),
+          opt('hoe', 'Hoe', 'จอบ')
+        ],
+        showIf: (d) => (d.input ?? 'break') === 'break'
+      },
+      {
+        key: 'sound',
+        label: t('Sound type', 'เสียงบล็อก'),
+        kind: 'select',
+        default: 'stone',
+        options: [
+          opt('stone', 'Stone', 'หิน'),
+          opt('wood', 'Wood', 'ไม้'),
+          opt('metal', 'Metal', 'โลหะ'),
+          opt('glass', 'Glass', 'แก้ว'),
+          opt('grass', 'Grass', 'หญ้า'),
+          opt('sand', 'Sand', 'ทราย'),
+          opt('gravel', 'Gravel', 'กรวด'),
+          opt('wool', 'Wool', 'ขนแกะ')
+        ]
+      },
+      {
+        key: 'regenSeconds',
+        label: t('Grows back after (seconds)', 'เกิดใหม่หลังจาก (วินาที)'),
+        kind: 'int',
+        default: 60,
+        min: 1,
+        max: 86400
+      },
+      {
+        key: 'depleted',
+        label: t('Block while growing back (cannot be broken)', 'บล็อกระหว่างรอเกิดใหม่ (ทุบไม่ได้)'),
+        kind: 'nsid',
+        default: 'minecraft:bedrock',
+        hint: t('Its look, e.g. minecraft:bedrock, minecraft:cobblestone', 'ใช้หน้าตาของบล็อกนี้ เช่น minecraft:bedrock, minecraft:cobblestone')
+      },
+      {
+        key: 'give',
+        label: t('Harvest goes into the inventory', 'ผลผลิตเข้าตัวทันที'),
+        kind: 'bool',
+        default: false
+      },
+      harvestAdventureProp((d) => d.input !== undefined && d.input !== 'break'),
+      { key: 'tabTitle', label: t('Creative tab title (EN)', 'ชื่อแท็บครีเอทีฟ (EN)'), kind: 'text', default: 'Regenerating Blocks' },
+      { key: 'tabTitleTh', label: t('Creative tab title (TH)', 'ชื่อแท็บครีเอทีฟ (ไทย)'), kind: 'text', default: 'บล็อกเกิดใหม่' }
     ]
   },
 

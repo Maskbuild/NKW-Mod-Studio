@@ -41,10 +41,11 @@ export function harvestUiIndex(ir: ModIR, ui: HarvestUiIR | null): number {
 }
 
 /** Whether the mod picks any crop by hand (our crops with a right-click harvest, or game crops). */
-export const usesHarvest = (ir: ModIR) => ir.gameCrops.length > 0 || ir.blocks.some((b) => b.crop && b.crop.input !== 'break')
+export const usesHarvest = (ir: ModIR) =>
+  ir.gameCrops.length > 0 || ir.blocks.some((b) => (b.crop && b.crop.input !== 'break') || (b.regen && b.regen.input !== 'break'))
 
-/** Whether the timer HUD is needed: hand harvests, or Break Rules that show the breaking time. */
-export const usesHud = (ir: ModIR) => usesHarvest(ir) || ir.breakRules.some((r) => r.timer)
+/** Whether the timer HUD is needed: hand harvests, or breaking timers (Break Rules, Regenerating Blocks). */
+export const usesHud = (ir: ModIR) => usesHarvest(ir) || ir.breakRules.some((r) => r.timer) || ir.blocks.some((b) => b.regen?.timer)
 
 const INPUT = { click: 1, hold: 2, stand: 3 } as const
 const AFTER = { break: 0, replant: 1, regrow: 2 } as const
@@ -115,18 +116,28 @@ ${ev.tickHandler()}`
   )
   // the mod's own crops (only when it has any: NkwCropBlock is not generated otherwise)
   const ownCrops = ir.blocks.some((b) => b.crop)
+  const regen = ir.blocks.some((b) => b.regen)
+  // Regenerating Blocks are "grown" while they are not depleted; after 3 = their own harvest
+  const regenRule = regen
+    ? `        if (block instanceof NkwRegenBlock) {
+            NkwRegenBlock r = (NkwRegenBlock) block;
+            if (r.input > 0) rule = new Rule(r.input, r.harvestTicks, 3, 0, r.ui, r.give, r.adventure);
+        } else `
+    : ''
   const ownRule = ownCrops
-    ? `        if (block instanceof NkwCropBlock) {
+    ? `        ${regenRule.trimStart()}if (block instanceof NkwCropBlock) {
             NkwCropBlock crop = (NkwCropBlock) block;
             if (crop.input > 0) rule = new Rule(crop.input, crop.harvestTicks, crop.regrow ? 2 : 0, crop.regrowAge, crop.ui, crop.give, crop.adventure);
         } else `
-    : '        '
+    : regen
+      ? regenRule
+      : '        '
   out(
     'NkwHarvest',
     j.render(`
 /** Picking crops by hand, with a timer on screen (NkwHarvestHud). */
 public final class NkwHarvest {
-    /** How a crop is picked. input: 1 right-click, 2 hold, 3 stand still; after: 0 break, 1 replant, 2 back to an age. */
+    /** How a crop is picked. input: 1 right-click, 2 hold, 3 stand still; after: 0 break, 1 replant, 2 back to an age, 3 a Regenerating Blocks block. */
     public static final class Rule {
         public final int input;
         public final int ticks;
@@ -211,6 +222,7 @@ ${ownRule}if (!GAME.isEmpty()) {
     private static Rule grown(BlockState state) {
         Rule rule = ruleOf(state.getBlock());
         if (rule == null) return null;
+        if (rule.after == 3) return rule;
         IntegerProperty age = age(state);
         return age != null && state.getValue(age) >= maxAge(age) ? rule : null;
     }
@@ -279,7 +291,15 @@ ${ownRule}if (!GAME.isEmpty()) {
         }
     }
 
-    private static void harvest(Player player, Level level, BlockPos pos, BlockState state, Rule rule) {
+    private static void harvest(Player player, Level level, BlockPos pos, BlockState state, Rule rule) {${
+      regen
+        ? `
+        if (rule.after == 3) {
+            ((NkwRegenBlock) state.getBlock()).harvest(level, pos, player, player.getMainHandItem(), false);
+            return;
+        }`
+        : ''
+    }
         IntegerProperty age = age(state);
         if ((rule.after == 0 || age == null) && !rule.give) {
             level.destroyBlock(pos, true, player);
@@ -330,7 +350,7 @@ const argb = (rgb: number, alpha = 255) => `0x${((((alpha & 0xff) << 24) | rgb) 
 export function genHarvestHud(ctx: GenCtx, out: (cls: string, text: string) => void): void {
   const { pkg, loader, p, ns, ir } = ctx
   const harvest = usesHarvest(ir)
-  const breaking = ir.breakRules.some((r) => r.timer)
+  const breaking = ir.breakRules.some((r) => r.timer) || ir.blocks.some((b) => b.regen?.timer)
   const fab = fabricLike(loader)
   const neo = loader === 'neoforge'
   const graphics = mcAtLeast(p.mc, '1.20.1')
@@ -421,6 +441,10 @@ ${harvest ? `${harvestPart}${breaking ? ' else ' : ''}` : '        '}${breaking 
         if (ui < 0) return;`
   let breakTracker = ''
   if (breaking) {
+    const breakLook = [
+      ...(ir.blocks.some((b) => b.regen?.timer) ? ['state.getBlock() instanceof NkwRegenBlock ? ((NkwRegenBlock) state.getBlock()).breakUi'] : []),
+      ir.breakRules.some((r) => r.timer) ? 'NkwBreakRules.timerLook(state)' : '-1'
+    ].join(' : ')
     j.use(MC.BlockPos, MC.BlockState, 'net.minecraft.world.phys.BlockHitResult')
     breakTracker = `    /** the block being mined (client side), the game time it was last counted and its progress (0–1) */
     private static BlockPos minedPos;
@@ -438,7 +462,7 @@ ${harvest ? `${harvestPart}${breaking ? ' else ' : ''}` : '        '}${breaking 
         }
         BlockPos pos = ((BlockHitResult) mc.hitResult).getBlockPos();
         BlockState state = mc.level.getBlockState(pos);
-        int look = NkwBreakRules.timerLook(state);
+        int look = ${breakLook};
         if (look < 0) {
             minedPos = null;
             return null;

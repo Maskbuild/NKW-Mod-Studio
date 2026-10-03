@@ -235,6 +235,11 @@ export function genAssets(ctx: GenCtx): void {
     put(`block.${ns}.${b.id}`, b.name, b.nameTh)
     put(`item.${ns}.${b.id}`, b.name, b.nameTh)
   }
+  // Regenerating Blocks: the item is named after the original block (%s), only operators can place it
+  if (ir.blocks.some((b) => b.regen)) {
+    put(`item.${ns}.regen_name`, '%s (Regenerating)', '%s (เกิดใหม่)')
+    put(`message.${ns}.regen_op`, 'Only operators (OP) can place this', 'เฉพาะ OP เท่านั้นที่วางบล็อกนี้ได้')
+  }
   for (const m of ir.mobs) {
     put(`entity.${ns}.${m.id}`, m.name, m.nameTh)
     put(`item.${ns}.${m.id}_spawn_egg`, `${m.name} Spawn Egg`, `ไข่เกิด${m.nameTh || m.name}`)
@@ -322,6 +327,16 @@ function genBlock(
     const variants: Record<string, { model: string }> = {}
     for (let age = 0; age <= 7; age++) variants[`age=${age}`] = { model: `${ns}:block/${b.id}_stage${Math.min(n - 1, Math.floor((age * n) / 8))}` }
     files.push({ path: `${A}/blockstates/${b.id}.json`, text: json({ variants }) })
+    return
+  }
+  // Regenerating Blocks: the original block's model (blocks named ns:path use ns:block/path)
+  const lookOf = b.regen?.original ?? b.depleted?.look
+  if (lookOf) {
+    const [lns, lpath] = lookOf.split(':')
+    const renderType = !fabricLike(ctx.loader) && ctx.p.modelRenderType ? { render_type: 'minecraft:cutout' } : {}
+    files.push({ path: `${A}/models/block/${b.id}.json`, text: json({ parent: `${lns}:block/${lpath}`, ...renderType }) })
+    files.push({ path: `${A}/blockstates/${b.id}.json`, text: json(states) })
+    if (b.hasItem) files.push({ path: `${A}/models/item/${b.id}.json`, text: json({ parent: model }) })
     return
   }
   if (b.kind === 'model' && b.model) {
