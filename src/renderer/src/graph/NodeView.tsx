@@ -6,6 +6,7 @@ import { EFFECTS, NODE_DEF_MAP, breakRuleEntries, gameCropIds, PIN_COLORS, visib
 import { L } from '../i18n'
 import { assetUrl, vanillaIconUrl } from '../api'
 import { useItemInfo } from './VanillaPanel'
+import { TagStrip } from './TagPreview'
 import { useStore, type FlowNode } from '../store'
 
 export const CATEGORY_COLOR: Record<Category, string> = {
@@ -109,7 +110,12 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
     case 'itemRef':
       return <VanillaRef id={String(data.item ?? '')} />
     case 'tagRef':
-      return <span className="mono">#{String(data.tag ?? '')}</span>
+      return (
+        <span className="tag-summary">
+          <span className="mono">#{String(data.tag ?? '')}</span>
+          <TagStrip tagId={String(data.tag ?? '')} />
+        </span>
+      )
     case 'recipeShaped': {
       const grid = Array.isArray(data.grid) ? (data.grid as unknown[]) : []
       return (

@@ -1,5 +1,5 @@
 import type { BlockIR, ModelRef } from '../ir'
-import { usesHarvest } from './harvest'
+import { usesHud } from './harvest'
 import { breakRuleKey } from './breakRules'
 import { armorIconModel, fitAnimation, geoLoopName, javaModelToGeo, prepareArmorGeo, type GeoFile } from './geo'
 import { textureKeys, type JavaModel } from './model'
@@ -241,7 +241,9 @@ export function genAssets(ctx: GenCtx): void {
   }
   if (ir.items.some((i) => i.headwear)) put(`tooltip.${ns}.wearable_head`, 'Can be worn on the head', 'สวมบนหัวได้')
   // crop harvest timer
-  if (usesHarvest(ir)) {
+  if (usesHud(ir)) {
+    put(`message.${ns}.breaking`, 'Breaking %s %s s', 'กำลังทุบ %s %s วิ')
+    put(`message.${ns}.breaking_notime`, 'Breaking %s', 'กำลังทุบ %s')
     put(`message.${ns}.harvest`, 'Harvesting %s %s s', 'กำลังเก็บ %s %s วิ')
     put(`message.${ns}.harvest_notime`, 'Harvesting %s', 'กำลังเก็บ %s')
     put(`message.${ns}.harvest_seconds`, '%s s', '%s วิ')

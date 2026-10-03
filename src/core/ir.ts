@@ -131,6 +131,8 @@ export interface CropIR {
   give: boolean
   /** what breaking it by a player gives: normal loot, only when fully grown, or nothing */
   breakDrops: BreakDrops
+  /** players in adventure mode may pick it by hand */
+  adventure: boolean
 }
 
 /** Drops when a player breaks a plant (hand harvests are not affected). */
@@ -169,6 +171,8 @@ export interface GameCropIR {
   /** the harvest goes straight into the inventory instead of dropping */
   give: boolean
   breakDrops: BreakDrops
+  /** players in adventure mode may pick it by hand */
+  adventure: boolean
 }
 
 /** Blocks (of any mod, or #tags) that need a tool type / mining level (Break Rule node). */
@@ -184,6 +188,11 @@ export interface BreakRuleIR {
   onFail: 'noDrop' | 'cantBreak'
   /** action-bar text for a wrong tool, null = none */
   message: { en: string; th: string } | null
+  /** show the breaking progress on screen (with this look; null = the default look) */
+  timer: boolean
+  ui: HarvestUiIR | null
+  /** players in adventure mode may break these blocks with the right tool */
+  adventure: boolean
 }
 
 export interface BlockIR extends Named {

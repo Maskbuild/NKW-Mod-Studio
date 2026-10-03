@@ -577,10 +577,23 @@ describe('generators', () => {
         // Break Rules and plants that give nothing when broken
         const rules = files.find((x) => x.path.endsWith('/NkwBreakRules.java'))!.text!
         expect(java).toContain('NkwBreakRules.init();')
-        expect(rules).toContain('Rule RULE_0 = new Rule(0, 2, false, false, "message.nkwtest.break_rule_0");')
+        expect(rules).toMatch(/Rule RULE_0 = new Rule\(0, 2, false, false, "message\.nkwtest\.break_rule_0", [1-9]\d*\);/)
         expect(rules).toContain('add("othermod:ruby_ore", RULE_0);')
         expect(rules).toContain('add("nkwtest:ruby_block", RULE_0);')
-        expect(rules).toContain('new Rule(1, 3, true, false, "message.nkwtest.break_rule_1")')
+        expect(rules).toContain('new Rule(1, 3, true, false, "message.nkwtest.break_rule_1", 0)')
+        expect(rules).toContain('new Rule(4, 4, false, false, "message.nkwtest.break_rule_3", -1)')
+        // breaking timer on screen
+        const hud = files.find((x) => x.path.endsWith('/NkwHarvestHud.java'))!.text!
+        expect(hud).toContain('NkwBreakRules.timerLook(state)')
+        expect(hud).toContain('mc.gameMode.isDestroying()')
+        expect(en['message.nkwtest.breaking']).toBe('Breaking %s %s s')
+        // adventure mode: hidden "can break" list on tools that pass the rule
+        expect(rules).toContain(p.stackId ? 'DataComponents.CAN_BREAK' : 'tag.put("CanDestroy", list);')
+        expect(rules).toMatch(/ADVENTURE\.put\(RULE_0, new String\[\] \{"minecraft:stone"/)
+        expect(rules.includes('"#minecraft:logs"})')).toBe(p.mc !== '1.16.5')
+        expect(rules).not.toMatch(/ADVENTURE\.put\(RULE_1/)
+        expect(java).toContain('if (!rule.adventure && !player.mayBuild()) return false;')
+        expect(java).toMatch(/GAME\.put\("minecraft:wheat", new Rule\([^)]*, true\)\);/)
         expect(rules).toContain('add("nkwtest:ruby_wheat", PLANT_YOUNG);')
         expect(rules).toContain('add("nkwtest:ruby_bush", PLANT_NONE);')
         expect(rules).toContain('add("minecraft:carrots", PLANT_NONE);')
@@ -760,7 +773,7 @@ describe('crops', () => {
     expect(wheat).toMatchObject({ mode: 'replant', input: 'hold', harvestTicks: 30, growStep: 0, stages: expect.any(Array) })
     const bush = ir.blocks.find((b) => b.id === 'ruby_bush')!.crop!
     // 120 s over 7 steps; 30 s cooldown back from age 4
-    expect(bush).toMatchObject({ mode: 'regrow', input: 'stand', growStep: 343, regrowAge: 4, regrowTicks: 600, look: 'cross', soil: 'dirt' })
+    expect(bush).toMatchObject({ mode: 'regrow', input: 'stand', growStep: 343, regrowAge: 4, regrowTicks: 600, look: 'cross', soil: 'dirt', adventure: false })
     // ages 0–7 spread over the 4 stage models
     const states = JSON.parse(text(files, '/blockstates/ruby_wheat.json')!)
     expect(states.variants['age=0'].model).toBe('nkwtest:block/ruby_wheat_stage0')
@@ -774,7 +787,7 @@ describe('crops', () => {
     expect(JSON.parse(text(files, '/loot_table/blocks/ruby_bush.json')!).pools[1].entries[0].children).toHaveLength(1)
     const blocks = text(files, '/ModBlocks.java')!
     expect(blocks).toContain(
-      'new NkwCropBlock(BlockBehaviour.Properties.of().noCollission().randomTicks().instabreak().sound(SoundType.CROP), false, 0, false, 0, 1200, 2, 30, 1, false)'
+      'new NkwCropBlock(BlockBehaviour.Properties.of().noCollission().randomTicks().instabreak().sound(SoundType.CROP), false, 0, false, 0, 1200, 2, 30, 1, false, true)'
     )
     expect(blocks).toContain('return ModItems.RUBY_WHEAT_SEEDS;')
     expect(text(files, '/NkwCropBlock.java')).toContain('level.scheduleTick(pos, this, ticks);')
@@ -802,10 +815,10 @@ describe('crops', () => {
     expect(byBlock['minecraft:sweet_berry_bush']).toMatchObject({ input: 'click', after: 'regrow', back: 1 })
     expect(byBlock['minecraft:carrots']).toMatchObject({ after: 'replant', back: 0 })
     const harvest = text(files, '/NkwHarvest.java')!
-    expect(harvest).toContain('GAME.put("minecraft:wheat", new Rule(2, 20, 0, 1, 2, true));')
+    expect(harvest).toContain('GAME.put("minecraft:wheat", new Rule(2, 20, 0, 1, 2, true, true));')
     // one node, many crops (checked + typed ids), all with the same settings
     for (const id of ['farmersdelight:cabbages', 'farmersdelight:onions', 'farmersdelight:rice_panicles'])
-      expect(harvest).toContain(`GAME.put("${id}", new Rule(2, 30, 1, 0, 1, false));`)
+      expect(harvest).toContain(`GAME.put("${id}", new Rule(2, 30, 1, 0, 1, false, true));`)
     expect(gameCropIds({ crop: 'custom', block: 'a:b, c:d' })).toEqual(['a:b', 'c:d'])
     expect(gameCropIds({})).toEqual(['minecraft:wheat'])
     expect(harvest).toContain('BuiltInRegistries.BLOCK.getKey(block)')

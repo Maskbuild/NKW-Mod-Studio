@@ -413,7 +413,8 @@ export function writeFixture(dir: string): Project {
     regrowStage: 4,
     input: 'stand',
     harvestSeconds: 2,
-    breakDrops: 'none'
+    breakDrops: 'none',
+    adventure: false
   })
   ;['tex_soup', 'tex_ruby'].forEach((tx, i) => wire(tx, 'out', 'bush', `stage${i + 1}`))
   node('bush_berry', 'food', { id: 'ruby_bush_berry', name: 'Ruby Bush Berry', nutrition: 2 })
@@ -455,11 +456,14 @@ export function writeFixture(dir: string): Project {
     tool: 'pickaxe',
     level: 'iron',
     onFail: 'noDrop',
-    messageTh: 'ต้องใช้อีเต้อเหล็ก 100%'
+    messageTh: 'ต้องใช้อีเต้อเหล็ก 100%',
+    timer: true,
+    adventure: true
   })
+  wire('ui_ring', 'out', 'rule_iron', 'ui')
   wire('blk', 'block', 'rule_iron', 'block1')
   wire('lamp', 'block', 'rule_iron', 'block2')
-  node('rule_axe', 'breakRule', { blocks: ['minecraft:oak_planks'], tool: 'axe', level: 'diamond', onFail: 'cantBreak' })
+  node('rule_axe', 'breakRule', { blocks: ['minecraft:oak_planks'], tool: 'axe', level: 'diamond', onFail: 'cantBreak', timer: true })
   node('rule_shears', 'breakRule', { blocks: ['minecraft:white_wool'], tool: 'shears', onFail: 'cantBreak', message: false })
   node('rule_sword', 'breakRule', { blocks: ['minecraft:cobweb'], tool: 'sword', level: 'netherite' })
   node('rule_any', 'breakRule', { blocks: ['minecraft:obsidian'], tool: 'any', level: 'diamond' })

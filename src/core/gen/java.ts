@@ -2,7 +2,7 @@ import type { ArmorMatIR, ArmorSlot, AttributeIR, BlockIR, EffectIR, HitIR, Item
 import { scriptAppliesTo, scriptSource } from '../scriptApi'
 import { geoLoopName } from './geo'
 import { geckoArmorSource } from './gecko'
-import { genHarvest, harvestUiIndex, usesHarvest } from './harvest'
+import { genHarvest, genHarvestHud, harvestUiIndex, usesHarvest, usesHud } from './harvest'
 import { genBreakRules, usesBreakRules } from './breakRules'
 import { toMcp1165 } from './mcp'
 import { parseJavaModel, rotateBoxes, shapeBoxes, type Box } from './model'
@@ -430,6 +430,7 @@ ${wornEffectsMethod()}
   if (ir.blocks.some((b) => b.crop)) genCropBlock(ctx, out)
   if (ir.mobs.length) genMobs(ctx, out)
   if (usesHarvest(ir)) genHarvest(ctx, out)
+  if (usesHud(ir)) genHarvestHud(ctx, out)
   if (usesBreakRules(ir)) genBreakRules(ctx, out)
 
   if (fab && !p.jukeboxSongs && ir.items.some((i) => i.disc)) {
@@ -733,7 +734,7 @@ ${ir.mobs.length ? '        ModEntities.init();\n' : ''}${endDiscs.length ? '   
         ...(p.tabRegistry ? ['ModTabs.TABS'] : [])
       ]
       const clientSetup = needsRenderLayer && !p.modelRenderType
-      if (ir.mobs.length || usesHarvest(ir))
+      if (ir.mobs.length || usesHud(ir))
         j.use(
           neo ? 'net.neoforged.fml.loading.FMLEnvironment' : 'net.minecraftforge.fml.loading.FMLEnvironment',
           neo ? 'net.neoforged.api.distmarker.Dist' : 'net.minecraftforge.api.distmarker.Dist'
@@ -751,7 +752,7 @@ public class NkwMod {
     ${ctor}
         NkwTags.init();
 ${regs.map((r) => `        ${r}.register(bus);`).join('\n')}
-${ir.mobs.length ? `        ModEntities.init(bus);\n        if (FMLEnvironment.dist == Dist.CLIENT) NkwMobsClient.init(bus);\n` : ''}${usesHarvest(ir) ? '        if (FMLEnvironment.dist == Dist.CLIENT) NkwHarvestHud.init(bus);\n' : ''}
+${ir.mobs.length ? `        ModEntities.init(bus);\n        if (FMLEnvironment.dist == Dist.CLIENT) NkwMobsClient.init(bus);\n` : ''}${usesHud(ir) ? '        if (FMLEnvironment.dist == Dist.CLIENT) NkwHarvestHud.init(bus);\n' : ''}
 ${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}${thirstMod ? '        NkwThirst.init();\n' : ''}${usesHarvest(ir) ? '        NkwHarvest.init();\n' : ''}${usesBreakRules(ir) ? '        NkwBreakRules.init();\n' : ''}${attrItems.length ? '        NkwAttributes.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 
@@ -788,7 +789,7 @@ public class NkwClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
 ${cutoutBlocks.map((b) => `        BlockRenderLayerMap.INSTANCE.putBlock(ModBlocks.${C(b.id)}, RenderType.cutout());`).join('\n')}
-${usesHarvest(ir) ? '        NkwHarvestHud.init();\n' : ''}${ir.mobs.map((m) => (p.mc === '1.16.5' ? `        EntityRendererRegistry.INSTANCE.register(ModEntities.${C(m.id)}, (manager, context) -> ${mobRenderer(ctx, m, 'manager')});` : `        EntityRendererRegistry.register(ModEntities.${C(m.id)}, context -> ${mobRenderer(ctx, m, 'context')});`)).join('\n')}
+${usesHud(ir) ? '        NkwHarvestHud.init();\n' : ''}${ir.mobs.map((m) => (p.mc === '1.16.5' ? `        EntityRendererRegistry.INSTANCE.register(ModEntities.${C(m.id)}, (manager, context) -> ${mobRenderer(ctx, m, 'manager')});` : `        EntityRendererRegistry.register(ModEntities.${C(m.id)}, context -> ${mobRenderer(ctx, m, 'context')});`)).join('\n')}
     }
 }`)
     )
@@ -1103,7 +1104,7 @@ function blocksClass(ctx: GenCtx): string {
     s += '.noCollission().randomTicks().instabreak().sound(SoundType.CROP)'
     const seed = ir.items.find((i) => i.places === b.id)
     const input = ['break', 'click', 'hold', 'stand'].indexOf(cr.input)
-    const args = `${s}, ${cr.soil === 'dirt'}, ${cr.growStep}, ${cr.mode === 'regrow'}, ${cr.regrowAge}, ${cr.regrowTicks}, ${input}, ${cr.harvestTicks}, ${harvestUiIndex(ir, cr.ui)}, ${cr.give}`
+    const args = `${s}, ${cr.soil === 'dirt'}, ${cr.growStep}, ${cr.mode === 'regrow'}, ${cr.regrowAge}, ${cr.regrowTicks}, ${input}, ${cr.harvestTicks}, ${harvestUiIndex(ir, cr.ui)}, ${cr.give}, ${cr.adventure}`
     if (!seed) return `new NkwCropBlock(${args})`
     j.use(MC.ItemLike)
     const ref = fab ? `ModItems.${C(seed.id)}` : `ModItems.${C(seed.id)}.get()`
@@ -2012,8 +2013,10 @@ public class NkwCropBlock extends CropBlock {
     public final int ui;
     /** a hand harvest goes straight into the inventory */
     public final boolean give;
+    /** players in adventure mode may pick it by hand */
+    public final boolean adventure;
 
-    public NkwCropBlock(BlockBehaviour.Properties properties, boolean dirt, int growStep, boolean regrow, int regrowAge, int regrowTicks, int input, int harvestTicks, int ui, boolean give) {
+    public NkwCropBlock(BlockBehaviour.Properties properties, boolean dirt, int growStep, boolean regrow, int regrowAge, int regrowTicks, int input, int harvestTicks, int ui, boolean give, boolean adventure) {
         super(properties);
         this.dirt = dirt;
         this.growStep = growStep;
@@ -2024,6 +2027,7 @@ public class NkwCropBlock extends CropBlock {
         this.harvestTicks = harvestTicks;
         this.ui = ui;
         this.give = give;
+        this.adventure = adventure;
     }
 
     @Override

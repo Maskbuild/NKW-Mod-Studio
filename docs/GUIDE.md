@@ -241,7 +241,7 @@ The **Game items** tab lists every item of the selected Minecraft version, with 
 - Search by Thai name, English name or ID. Filter by group, or switch to **Tags** (e.g. `minecraft:planks`, meaning any plank).
 - **Drag** an item onto the canvas, or **double-click** it, to create an **Existing Item** or **Item Tag** node you can wire into recipes.
 
-You can also add these nodes by hand from **Utility**: **Existing Item** (`minecraft:diamond`, or an item from another mod) and **Item Tag** (`minecraft:planks`).
+You can also add these nodes by hand from **Utility**: **Existing Item** (`minecraft:diamond`, or an item from another mod) and **Item Tag** (`minecraft:planks`). An Item Tag node shows the items of its tag as icons (a grid in the right panel, a few on the node); hover an icon to see the item's name.
 
 > Steve/Alex skins for the armor preview also come from these downloaded game files. The app doesn't ship any Mojang files.
 
@@ -367,6 +367,7 @@ Category **Farming**. A plant that grows in up to 8 stages.
 - **How to harvest**: break it, right-click, **hold right-click** for the harvest time, or **right-click once and stand still** for the harvest time (moving cancels and you must click again). While harvesting, a timer shows on screen; wire a **Harvest timer look** node into **Harvest timer look** to choose how it looks (without one: text above the hotbar).
 - **Harvest count min / max**.
 - **When a player breaks it**: _drops like normal_, _drops only when fully grown_ (breaking a young plant gives nothing, not even the seed), or _gives nothing_ (only picking by hand gives the harvest — pair it with a right-click harvest). Picking by hand is never affected, and neither is creative mode.
+- **Can be picked in adventure mode** (shown for right-click harvests): off = players in adventure mode cannot pick it by hand.
 
 ### Harvest a game crop
 
@@ -380,6 +381,7 @@ Gives a crop of Minecraft, Farmer's Delight or another mod the same hand harvest
   - _Stays and goes back to a stage_: the normal drops, then it goes back to the stage you choose and grows again like in the game.
 - **Harvest goes into the inventory**: off = drops on the ground like normal; on = straight into the inventory (what does not fit drops at your feet). The Crop node has the same option for hand harvests.
 - **When a player breaks it**: the same three choices as the Crop node, e.g. _gives nothing_ so players must pick it by hand.
+- **Can be picked in adventure mode**: off = players in adventure mode cannot pick these crops by hand.
 - One node per crop. Farmer's Delight crops only exist on targets that have Farmer's Delight (the Problems panel tells you), and Farmer's Delight is added to "Test in game" for you.
 
 ### Harvest timer look
@@ -404,6 +406,8 @@ Category **Blocks**. Makes blocks need a certain tool and mining (ore) level —
 - **Minimum level (ore level)**: wood/gold, stone, iron, diamond or netherite and better. Tools of your mod count with their Tool Material's mining level.
 - **With the wrong tool**: _it breaks but drops nothing_ (like stone mined by hand), or _it cannot be broken_.
 - **Tell the player which tool is needed**: a red message above the hotbar, written for you (e.g. "Needs an iron pickaxe or better to drop anything"), or your own text in English and Thai.
+- **Show a timer while breaking**: like picking crops by hand, the time left to break the block shows on screen while you mine; the mining swing and cracks stay as usual. Wire a **Harvest timer look** node into **Timer look** to choose text, bar or circle (without one: text above the hotbar). The time follows the real mining speed of your tool.
+- **Can be broken in adventure mode (right tool)**: nothing can be broken in adventure mode normally. On: holding a tool that passes the rule lets you break these blocks — the tool gets a hidden "can break" list of them (a list a map maker set already is kept). An empty hand cannot.
 - Creative mode is never stopped. A block in two rules follows the first one. Block tags need Minecraft 1.18.2 or newer; on 1.21.2+ swords have no mining level, so any sword counts.
 
 ### Shared block settings

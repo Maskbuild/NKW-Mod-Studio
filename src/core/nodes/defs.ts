@@ -153,6 +153,16 @@ const breakDropsProp = (hint: L10n): PropDef => ({
   hint
 })
 
+/** "Works in adventure mode" for picking crops by hand. */
+const harvestAdventureProp = (showIf?: PropDef['showIf']): PropDef => ({
+  key: 'adventure',
+  label: t('Can be picked in adventure mode', 'เก็บได้ในโหมดผจญภัย (Adventure)'),
+  kind: 'bool',
+  default: true,
+  hint: t('Off: players in adventure mode cannot pick it by hand.', 'ปิด: ผู้เล่นโหมดผจญภัยเก็บด้วยมือไม่ได้'),
+  showIf
+})
+
 /** Tools a Break Rule can ask for. */
 export const BREAK_TOOLS = ['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'shears', 'any'] as const
 export const TOOL_LEVELS = ['wood', 'stone', 'iron', 'diamond', 'netherite'] as const
@@ -692,7 +702,10 @@ export const NODE_DEFS: NodeDef[] = [
       'กำหนดว่าบล็อกไหนต้องใช้อุปกรณ์และระดับแร่อะไรถึงจะทุบได้ — เลือกบล็อกของ Minecraft บล็อกของม็อดอื่น (พิมพ์ ID) หรือ #แท็ก ได้หลายอันพร้อมกัน และต่อสายบล็อกของม็อดเราเข้ามาได้ ถ้าใช้อุปกรณ์ไม่ถูกจะไม่ได้ของ หรือทุบไม่ได้เลย (โหมดสร้างสรรค์ไม่มีผล)'
     ),
     icon: '⛏',
-    inputs: slots(32, 'block', 'Mod block', 'บล็อกของม็อด', 'block', { group: 'blocks' }),
+    inputs: [
+      { id: 'ui', label: t('Timer look', 'หน้าตาเวลา'), type: 'harvestUi', optional: true },
+      ...slots(32, 'block', 'Mod block', 'บล็อกของม็อด', 'block', { group: 'blocks' })
+    ],
     outputs: [],
     props: [
       {
@@ -751,7 +764,27 @@ export const NODE_DEFS: NodeDef[] = [
         hint: t('Empty = written for you', 'เว้นว่าง = สร้างข้อความให้อัตโนมัติ'),
         showIf: (d) => d.message !== false
       },
-      { key: 'messageTh', label: t('Own message (TH)', 'ข้อความเอง (ไทย)'), kind: 'text', default: '', showIf: (d) => d.message !== false }
+      { key: 'messageTh', label: t('Own message (TH)', 'ข้อความเอง (ไทย)'), kind: 'text', default: '', showIf: (d) => d.message !== false },
+      {
+        key: 'timer',
+        label: t('Show a timer while breaking', 'แสดงเวลาตอนทุบ'),
+        kind: 'bool',
+        default: false,
+        hint: t(
+          'Like picking crops by hand: the time left shows on screen while you mine (the mining swing and cracks stay). Wire a Harvest timer look node into "Timer look" to choose how it looks.',
+          'แบบเดียวกับตอนเก็บพืชด้วยมือ: ขณะทุบจะมีเวลาที่เหลือแสดงบนจอ (ยังมีท่าทุบและรอยแตกตามปกติ) ต่อโหนดหน้าตาเวลาเก็บเกี่ยวเข้าขา "หน้าตาเวลา" เพื่อเลือกหน้าตา'
+        )
+      },
+      {
+        key: 'adventure',
+        label: t('Can be broken in adventure mode (right tool)', 'ทุบได้ในโหมดผจญภัย (Adventure) ถ้าใช้อุปกรณ์ถูก'),
+        kind: 'bool',
+        default: false,
+        hint: t(
+          'Normally nothing can be broken in adventure mode. On: these blocks can, with a tool that passes this rule (the tool gets a hidden "can break" list).',
+          'ปกติโหมดผจญภัยทุบอะไรไม่ได้เลย · เปิด: บล็อกเหล่านี้ทุบได้ ถ้าถืออุปกรณ์ที่ผ่านกฎนี้ (อุปกรณ์จะได้รายการ "ทุบได้" ที่ซ่อนไว้)'
+        )
+      }
     ]
   },
 
@@ -879,7 +912,8 @@ export const NODE_DEFS: NodeDef[] = [
           'Only breaking by a player counts: picking by hand still gives the harvest. "Nothing" with "Break it" as the harvest gives nothing at all.',
           'มีผลเฉพาะตอนผู้เล่นทุบ: การเก็บด้วยมือยังได้ผลผลิตตามปกติ · ถ้าเลือก "ไม่ได้อะไรเลย" แต่ตั้งวิธีเก็บเป็น "ทุบ" จะไม่ได้อะไรเลย'
         )
-      )
+      ),
+      harvestAdventureProp((d) => (d.input !== undefined && d.input !== 'break') || d.mode === 'regrow')
     ]
   },
 
@@ -984,7 +1018,8 @@ export const NODE_DEFS: NodeDef[] = [
           'Only breaking by a player counts: picking by hand still gives the harvest. Creative mode is not affected.',
           'มีผลเฉพาะตอนผู้เล่นทุบ: การเก็บด้วยมือยังได้ผลผลิตตามปกติ (โหมดสร้างสรรค์ไม่มีผล)'
         )
-      )
+      ),
+      harvestAdventureProp()
     ]
   },
   {
@@ -992,8 +1027,8 @@ export const NODE_DEFS: NodeDef[] = [
     category: 'farm',
     title: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'),
     description: t(
-      'How the harvest timer looks on screen. Wire it into Crop or Harvest a game crop nodes (one look can be used by many crops).',
-      'หน้าตาเวลาเก็บเกี่ยวบนจอ ต่อเข้าโหนดพืช หรือโหนดเก็บเกี่ยวพืชในเกม (ใช้กับหลายพืชได้)'
+      'How the harvest timer looks on screen. Wire it into Crop, Harvest a game crop or Break Rule nodes (one look can be used by many).',
+      'หน้าตาเวลาเก็บเกี่ยวบนจอ ต่อเข้าโหนดพืช โหนดเก็บเกี่ยวพืชในเกม หรือโหนดกฎการทุบบล็อก (ใช้ร่วมกันได้หลายโหนด)'
     ),
     icon: '⏳',
     inputs: [],

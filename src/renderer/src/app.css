@@ -2270,6 +2270,61 @@ img.frame0 {
 .multi-opt input {
   margin: 0;
 }
+/* Item Tag: the items of the tag as icons */
+.tag-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+.tag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--panel-3);
+}
+.tag-cell {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-2);
+  cursor: help;
+}
+.tag-cell:hover {
+  border-color: var(--accent);
+}
+.tag-cell img {
+  width: 24px;
+  height: 24px;
+}
+.tag-cell.small {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  background: transparent;
+}
+.tag-cell.small img {
+  width: 16px;
+  height: 16px;
+}
+.tag-summary,
+.tag-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.tag-strip {
+  gap: 1px;
+}
+
 /* Break Rule block picker */
 .block-list.over {
   outline: 2px dashed var(--accent);

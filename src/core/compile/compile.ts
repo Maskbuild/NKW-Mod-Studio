@@ -671,7 +671,8 @@ export function compile(project: Project, target?: Target): CompileResult {
             seedMax: Math.max(seedMin, clamp(Math.round(num(d, 'seedMax', 3)), 0, 64)),
             ui: harvestUi(n.id),
             give: bool(d, 'give', false),
-            breakDrops: breakDropsOf(d)
+            breakDrops: breakDropsOf(d),
+            adventure: bool(d, 'adventure', true)
           }
         }
         if (b.crop!.breakDrops === 'none' && b.crop!.input === 'break')
@@ -728,8 +729,13 @@ export function compile(project: Project, target?: Target): CompileResult {
           tool,
           level,
           onFail,
-          message: bool(d, 'message', true) ? { en: en || auto.en, th: th || (en ? en : auto.th) } : null
+          message: bool(d, 'message', true) ? { en: en || auto.en, th: th || (en ? en : auto.th) } : null,
+          timer: bool(d, 'timer', false),
+          ui: harvestUi(n.id),
+          adventure: bool(d, 'adventure', false)
         })
+        if (source(n.id, 'ui') && !bool(d, 'timer', false))
+          warn(n.id, 'A timer look is wired in but "Show a timer while breaking" is off', 'ต่อหน้าตาเวลาไว้ แต่ยังไม่ได้เปิด "แสดงเวลาตอนทุบ"')
         break
       }
       case 'gameCrop': {
@@ -779,7 +785,8 @@ export function compile(project: Project, target?: Target): CompileResult {
             back,
             ui: harvestUi(n.id),
             give: bool(d, 'give', false),
-            breakDrops: breakDropsOf(d)
+            breakDrops: breakDropsOf(d),
+            adventure: bool(d, 'adventure', true)
           })
         }
         break

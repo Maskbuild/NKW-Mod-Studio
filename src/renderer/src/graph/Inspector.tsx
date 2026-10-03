@@ -19,6 +19,7 @@ import { TabOrder } from './TabOrder'
 import { ScriptEditor, ScriptTargets } from './ScriptEditor'
 import { HarvestUiPreview } from './HarvestUiPreview'
 import { BlockListField } from './BlockList'
+import { TagGrid } from './TagPreview'
 
 const ModelPreview = lazy(() => import('./ModelPreview'))
 
@@ -282,7 +283,6 @@ function NsidField({ node, p }: { node: FlowNode; p: PropDef }) {
     ? [...(data ? data.tags.map((t) => t.id) : COMMON_TAGS), ...(fd?.tags.map((t) => t.id) ?? [])]
     : [...(data ? data.items.map((i) => `minecraft:${i.id}`) : VANILLA_ITEMS), ...(fd?.items.map((i) => `farmersdelight:${i.id}`) ?? [])]
   const match = useItemInfo(isTag ? '' : value)
-  const tag = isTag ? [...(data?.tags ?? []), ...(fd?.tags ?? [])].find((t) => t.id === value.replace(/^#/, '')) : undefined
   return (
     <div className="field">
       <label>{L(p.label)}</label>
@@ -304,7 +304,7 @@ function NsidField({ node, p }: { node: FlowNode; p: PropDef }) {
           <span>{match.item.en}</span>
         </div>
       )}
-      {tag && <span className="hint">{tag.values.map((v) => v.replace('minecraft:', '')).join(', ')}</span>}
+      {isTag && NSID_RE.test(value.replace(/^#/, '')) && <TagGrid tagId={value} />}
       {!data && (
         <span className="hint">
           {i18n.language === 'th' ? 'โหลดรายการไอเทมทั้งหมดได้ที่แท็บ "ไอเทมเกม"' : 'Load the full item list in the "Game items" tab'}

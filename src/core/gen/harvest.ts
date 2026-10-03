@@ -22,7 +22,7 @@ export const DEFAULT_HARVEST_UI: HarvestUiIR = {
 export function harvestUis(ir: ModIR): HarvestUiIR[] {
   const list = [DEFAULT_HARVEST_UI]
   const keys = [JSON.stringify(DEFAULT_HARVEST_UI)]
-  for (const ui of [...ir.blocks.map((b) => b.crop?.ui), ...ir.gameCrops.map((g) => g.ui)]) {
+  for (const ui of [...ir.blocks.map((b) => b.crop?.ui), ...ir.gameCrops.map((g) => g.ui), ...ir.breakRules.map((r) => (r.timer ? r.ui : null))]) {
     if (!ui || keys.includes(JSON.stringify(ui))) continue
     keys.push(JSON.stringify(ui))
     list.push(ui)
@@ -42,6 +42,9 @@ export function harvestUiIndex(ir: ModIR, ui: HarvestUiIR | null): number {
 
 /** Whether the mod picks any crop by hand (our crops with a right-click harvest, or game crops). */
 export const usesHarvest = (ir: ModIR) => ir.gameCrops.length > 0 || ir.blocks.some((b) => b.crop && b.crop.input !== 'break')
+
+/** Whether the timer HUD is needed: hand harvests, or Break Rules that show the breaking time. */
+export const usesHud = (ir: ModIR) => usesHarvest(ir) || ir.breakRules.some((r) => r.timer)
 
 const INPUT = { click: 1, hold: 2, stand: 3 } as const
 const AFTER = { break: 0, replant: 1, regrow: 2 } as const
@@ -108,14 +111,14 @@ ${ev.tickHandler()}`
   }
   const games = ir.gameCrops.map(
     (g) =>
-      `        GAME.put("${g.block}", new Rule(${INPUT[g.input]}, ${g.harvestTicks}, ${AFTER[g.after]}, ${g.back}, ${harvestUiIndex(ir, g.ui)}, ${g.give}));`
+      `        GAME.put("${g.block}", new Rule(${INPUT[g.input]}, ${g.harvestTicks}, ${AFTER[g.after]}, ${g.back}, ${harvestUiIndex(ir, g.ui)}, ${g.give}, ${g.adventure}));`
   )
   // the mod's own crops (only when it has any: NkwCropBlock is not generated otherwise)
   const ownCrops = ir.blocks.some((b) => b.crop)
   const ownRule = ownCrops
     ? `        if (block instanceof NkwCropBlock) {
             NkwCropBlock crop = (NkwCropBlock) block;
-            if (crop.input > 0) rule = new Rule(crop.input, crop.harvestTicks, crop.regrow ? 2 : 0, crop.regrowAge, crop.ui, crop.give);
+            if (crop.input > 0) rule = new Rule(crop.input, crop.harvestTicks, crop.regrow ? 2 : 0, crop.regrowAge, crop.ui, crop.give, crop.adventure);
         } else `
     : '        '
   out(
@@ -133,14 +136,17 @@ public final class NkwHarvest {
         public final int ui;
         /** the harvest goes straight into the inventory instead of dropping */
         public final boolean give;
+        /** players in adventure mode may pick it */
+        public final boolean adventure;
 
-        Rule(int input, int ticks, int after, int back, int ui, boolean give) {
+        Rule(int input, int ticks, int after, int back, int ui, boolean give, boolean adventure) {
             this.input = input;
             this.ticks = Math.max(1, ticks);
             this.after = after;
             this.back = back;
             this.ui = ui;
             this.give = give;
+            this.adventure = adventure;
         }
     }
 
@@ -214,6 +220,8 @@ ${ownRule}if (!GAME.isEmpty()) {
         BlockState state = level.getBlockState(pos);
         Rule rule = grown(state);
         if (rule == null) return false;
+        // adventure mode (players who may not build): picking by hand only when the crop allows it
+        if (!rule.adventure && !player.mayBuild()) return false;
         if (hand != InteractionHand.MAIN_HAND) return true;
         long now = level.getGameTime();
         if (level.isClientSide) {
@@ -310,7 +318,6 @@ ${ownRule}if (!GAME.isEmpty()) {
     }
 }`)
   )
-  genHarvestHud(ctx, out)
 }
 
 /** ARGB int literal. */
@@ -320,8 +327,10 @@ const argb = (rgb: number, alpha = 255) => `0x${((((alpha & 0xff) << 24) | rgb) 
  * The harvest timer on screen (client only): text, a bar that fills up or a circle that fills around the
  * crosshair. Drawn on the HUD with the loader's hook; GuiGraphics on 1.20+, PoseStack before.
  */
-function genHarvestHud(ctx: GenCtx, out: (cls: string, text: string) => void): void {
+export function genHarvestHud(ctx: GenCtx, out: (cls: string, text: string) => void): void {
   const { pkg, loader, p, ns, ir } = ctx
+  const harvest = usesHarvest(ir)
+  const breaking = ir.breakRules.some((r) => r.timer)
   const fab = fabricLike(loader)
   const neo = loader === 'neoforge'
   const graphics = mcAtLeast(p.mc, '1.20.1')
@@ -388,10 +397,73 @@ function genHarvestHud(ctx: GenCtx, out: (cls: string, text: string) => void): v
   const text = graphics
     ? 'graphics.drawString(Minecraft.getInstance().font, s, x, y, color);'
     : 'Minecraft.getInstance().font.drawShadow(graphics, s, x, y, color);'
+  const harvestPart = `        NkwHarvest.Session s = NkwHarvest.client(mc.player, mc.level);
+        if (s != null) {
+            long done = mc.level.getGameTime() - s.start;
+            ui = s.rule.ui;
+            progress = Math.max(0.0F, Math.min(1.0F, done / (float) s.rule.ticks));
+            ticksLeft = Math.max(0L, s.rule.ticks - done);
+        }`
+  const breakPart = `if (ui < 0) {
+            float[] b = breaking(mc);
+            if (b != null) {
+                ui = (int) b[0];
+                progress = b[1];
+                ticksLeft = b[2];
+                mining = true;
+            }
+        }`
+  const timerSource = `        int ui = -1;
+        float progress = 0.0F;
+        double ticksLeft = 0;
+        boolean mining = false;
+${harvest ? `${harvestPart}${breaking ? ' else ' : ''}` : '        '}${breaking ? breakPart : ''}
+        if (ui < 0) return;`
+  let breakTracker = ''
+  if (breaking) {
+    j.use(MC.BlockPos, MC.BlockState, 'net.minecraft.world.phys.BlockHitResult')
+    breakTracker = `    /** the block being mined (client side), the game time it was last counted and its progress (0–1) */
+    private static BlockPos minedPos;
+    private static long minedTime;
+    private static float minedProgress;
+
+    /**
+     * Mining of a Break Rule block that shows a timer: { look, progress, ticks left }, or null. Counts the
+     * progress per tick the way the game does (the same speed the game uses for this player and tool).
+     */
+    private static float[] breaking(Minecraft mc) {
+        if (mc.gameMode == null || !mc.gameMode.isDestroying() || !(mc.hitResult instanceof BlockHitResult) || mc.player.isCreative()) {
+            minedPos = null;
+            return null;
+        }
+        BlockPos pos = ((BlockHitResult) mc.hitResult).getBlockPos();
+        BlockState state = mc.level.getBlockState(pos);
+        int look = NkwBreakRules.timerLook(state);
+        if (look < 0) {
+            minedPos = null;
+            return null;
+        }
+        float perTick = state.getDestroyProgress(mc.player, mc.level, pos);
+        long now = mc.level.getGameTime();
+        if (!pos.equals(minedPos)) {
+            minedPos = pos.immutable();
+            minedTime = now;
+            minedProgress = 0.0F;
+        } else if (now > minedTime) {
+            minedProgress += perTick * (now - minedTime);
+            minedTime = now;
+        }
+        if (perTick <= 0.0F || perTick >= 1.0F) return null;
+        float progress = Math.min(1.0F, minedProgress);
+        return new float[] { look, progress, (1.0F - progress) / perTick };
+    }
+
+`
+  }
   out(
     'NkwHarvestHud',
     j.render(`
-/** The harvest timer on screen (client only). */
+/** The harvest timer, and the breaking timer of Break Rule blocks, on screen (client only). */
 public final class NkwHarvestHud {
     /** style (0 text, 1 bar, 2 circle), colour, background, place (0 crosshair, 1 hotbar, 2 top), offset, width, height, radius, thickness, seconds */
     private static final int[][] LOOKS = {
@@ -405,12 +477,10 @@ ${hooks}
     private static void render(${G} graphics) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null || mc.options.hideGui) return;
-        NkwHarvest.Session s = NkwHarvest.client(mc.player, mc.level);
-        if (s == null) return;
-        int[] look = LOOKS[s.rule.ui < LOOKS.length ? s.rule.ui : 0];
-        long done = mc.level.getGameTime() - s.start;
-        float progress = Math.max(0.0F, Math.min(1.0F, done / (float) s.rule.ticks));
-        String left = String.format("%.1f", Math.max(0L, s.rule.ticks - done) / 20.0);
+${timerSource}
+        int[] look = LOOKS[ui >= 0 && ui < LOOKS.length ? ui : 0];
+        String left = String.format("%.1f", ticksLeft / 20.0);
+        String key = mining ? "message.${ns}.breaking" : "message.${ns}.harvest";
         int w = mc.getWindow().getGuiScaledWidth();
         int h = mc.getWindow().getGuiScaledHeight();
         int cx = w / 2;
@@ -428,7 +498,7 @@ ${hooks}
             StringBuilder bar = new StringBuilder();
             int filled = (int) (10 * progress);
             for (int i = 0; i < 10; i++) bar.append(i < filled ? '\\u25A0' : '\\u25A1');
-            String line = time ? I18n.get("message.${ns}.harvest", bar.toString(), left) : I18n.get("message.${ns}.harvest_notime", bar.toString());
+            String line = time ? I18n.get(key, bar.toString(), left) : I18n.get(key + "_notime", bar.toString());
             centered(graphics, line, cx, y, look[1]);
             return;
         }
@@ -438,6 +508,7 @@ ${hooks}
         if (time) text(graphics, I18n.get("message.${ns}.harvest_seconds", left), x + look[5] + 4, y + look[6] / 2 - 3, 0xFFFFFFFF);
     }
 
+${breakTracker}
     /** A circle that fills clockwise from the top (thickness >= radius: a filled disc), drawn in runs of pixels. */
     private static void ring(${G} graphics, int cx, int cy, int radius, int thickness, float progress, int color, int back) {
         float inner = Math.max(0, radius - thickness);
