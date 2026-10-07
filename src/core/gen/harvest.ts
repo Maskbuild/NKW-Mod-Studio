@@ -2,25 +2,15 @@ import type { GameCropIR, HarvestUiIR, ModIR } from '../ir'
 import { gameCropSets, usesConfig } from './config'
 import { JavaFile, MC, forgeEvents, registry, translatable } from './java'
 import { mcAtLeast } from './profiles'
-import { fabricLike, type GenCtx } from './types'
+import { RES, fabricLike, type GenCtx } from './types'
+import { legacyToDoc, docAssets } from '../timerUi'
+import { timerDocJava, timerLayoutJava } from './timerJava'
 
 /** The timer window used when a node has no Timer window node: text above the hotbar (white). */
-const DEFAULT_HARVEST_UI: HarvestUiIR = {
-  style: 'text',
-  color: 0xffffff,
-  back: 0,
-  backAlpha: 128,
-  place: 'hotbar',
-  offset: 0,
-  width: 60,
-  height: 4,
-  radius: 9,
-  thickness: 3,
-  time: true
-}
+const DEFAULT_HARVEST_UI: HarvestUiIR = legacyToDoc({ style: 'text', color: '#ffffff', place: 'hotbar', backOpacity: 50 })
 
 /** Every timer window of the mod, the default first; a node's window is its index here. */
-function harvestUis(ir: ModIR): HarvestUiIR[] {
+export function harvestUis(ir: ModIR): HarvestUiIR[] {
   const list = [DEFAULT_HARVEST_UI]
   const keys = [JSON.stringify(DEFAULT_HARVEST_UI)]
   const used = [...ir.blocks.flatMap((b) => [b.crop?.ui, b.regen?.ui]), ...ir.gameCrops.map((g) => g.ui), ...ir.breakRules.map((r) => (r.timer ? r.ui : null))]
@@ -30,6 +20,26 @@ function harvestUis(ir: ModIR): HarvestUiIR[] {
     list.push(ui)
   }
   return list
+}
+
+/** Images the timer windows use: project asset → name in the game (textures/gui/timer/<name>.png). */
+export function timerImages(ir: ModIR): Map<string, string> {
+  const names = new Map<string, string>()
+  const taken = new Set<string>()
+  for (const ui of harvestUis(ir))
+    for (const a of docAssets(ui)) {
+      if (names.has(a)) continue
+      const base =
+        (a.split('/').pop() ?? 'image')
+          .replace(/\.png$/i, '')
+          .toLowerCase()
+          .replace(/[^a-z0-9_]/g, '_') || 'image'
+      let name = base
+      for (let n = 2; taken.has(name); n++) name = `${base}_${n}`
+      taken.add(name)
+      names.set(a, name)
+    }
+  return names
 }
 
 /** Index of a timer window in harvestUis(ir). */
@@ -499,9 +509,6 @@ ${gameHelpers}
   )
 }
 
-/** ARGB int literal. */
-const argb = (rgb: number, alpha = 255) => `0x${((((alpha & 0xff) << 24) | rgb) >>> 0).toString(16).toUpperCase().padStart(8, '0')}`
-
 /**
  * The timer on screen (client only) for picking by hand and for breaking blocks that show their breaking
  * time: text, a bar that fills up or a circle that fills around the crosshair. Drawn on the HUD with the
@@ -567,16 +574,24 @@ export function genHarvestHud(ctx: GenCtx, out: (cls: string, text: string) => v
     }`
     }
   }
-  const STYLE = { text: 0, bar: 1, ring: 2 } as const
-  const PLACE = { crosshair: 0, hotbar: 1, top: 2 } as const
-  const rows = harvestUis(ir).map(
-    (u) =>
-      `        { ${STYLE[u.style]}, ${argb(u.color)}, ${argb(u.back, u.backAlpha)}, ${PLACE[u.place]}, ${u.offset}, ${u.width}, ${u.height}, ${u.radius}, ${u.thickness}, ${u.time ? 1 : 0} }`
-  )
+  const uis = harvestUis(ir)
+  const images = timerImages(ir)
+  // images need a blit call that is known for 1.20.1 – 1.21.1 only
+  const imagesOk = mcAtLeast(p.mc, '1.20.1') && !mcAtLeast(p.mc, '1.21.4')
+  const docMethods = uis.map((u, i) => `    private static NkwTimerLayout.Doc doc${i}() {\n${timerDocJava(u, (a) => images.get(a) ?? '')}\n    }`).join('\n\n')
   const fill = graphics ? 'graphics.fill(x1, y1, x2, y2, color);' : 'GuiComponent.fill(graphics, x1, y1, x2, y2, color);'
   const text = graphics
-    ? 'graphics.drawString(Minecraft.getInstance().font, s, x, y, color);'
-    : 'Minecraft.getInstance().font.drawShadow(graphics, s, x, y, color);'
+    ? 'graphics.drawString(Minecraft.getInstance().font, s, x, y, color, shadow);'
+    : 'if (shadow) Minecraft.getInstance().font.drawShadow(graphics, s, x, y, color);\n        else Minecraft.getInstance().font.draw(graphics, s, x, y, color);'
+  const POSE = graphics ? 'graphics.pose()' : 'graphics'
+  let imageDraw = '            // images need Minecraft 1.20.1 to 1.21.1: left out here'
+  if (imagesOk) {
+    j.use(MC.RL, 'java.util.HashMap', 'java.util.Map')
+    imageDraw = `            ResourceLocation rl = IMAGES.computeIfAbsent(c.asset, a -> NkwMod.id("textures/gui/timer/" + a + ".png"));
+            graphics.setColor(((c.argb >> 16) & 255) / 255.0F, ((c.argb >> 8) & 255) / 255.0F, (c.argb & 255) / 255.0F, ((c.argb >>> 24) & 255) / 255.0F);
+            graphics.blit(rl, c.x1, c.y1, c.w, c.h, 0.0F, 0.0F, c.tw, c.th, c.tw, c.th);
+            graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);`
+  }
   const harvestPart = `        NkwHarvest.Session s = NkwHarvest.client(mc.player, mc.level);
         // holding the left button: the timer goes away the moment it is let go
         if (s != null && s.rule.left && s.rule.input == 2 && !mc.options.keyAttack.isDown()) s = null;
@@ -600,7 +615,10 @@ export function genHarvestHud(ctx: GenCtx, out: (cls: string, text: string) => v
         double ticksLeft = 0;
         boolean mining = false;
 ${[harvest ? harvestPart : '', breaking ? `        ${breakPart}` : ''].filter(Boolean).join('\n')}
-        if (ui < 0) return;`
+        if (ui < 0) {
+            shownAt = -1;
+            return;
+        }`
   // adventure mode cannot mine, so the game stops swinging the tool after the first hit: keep it swinging
   // while the left button is held on a block picked with it (the swings also reach the server)
   const BOB_FIELD = '    /** game time of the last up-down bob of the item in hand (adventure mode) */\n    private static long lastBob = -1;\n\n'
@@ -670,10 +688,13 @@ ${[harvest ? harvestPart : '', breaking ? `        ${breakPart}` : ''].filter(Bo
     j.render(`
 /** The harvest timer, and the breaking timer of Break Rule blocks, on screen (client only). */
 public final class NkwHarvestHud {
-    /** style (0 text, 1 bar, 2 circle), colour, background, place (0 crosshair, 1 hotbar, 2 top), offset, width, height, radius, thickness, seconds */
-    private static final int[][] LOOKS = {
-${rows.join(',\n')}
-    };
+    private static final NkwTimerLayout.Doc[] DOCS = { ${uis.map((_, i) => `doc${i}()`).join(', ')} };
+    /** the text of a timer element: its translation (the language files hold the {seconds} / {percent} / {bar} template) */
+    private static final NkwTimerLayout.Texts TEXTS = (doc, el, e) -> I18n.get("message.${ns}.timer" + doc + "_" + el);
+    /** game time in milliseconds when the window appeared (animations run from there); -1 while it is not shown */
+    private static long shownAt = -1;
+${imagesOk ? '    private static final Map<String, ResourceLocation> IMAGES = new HashMap<>();\n' : ''}
+${docMethods}
 
     private NkwHarvestHud() {}
 
@@ -684,75 +705,48 @@ ${hooks}
         if (mc.player == null || mc.level == null) return;${adventureSwing}
         if (mc.options.hideGui) return;
 ${timerSource}
-        int[] look = LOOKS[ui < LOOKS.length ? ui : 0];
-        String left = String.format("%.1f", ticksLeft / 20.0);
-        String key = mining ? "message.${ns}.breaking" : "message.${ns}.harvest";
-        int w = mc.getWindow().getGuiScaledWidth();
-        int h = mc.getWindow().getGuiScaledHeight();
-        int cx = w / 2;
-        int cy = h / 2;
-        boolean time = look[9] != 0;
-        if (look[0] == 2) {
-            ring(graphics, cx, cy, look[7], look[8], progress, look[1], look[2]);
-            if (time) centered(graphics, I18n.get("message.${ns}.harvest_seconds", left), cx, cy + look[7] + 3, 0xFFFFFFFF);
-            return;
-        }
-        int height = look[0] == 1 ? look[6] + 2 : 9;
-        int y = look[3] == 0 ? cy + 10 : look[3] == 1 ? h - 50 - height : 10;
-        y += look[4];
-        if (look[0] == 0) {
-            StringBuilder bar = new StringBuilder();
-            int filled = (int) (10 * progress);
-            for (int i = 0; i < 10; i++) bar.append(i < filled ? '\\u25A0' : '\\u25A1');
-            String line = time ? I18n.get(key, bar.toString(), left) : I18n.get(key + "_notime", bar.toString());
-            centered(graphics, line, cx, y, look[1]);
-            return;
-        }
-        int x = cx - look[5] / 2;
-        if ((look[2] >>> 24) != 0) fill(graphics, x - 1, y, x + look[5] + 1, y + look[6] + 2, look[2]);
-        fill(graphics, x, y + 1, x + Math.round(look[5] * progress), y + 1 + look[6], look[1]);
-        if (time) text(graphics, I18n.get("message.${ns}.harvest_seconds", left), x + look[5] + 4, y + look[6] / 2 - 3, 0xFFFFFFFF);
+        if (shownAt < 0) shownAt = System.currentTimeMillis();
+        NkwTimerLayout.In in = new NkwTimerLayout.In();
+        in.sw = mc.getWindow().getGuiScaledWidth();
+        in.sh = mc.getWindow().getGuiScaledHeight();
+        in.harvest = !mining;
+        in.progress = progress;
+        in.ticksLeft = ticksLeft;
+        in.time = (System.currentTimeMillis() - shownAt) / 50.0;
+        int index = ui < DOCS.length ? ui : 0;
+        for (NkwTimerLayout.Cmd c : NkwTimerLayout.layout(DOCS[index], index, in, TEXTS)) draw(graphics, c);
     }
 
 ${adventureSwing ? BOB_FIELD : ''}${breakTracker}
-    /** A circle that fills clockwise from the top (thickness >= radius: a filled disc), drawn in runs of pixels. */
-    private static void ring(${G} graphics, int cx, int cy, int radius, int thickness, float progress, int color, int back) {
-        float inner = Math.max(0, radius - thickness);
-        for (int dy = -radius; dy < radius; dy++) {
-            int runStart = -radius;
-            int runColor = 0;
-            for (int dx = -radius; dx <= radius; dx++) {
-                int c = 0;
-                if (dx < radius) {
-                    double px = dx + 0.5;
-                    double py = dy + 0.5;
-                    double d = Math.sqrt(px * px + py * py);
-                    if (d <= radius && d >= inner) {
-                        double angle = Math.atan2(px, -py);
-                        if (angle < 0) angle += Math.PI * 2;
-                        c = angle / (Math.PI * 2) <= progress ? color : back;
-                    }
-                }
-                if (c != runColor || dx == radius) {
-                    if ((runColor >>> 24) != 0) fill(graphics, cx + runStart, cy + dy, cx + dx, cy + dy + 1, runColor);
-                    runStart = dx;
-                    runColor = c;
-                }
+    private static void draw(${G} graphics, NkwTimerLayout.Cmd c) {
+        if (c.kind == NkwTimerLayout.C_RECT) {
+            fill(graphics, c.x1, c.y1, c.x2, c.y2, c.argb);
+        } else if (c.kind == NkwTimerLayout.C_TEXT) {
+            int width = Minecraft.getInstance().font.width(c.text);
+            int dx = c.align == 1 ? -(width / 2) : c.align == 2 ? -width : 0;
+            if (c.scale == 1.0) {
+                text(graphics, c.text, c.x1 + dx, c.y1, c.argb, c.shadow);
+            } else {
+                ${POSE}.pushPose();
+                ${POSE}.translate((float) c.x1, (float) c.y1, 0.0F);
+                ${POSE}.scale((float) c.scale, (float) c.scale, 1.0F);
+                text(graphics, c.text, dx, 0, c.argb, c.shadow);
+                ${POSE}.popPose();
             }
+        } else {
+${imageDraw}
         }
-    }
-
-    private static void centered(${G} graphics, String s, int cx, int y, int color) {
-        text(graphics, s, cx - Minecraft.getInstance().font.width(s) / 2, y, color);
     }
 
     private static void fill(${G} graphics, int x1, int y1, int x2, int y2, int color) {
         ${fill}
     }
 
-    private static void text(${G} graphics, String s, int x, int y, int color) {
+    private static void text(${G} graphics, String s, int x, int y, int color, boolean shadow) {
         ${text}
     }
 }`)
   )
+  out('NkwTimerLayout', timerLayoutJava(pkg))
+  if (imagesOk) for (const [asset, name] of images) ctx.files.push({ path: `${RES}/assets/${ns}/textures/gui/timer/${name}.png`, copy: asset })
 }

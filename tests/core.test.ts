@@ -571,7 +571,7 @@ describe('generators', () => {
         const hud = files.find((x) => x.path.endsWith('/NkwHarvestHud.java'))!.text!
         expect(hud).toContain('NkwBreakRules.timerLook(state)')
         expect(hud).toContain('mc.gameMode.isDestroying()')
-        expect(en['message.nkwtest.breaking']).toBe('Breaking %s %s s')
+        expect(Object.keys(en).some((k) => k.startsWith('message.nkwtest.timer'))).toBe(true)
         // adventure mode: hidden "can break" list on tools that pass the rule
         expect(rules).toContain(p.stackId ? 'DataComponents.CAN_BREAK' : 'tag.put("CanDestroy", list);')
         expect(rules).toMatch(/ADVENTURE\.put\(RULE_0, new String\[\] \{"minecraft:stone"/)
@@ -897,10 +897,13 @@ describe('crops', () => {
     expect(onlyFiles.some((f) => f.path.endsWith('/NkwCropBlock.java'))).toBe(false)
     expect(text(onlyFiles, '/NkwHarvest.java')).not.toContain('NkwCropBlock')
     const hud = text(files, '/NkwHarvestHud.java')!
-    expect(hud).toContain('{ 1, 0xFFFACC15, 0x80000000, 0, 0, 80, 5, 9, 3, 1 }')
-    expect(hud).toContain('{ 2, 0xFF22D3EE, 0x66000000, 0, 0, 60, 4, 10, 4, 1 }')
+    // each Timer window node becomes a document of elements (a bar and a ring here), drawn by the layout class
+    expect(hud).toContain('NkwTimerLayout.layout(DOCS[index], index, in, TEXTS)')
+    expect(hud).toContain('NkwTimerLayout.Fill.solid(0xFACC15, 100)')
+    expect(hud).toContain('e.radius = 10; e.thickness = 4;')
+    expect(text(files, '/NkwTimerLayout.java')).toContain('public static List<Cmd> layout(')
     expect(text(files, '/NkwClient.java')).toContain('NkwHarvestHud.init();')
-    expect(JSON.parse(text(files, '/lang/th_th.json')!)['message.nkwtest.harvest_seconds']).toBe('%s วิ')
+    expect(JSON.parse(text(files, '/lang/th_th.json')!)['message.nkwtest.timer1_1']).toBe('{seconds} วิ')
     // each loader's HUD hook
     const hook = (loader: 'forge' | 'neoforge', mc: string) => text(gen(loader, mc).files, '/NkwHarvestHud.java')!
     expect(hook('forge', '1.16.5')).toContain('import com.mojang.blaze3d.matrix.MatrixStack;')

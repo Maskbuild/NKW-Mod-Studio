@@ -171,6 +171,8 @@ describe('documents', () => {
       show: 'always',
       anims: [],
       asset: 'textures/icon.png',
+      texW: 16,
+      texH: 16,
       tint: null
     })
     expect(docAssets(doc)).toEqual(['textures/icon.png'])

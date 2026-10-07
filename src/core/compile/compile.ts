@@ -2,6 +2,7 @@ import { ASSET_RE, ID_RE, NSID_RE, type GraphNode, type Project, type Target } f
 import { parseFit } from '../gen/geo'
 import { extHost } from '../ext/host'
 import { extensionOfType } from '../ext/used'
+import { docAssets, docOfNode } from '../timerUi'
 import { runMappings } from '../ext/mapping'
 import { REMOVED_NODE_TYPES } from '../nodes/removed'
 import { ATTRIBUTES, BREAK_TOOLS, EFFECTS, NODE_DEF_MAP, TOOL_LEVELS, breakRuleEntries, canConnect, gameCropIds, pinOf, type L10n } from '../nodes/defs'
@@ -343,23 +344,10 @@ export function compile(project: Project, target?: Target): CompileResult {
   const harvestUi = (nodeId: string): HarvestUiIR | null => {
     const s = source(nodeId, 'ui')
     if (!s || s.node.type !== 'harvestUi') return null
-    const d = s.node.data
-    const rgb = (k: string, def: string) => parseInt((/^#[0-9a-f]{6}$/i.test(str(d, k)) ? str(d, k) : def).slice(1), 16)
-    const style = str(d, 'style', 'bar')
-    const place = str(d, 'place', 'crosshair')
-    return {
-      style: style === 'text' || style === 'ring' ? style : 'bar',
-      color: rgb('color', '#4ade80'),
-      back: rgb('back', '#000000'),
-      backAlpha: Math.round((int(d, 'backOpacity', 50, 0, 100) * 255) / 100),
-      place: place === 'hotbar' || place === 'top' ? place : 'crosshair',
-      offset: int(d, 'offset', 0, -200, 200),
-      width: int(d, 'width', 60, 10, 300),
-      height: int(d, 'height', 4, 1, 20),
-      radius: int(d, 'radius', 9, 3, 40),
-      thickness: int(d, 'thickness', 3, 1, 40),
-      time: bool(d, 'time', true)
-    }
+    const { doc, problems } = docOfNode(s.node.data)
+    if (problems.length) warn(s.node.id, `Timer window: ${problems[0]} (the default look is used)`, `หน้าต่างเวลา: ${problems[0]} (ใช้แบบมาตรฐานแทน)`)
+    for (const a of docAssets(doc)) if (!ASSET_RE.test(a)) err(s.node.id, `Timer window: invalid image "${a}"`, `หน้าต่างเวลา: ไฟล์รูป "${a}" ไม่ถูกต้อง`)
+    return doc
   }
 
   /** Length of the first sound file behind a Sound Event (seconds, measured at import). */

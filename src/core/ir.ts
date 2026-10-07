@@ -1,6 +1,7 @@
 import type { ArmorFit } from './gen/geo'
 import type { ProjectMeta } from './project'
 import type { L10n } from './nodes/defs'
+import type { TimerDoc } from './timerUi'
 
 export type Ingredient = { item: string } | { tag: string }
 
@@ -139,24 +140,8 @@ export interface CropIR {
 /** Drops when a player breaks a plant (hand harvests are not affected). */
 export type BreakDrops = 'normal' | 'grown' | 'none'
 
-/** How the harvest timer is drawn (Harvest UI node). Colours are 0xRRGGBB. */
-export interface HarvestUiIR {
-  style: 'text' | 'bar' | 'ring'
-  color: number
-  back: number
-  /** background opacity 0–255 */
-  backAlpha: number
-  /** bar / text: where on the screen, moved down by offset */
-  place: 'crosshair' | 'hotbar' | 'top'
-  offset: number
-  width: number
-  height: number
-  /** ring around the crosshair: radius and line thickness (thickness >= radius = a filled circle) */
-  radius: number
-  thickness: number
-  /** show the seconds left */
-  time: boolean
-}
+/** How the timer window looks (Timer window node): a document of elements, see timerUi.ts. */
+export type HarvestUiIR = TimerDoc
 
 /** Picking a crop of the game or of another mod by hand (Game Crop Harvest node). */
 export interface GameCropIR {

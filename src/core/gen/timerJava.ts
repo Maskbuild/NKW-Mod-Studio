@@ -104,7 +104,7 @@ public final class NkwTimerLayout {
         public int align;
         // image
         public String asset = "";
-        public int tint = -1;
+        public int tint = -1, texW = 16, texH = 16;
 
         public El(int type, int anchor, double x, double y, double w, double h, int opacity, int show) {
             this.type = type;
@@ -141,7 +141,7 @@ public final class NkwTimerLayout {
 
     /** one drawing command (kind C_RECT, C_TEXT or C_IMAGE) */
     public static final class Cmd {
-        public int kind, x1, y1, x2, y2, argb, el, align, w, h;
+        public int kind, x1, y1, x2, y2, argb, el, align, w, h, tw, th;
         public String text, asset;
         public boolean shadow;
         public double scale;
@@ -436,6 +436,8 @@ public final class NkwTimerLayout {
                         c.y1 = (int) Math.round(y);
                         c.w = (int) Math.round(w);
                         c.h = (int) Math.round(h);
+                        c.tw = e.texW;
+                        c.th = e.texH;
                         c.argb = argb(tint, al);
                         out.add(c);
                     }
@@ -452,8 +454,9 @@ const rgbInt = (hex: string) => `0x${hex.slice(1).toUpperCase()}`
 const num = (n: number) => (Number.isInteger(n) ? `${n}.0` : String(n))
 
 function javaFill(f: Fill): string {
-  if (f.kind === 'linear' && f.to) return `Fill.linear(${rgbInt(f.color)}, ${rgbInt(f.to)}, ${!!f.vertical}, ${f.alpha}, ${f.alphaTo ?? f.alpha})`
-  return `Fill.solid(${rgbInt(f.color)}, ${f.alpha})`
+  if (f.kind === 'linear' && f.to)
+    return `NkwTimerLayout.Fill.linear(${rgbInt(f.color)}, ${rgbInt(f.to)}, ${!!f.vertical}, ${f.alpha}, ${f.alphaTo ?? f.alpha})`
+  return `NkwTimerLayout.Fill.solid(${rgbInt(f.color)}, ${f.alpha})`
 }
 
 function javaAnim(a: Anim): string {
@@ -462,10 +465,10 @@ function javaAnim(a: Anim): string {
   const loop = ENUM.loop[a.loop]
   if (a.prop === 'color') {
     if (typeof a.from !== 'string' || typeof a.to !== 'string') return ''
-    return `Anim.color(${trig}, ${rgbInt(a.from)}, ${rgbInt(a.to)}, ${a.ticks}, ${a.delay}, ${ease}, ${loop})`
+    return `NkwTimerLayout.Anim.color(${trig}, ${rgbInt(a.from)}, ${rgbInt(a.to)}, ${a.ticks}, ${a.delay}, ${ease}, ${loop})`
   }
   if (typeof a.from !== 'number' || typeof a.to !== 'number') return ''
-  return `Anim.num(${ENUM.prop[a.prop]}, ${trig}, ${num(a.from)}, ${num(a.to)}, ${a.ticks}, ${a.delay}, ${ease}, ${loop})`
+  return `NkwTimerLayout.Anim.num(${ENUM.prop[a.prop]}, ${trig}, ${num(a.from)}, ${num(a.to)}, ${a.ticks}, ${a.delay}, ${ease}, ${loop})`
 }
 
 export const javaString = (s: string) =>
@@ -479,13 +482,13 @@ export const javaString = (s: string) =>
  * `assetName` turns a project asset into the name used for it in the game.
  */
 export function timerDocJava(doc: TimerDoc, assetName: (asset: string) => string): string {
-  const lines: string[] = [`        El[] els = new El[${doc.elements.length}];`, '        El e;']
+  const lines: string[] = [`        NkwTimerLayout.El[] els = new NkwTimerLayout.El[${doc.elements.length}];`, '        NkwTimerLayout.El e;']
   doc.elements.forEach((el: TimerElement, i) => {
     lines.push(
-      `        e = new El(${ENUM.type[el.type]}, ${ANCHORS.indexOf(el.anchor)}, ${num(el.x)}, ${num(el.y)}, ${num(el.w)}, ${num(el.h)}, ${el.opacity}, ${ENUM.show[el.show]});`
+      `        e = new NkwTimerLayout.El(${ENUM.type[el.type]}, ${ANCHORS.indexOf(el.anchor)}, ${num(el.x)}, ${num(el.y)}, ${num(el.w)}, ${num(el.h)}, ${el.opacity}, ${ENUM.show[el.show]});`
     )
     const anims = el.anims.map(javaAnim).filter(Boolean)
-    if (anims.length) lines.push(`        e.anims = new Anim[] { ${anims.join(', ')} };`)
+    if (anims.length) lines.push(`        e.anims = new NkwTimerLayout.Anim[] { ${anims.join(', ')} };`)
     if (el.type === 'rect') {
       lines.push(`        e.fill = ${javaFill(el.fill)};`)
       if (el.border) lines.push(`        e.borderW = ${el.border.width}; e.borderRgb = ${rgbInt(el.border.color)}; e.borderAlpha = ${el.border.alpha};`)
@@ -503,10 +506,14 @@ export function timerDocJava(doc: TimerDoc, assetName: (asset: string) => string
         `        e.text = ${javaString(el.text)}; e.textTh = ${javaString(el.textTh ?? '')}; e.color = ${rgbInt(el.color)}; e.shadow = ${el.shadow}; e.scale = ${num(el.scale)}; e.align = ${ENUM.align[el.align]};`
       )
     } else {
-      lines.push(`        e.asset = ${javaString(assetName(el.asset))};${el.tint ? ` e.tint = ${rgbInt(el.tint)};` : ''}`)
+      lines.push(
+        `        e.asset = ${javaString(assetName(el.asset))}; e.texW = ${el.texW}; e.texH = ${el.texH};${el.tint ? ` e.tint = ${rgbInt(el.tint)};` : ''}`
+      )
     }
     lines.push(`        els[${i}] = e;`)
   })
-  lines.push(`        return new Doc(${PLACES.indexOf(doc.place.at)}, ${num(doc.place.x)}, ${num(doc.place.y)}, ${doc.size.w}, ${doc.size.h}, els);`)
+  lines.push(
+    `        return new NkwTimerLayout.Doc(${PLACES.indexOf(doc.place.at)}, ${num(doc.place.x)}, ${num(doc.place.y)}, ${doc.size.w}, ${doc.size.h}, els);`
+  )
   return lines.join('\n')
 }

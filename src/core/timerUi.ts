@@ -118,6 +118,9 @@ const ElementSchema = z.discriminatedUnion('type', [
     type: z.literal('image'),
     /** a PNG of the project (textures/…) */
     asset: z.string().max(200),
+    /** the PNG's own size in pixels (the editor fills it in) */
+    texW: z.number().int().min(1).max(4096).default(16),
+    texH: z.number().int().min(1).max(4096).default(16),
     tint: hex.nullable().default(null)
   })
 ])

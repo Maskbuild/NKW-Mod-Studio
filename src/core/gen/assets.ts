@@ -1,5 +1,5 @@
 import type { BlockIR, ModelRef } from '../ir'
-import { usesHud } from './harvest'
+import { harvestUis, usesHud } from './harvest'
 import { breakRuleKey } from './breakRules'
 import { armorIconModel, fitAnimation, geoLoopName, javaModelToGeo, prepareArmorGeo, type GeoFile } from './geo'
 import { textureKeys, type JavaModel } from './model'
@@ -250,11 +250,12 @@ export function genAssets(ctx: GenCtx): void {
   if (ir.items.some((i) => i.headwear)) put(`tooltip.${ns}.wearable_head`, 'Can be worn on the head', 'สวมบนหัวได้')
   // timers on screen (picking crops, breaking blocks)
   if (usesHud(ir)) {
-    put(`message.${ns}.breaking`, 'Breaking %s %s s', 'กำลังทุบ %s %s วิ', true)
-    put(`message.${ns}.breaking_notime`, 'Breaking %s', 'กำลังทุบ %s', true)
-    put(`message.${ns}.harvest`, 'Harvesting %s %s s', 'กำลังเก็บ %s %s วิ', true)
-    put(`message.${ns}.harvest_notime`, 'Harvesting %s', 'กำลังเก็บ %s', true)
-    put(`message.${ns}.harvest_seconds`, '%s s', '%s วิ', true)
+    // the text of every timer window element (with {seconds} / {percent} / {bar} in it)
+    harvestUis(ir).forEach((ui, i) =>
+      ui.elements.forEach((e, j) => {
+        if (e.type === 'text') put(`message.${ns}.timer${i}_${j}`, e.text, e.textTh ?? e.text)
+      })
+    )
     put(`message.${ns}.harvest_done`, 'Harvested!', 'เก็บแล้ว!')
     put(`message.${ns}.harvest_moved`, 'You moved: right-click again to harvest', 'ขยับแล้ว: คลิกขวาใหม่เพื่อเก็บ')
     put(`message.${ns}.harvest_released`, 'Keep holding right-click to harvest', 'กดคลิกขวาค้างไว้เพื่อเก็บ')
