@@ -1,6 +1,9 @@
 /// <reference lib="webworker" />
 import { compile } from '@core/compile/compile'
+import { enableFirstParty } from '@core/ext/firstparty'
 import type { Project, Target } from '@core/project'
+
+enableFirstParty()
 
 // Validation runs off the UI thread so typing and dragging stay smooth.
 self.onmessage = (e: MessageEvent<{ seq: number; project: Project; target?: Target }>) => {

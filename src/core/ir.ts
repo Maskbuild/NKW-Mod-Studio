@@ -64,8 +64,6 @@ export interface ItemIR extends Named {
     hits: HitIR[]
     /** drunk like a potion (animation + gulping sound) instead of eaten */
     drink: boolean
-    /** water value for thirst mods (Thirst add-on node) */
-    thirst: ThirstIR | null
   }
   tool?: {
     type: ToolType
@@ -335,12 +333,6 @@ export interface HitIR {
   ability: 'fire' | 'lightning' | 'freeze' | 'teleport' | 'clear'
   ticks: number
   chance: number
-}
-
-/** Thirst restored by a food in thirst mods: points on a 20-point bar, like hunger and saturation. */
-export interface ThirstIR {
-  thirst: number
-  hydration: number
 }
 
 /** A creature (Mob node). */

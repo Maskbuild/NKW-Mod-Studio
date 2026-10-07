@@ -2,7 +2,7 @@ import type { LoadedExtension } from '../ext/manifest'
 import { extHost } from '../ext/host'
 import { evalExpr, parseExpr, truthy, MATH_FNS, type ExprFn } from '../ext/expr'
 import { eraMatches, parseTemplate, renderTemplate } from '../ext/tpl'
-import { RES, type GenCtx } from './types'
+import { RES, fabricLike, forgeNames, type GenCtx } from './types'
 
 /**
  * Runs the `generate` and `hooks` entries of the enabled extensions: renders their templates into Java
@@ -19,6 +19,17 @@ const anyUse = (ctx: GenCtx): ExprFn => {
   }
 }
 
+/** Folders of the data pack that differ between versions. */
+function dataPaths(ctx: GenCtx) {
+  const dir = (plural: string, singular: string) => (ctx.p.pluralDataDirs ? plural : singular)
+  return {
+    data: `${RES}/data`,
+    itemTags: dir('tags/items', 'tags/item'),
+    blockTags: dir('tags/blocks', 'tags/block'),
+    recipes: dir('recipes', 'recipe')
+  }
+}
+
 function scopeFor(ctx: GenCtx, ext: LoadedExtension): Record<string, unknown> {
   const ir = { ...ctx.ir, ext: undefined }
   return {
@@ -29,7 +40,9 @@ function scopeFor(ctx: GenCtx, ext: LoadedExtension): Record<string, unknown> {
     mc: ctx.target.mc,
     meta: ctx.ir.meta,
     modId: ctx.ns,
-    pkg: ctx.pkg
+    pkg: ctx.pkg,
+    forge: forgeNames(ctx),
+    paths: dataPaths(ctx)
   }
 }
 
@@ -43,7 +56,13 @@ export function extensionSupports(ext: LoadedExtension, loader: string, mc: stri
 export function genExtensions(ctx: GenCtx, out: (cls: string, text: string) => void): void {
   for (const ext of extHost.list()) {
     if (!extensionSupports(ext, ctx.loader, ctx.target.mc)) continue
-    const fns: Record<string, ExprFn> = { ...MATH_FNS, any: anyUse(ctx) }
+    const deferred = !fabricLike(ctx.loader)
+    const fns: Record<string, ExprFn> = {
+      ...MATH_FNS,
+      any: anyUse(ctx),
+      /** how generated code reaches a registered object: ModItems.RUBY (Fabric) or ModItems.RUBY.get() */
+      reg: (cls, id) => `${String(cls)}.${String(id).toUpperCase()}${deferred ? '.get()' : ''}`
+    }
     const base = scopeFor(ctx, ext)
     const partials = ext.templates
     const run = (when: string | undefined, each: string | undefined, fn: (scope: Record<string, unknown>) => void) => {

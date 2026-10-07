@@ -20,7 +20,6 @@ import type {
   ModIR,
   ModelRef,
   SoundIR,
-  ThirstIR,
   ToolMatIR
 } from '../ir'
 import type { BreakDrops, BreakRuleIR, GameCropIR, HarvestUiIR } from '../ir'
@@ -345,16 +344,6 @@ export function compile(project: Project, target?: Target): CompileResult {
     }
   }
 
-  /** Thirst add-on node plugged into a food. */
-  const thirst = (nodeId: string): ThirstIR | null => {
-    const s = source(nodeId, 'thirst')
-    if (!s || s.node.type !== 'thirst') return null
-    return {
-      thirst: clamp(Math.round(num(s.node.data, 'thirst', 6)), 1, 20),
-      hydration: clamp(Math.round(num(s.node.data, 'hydration', 4)), 0, 20)
-    }
-  }
-
   /** Length of the first sound file behind a Sound Event (seconds, measured at import). */
   const songSeconds = (ev: GraphNode | undefined): number | null => {
     if (!ev) return null
@@ -505,8 +494,7 @@ export function compile(project: Project, target?: Target): CompileResult {
             fast: bool(d, 'fast'),
             effects: effects(n.id),
             hits: hits(n.id),
-            drink: d.useSound === 'drink',
-            thirst: thirst(n.id)
+            drink: d.useSound === 'drink'
           }
         it.attributes = attributes(n.id, 'mainhand')
         ir.items.push(it)

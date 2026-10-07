@@ -505,7 +505,6 @@ const CORE_NODE_DEFS: NodeDef[] = [
       { id: 'places', label: t('Places block', 'วางเป็นบล็อก'), type: 'block', optional: true },
       ...effectIns('Effect when eaten', 'เอฟเฟกต์ตอนกิน'),
       ...slots(3, 'hit', 'Ability when eaten', 'ความสามารถตอนกิน', 'hit', { group: 'hit' }),
-      { id: 'thirst', label: t('Thirst (add-on)', 'ค่าน้ำ (ส่วนเสริม)'), type: 'thirst', optional: true },
       ...slots(8, 'attr', 'Stat bonus', 'โบนัสค่าสถานะ', 'attribute', { group: 'attr' })
     ],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],
@@ -1739,42 +1738,6 @@ const CORE_NODE_DEFS: NodeDef[] = [
   },
 
   // ───────────── Add-ons (other mods) ─────────────
-  {
-    type: 'thirst',
-    category: 'addon',
-    title: t('Thirst (add-on)', 'ค่าน้ำ (ส่วนเสริม)'),
-    description: t(
-      'Water value for thirst mods. Wire it into a Food node. The mod does not need any of them: when a player has Tough As Nails, Thirst Was Taken, Thirst Was Taken 2, Legendary Survival Overhaul or Thirsty installed, eating / drinking the food also restores thirst.',
-      'ค่าน้ำสำหรับม็อดความกระหายน้ำ ต่อเข้าโหนดอาหาร — ม็อดเราไม่ต้องพึ่งม็อดพวกนี้ ถ้าผู้เล่นลง Tough As Nails, Thirst Was Taken, Thirst Was Taken 2, Legendary Survival Overhaul หรือ Thirsty ไว้ กิน/ดื่มอาหารนี้แล้วจะได้ค่าน้ำด้วย'
-    ),
-    icon: '💧',
-    inputs: [],
-    outputs: [{ id: 'out', label: t('Thirst', 'ค่าน้ำ'), type: 'thirst' }],
-    props: [
-      {
-        key: 'thirst',
-        label: t('Thirst restored (½ drop each)', 'ฟื้นค่าน้ำ (ครึ่งหยดต่อ 1)'),
-        kind: 'int',
-        default: 6,
-        min: 1,
-        max: 20,
-        hint: t('20 = a full thirst bar, like hunger points. A water bottle is about 6.', '20 = เต็มหลอด เหมือนค่าความหิว — ขวดน้ำประมาณ 6')
-      },
-      {
-        key: 'hydration',
-        label: t('Hydration (stays quenched longer)', 'ความชุ่มชื้น (อิ่มน้ำนานขึ้น)'),
-        kind: 'int',
-        default: 4,
-        min: 0,
-        max: 20,
-        hint: t(
-          'Works like food saturation: hidden water that is used up before the bar drops. Called "quenched" in Thirst Was Taken.',
-          'คล้ายความอิ่มของอาหาร: ค่าน้ำสำรองที่ถูกใช้ก่อนหลอดลด (ใน Thirst Was Taken เรียกว่า quenched)'
-        )
-      }
-    ]
-  },
-
   // ───────────── Utility ─────────────
   {
     type: 'itemRef',
@@ -1977,7 +1940,6 @@ registry.register('core', {
     effect: '#ec4899',
     animation: '#8b5cf6',
     block: '#7c3aed',
-    thirst: '#0ea5e9',
     attribute: '#14b8a6',
     hit: '#dc2626',
     harvestUi: '#84cc16',

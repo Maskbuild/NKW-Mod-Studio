@@ -9,7 +9,7 @@ import { genConfig, usesConfig } from './config'
 import { toMcp1165 } from './mcp'
 import { parseJavaModel, rotateBoxes, shapeBoxes, type Box } from './model'
 import { mcAtLeast, type VersionProfile } from './profiles'
-import { fabricLike, type GenCtx } from './types'
+import { fabricLike, forgeNames, type GenCtx } from './types'
 
 /**
  * Java source generation. All code uses official Mojang mappings, so the vanilla-facing parts
@@ -737,7 +737,6 @@ ${accept(tb, '            ')}
     genHeadwear(ctx, headItems, get, out)
     ctx.hooks.add('commonInit', 'NkwHeadwear.init();', 20)
   }
-  if (genThirst(ctx, get, out)) ctx.hooks.add('commonInit', 'NkwThirst.init();', 30)
   if (usesHarvest(ir)) ctx.hooks.add('commonInit', 'NkwHarvest.init();', 40)
   if (usesBreakRules(ir)) ctx.hooks.add('commonInit', 'NkwBreakRules.init();', 50)
   if (ir.items.some((i) => (i.tool?.durability ?? 0) > 0) && p.toolApi !== 'tierLevel') genTiers(ctx, out)
@@ -1586,15 +1585,13 @@ ${propsHelper}}`)
  * level getters are named on that version, and a server level-tick handler that calls tick(level).
  */
 export function forgeEvents(ctx: GenCtx, j: JavaFile) {
-  const neo = ctx.loader === 'neoforge'
-  const old = !neo && (ctx.p.mc === '1.16.5' || ctx.p.mc === '1.18.2')
-  const base = neo ? 'net.neoforged.neoforge' : 'net.minecraftforge'
-  j.use(neo ? 'net.neoforged.neoforge.common.NeoForge' : 'net.minecraftforge.common.MinecraftForge')
+  const { neo, old, base, bus, player, level } = forgeNames(ctx)
+  j.use(forgeNames(ctx).busImport)
   return {
     base,
-    bus: neo ? 'NeoForge.EVENT_BUS' : 'MinecraftForge.EVENT_BUS',
-    player: old ? 'getPlayer()' : 'getEntity()',
-    level: old ? 'getWorld()' : 'getLevel()',
+    bus,
+    player,
+    level,
     /** `private static void onTick(…)` running tick(level) after every server level tick */
     tickHandler(): string {
       if (neo && ctx.p.jukeboxSongs) {
@@ -1753,95 +1750,6 @@ ${discs
     }${ejectFn}
 }`)
   )
-}
-
-/**
- * Thirst add-on for the thirst mods that only take values from code. Tough As Nails, Thirst Was Taken 2
- * and Legendary Survival Overhaul read data files instead (see genData). Everything goes through
- * reflection, so the mod neither needs nor ships the thirst mod and does nothing when it is absent.
- * - Thirst Was Taken (Forge 1.18.2–1.20.1, NeoForge 1.21.1): its RegisterThirstValueEvent.
- * - Thirsty (Fabric 1.20.1): entries added to its item list when a server starts.
- * Returns whether NkwThirst was written.
- */
-function genThirst(ctx: GenCtx, get: (cls: string, id: string) => string, out: (cls: string, text: string) => void): boolean {
-  const { ir, pkg, loader, p, ns } = ctx
-  const items = ir.items.filter((it) => it.food?.thirst)
-  if (!items.length) return false
-  const neo = loader === 'neoforge'
-  const twt = (loader === 'forge' && ['1.18.2', '1.19.2', '1.20.1'].includes(p.mc)) || (neo && p.mc === '1.21.1')
-  const thirsty = fabricLike(loader) && p.mc === '1.20.1'
-  if (!twt && !thirsty) return false
-  const j = new JavaFile(pkg, 'NkwThirst')
-  let body: string
-  if (twt) {
-    j.use(MC.Item, 'java.lang.reflect.Method', 'java.util.function.Consumer')
-    j.use(neo ? 'net.neoforged.fml.ModList' : 'net.minecraftforge.fml.ModList')
-    j.use(neo ? 'net.neoforged.bus.api.EventPriority' : 'net.minecraftforge.eventbus.api.EventPriority')
-    const ev = forgeEvents(ctx, j)
-    body = `
-/** Thirst values for Thirst Was Taken, used only when it is installed. */
-public final class NkwThirst {
-    private NkwThirst() {}
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    public static void init() {
-        if (!ModList.get().isLoaded("thirst")) return;
-        try {
-            Class event = Class.forName("dev.ghen.thirst.foundation.common.event.RegisterThirstValueEvent");
-            ${ev.bus}.addListener(EventPriority.NORMAL, false, event, (Consumer) NkwThirst::register);
-        } catch (ReflectiveOperationException | LinkageError e) {
-            NkwMod.LOGGER.warn("[NKW] Thirst Was Taken support is off: {}", e.toString());
-        }
-    }
-
-    private static void register(Object event) {
-        try {
-            Method drink = event.getClass().getMethod("addDrink", Item.class, int.class, int.class);
-            Method food = event.getClass().getMethod("addFood", Item.class, int.class, int.class);
-${items.map((it) => `            ${it.food!.drink ? 'drink' : 'food'}.invoke(event, ${get('ModItems', it.id)}, ${it.food!.thirst!.thirst}, ${it.food!.thirst!.hydration});`).join('\n')}
-            NkwMod.LOGGER.info("[NKW] thirst values added for ${items.length} item(s) (Thirst Was Taken)");
-        } catch (ReflectiveOperationException e) {
-            NkwMod.LOGGER.warn("[NKW] Could not add thirst values: {}", e.toString());
-        }
-    }
-}`
-  } else {
-    j.use('java.lang.reflect.Field', MC.List, 'net.fabricmc.loader.api.FabricLoader', 'net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents')
-    body = `
-/** Thirst values for Thirsty, used only when it is installed. */
-public final class NkwThirst {
-    private NkwThirst() {}
-
-    public static void init() {
-        if (FabricLoader.getInstance().isModLoaded("thirsty")) ServerLifecycleEvents.SERVER_STARTING.register(server -> thirsty());
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void thirsty() {
-        try {
-            Class<?> config = Class.forName("net.obe107.thirsty.config.ModConfig");
-            Object instance = config.getMethod("getInstance").invoke(null);
-            List<Object> items = (List<Object>) config.getField("customItems").get(instance);
-            // an empty list gets Thirsty's defaults first
-            if (items.isEmpty()) config.getMethod("validatePostLoad").invoke(instance);
-            Class<?> entry = Class.forName("net.obe107.thirsty.config.ModConfig$ItemEntry");
-            Field itemId = entry.getField("itemId");
-${items.map((it) => `            add(items, entry, itemId, "${ns}:${it.id}", ${it.food!.thirst!.thirst}, ${it.food!.thirst!.hydration});`).join('\n')}
-            config.getMethod("validatePostLoad").invoke(instance);
-            NkwMod.LOGGER.info("[NKW] thirst values added for ${items.length} item(s) (Thirsty)");
-        } catch (ReflectiveOperationException | LinkageError | ClassCastException e) {
-            NkwMod.LOGGER.warn("[NKW] Thirsty support is off: {}", e.toString());
-        }
-    }
-
-    private static void add(List<Object> items, Class<?> entry, Field itemId, String id, int thirst, int saturation) throws ReflectiveOperationException {
-        for (Object o : items) if (id.equals(itemId.get(o))) return;
-        items.add(entry.getConstructor(String.class, int.class, int.class).newInstance(id, thirst, saturation));
-    }
-}`
-  }
-  out('NkwThirst', j.render(body))
-  return true
 }
 
 /** Copies of a tool tier / material with other durability (a Tool node's own durability, 1.21+). */

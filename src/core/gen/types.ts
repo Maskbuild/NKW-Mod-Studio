@@ -95,3 +95,18 @@ export function json(v: unknown): string {
 }
 
 export const fabricLike = (l: Loader) => l === 'fabric' || l === 'quilt'
+
+/** Names of the Forge / NeoForge game event bus and event getters for a target (older versions name them differently). */
+export function forgeNames(ctx: Pick<GenCtx, 'loader' | 'p'>) {
+  const neo = ctx.loader === 'neoforge'
+  const old = !neo && (ctx.p.mc === '1.16.5' || ctx.p.mc === '1.18.2')
+  return {
+    neo,
+    old,
+    base: neo ? 'net.neoforged.neoforge' : 'net.minecraftforge',
+    bus: neo ? 'NeoForge.EVENT_BUS' : 'MinecraftForge.EVENT_BUS',
+    busImport: neo ? 'net.neoforged.neoforge.common.NeoForge' : 'net.minecraftforge.common.MinecraftForge',
+    player: old ? 'getPlayer()' : 'getEntity()',
+    level: old ? 'getWorld()' : 'getLevel()'
+  }
+}

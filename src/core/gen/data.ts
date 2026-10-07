@@ -113,24 +113,6 @@ export function genData(ctx: GenCtx): void {
   for (const m of ir.armorMats) repairTag('armor', m.id, m.repair)
   if (!p.jukeboxSongs) for (const it of ir.items) if (it.disc) addTag(`${D}/minecraft/${itemTags}/music_discs.json`, `${ns}:${it.id}`)
 
-  // ── thirst mods (Thirst add-on): data files the mods read when installed, ignored otherwise ──
-  const drinks = ir.items.filter((it) => it.food?.thirst)
-  const twt2: Record<string, { thirst: number; quenched: number }> = {}
-  for (const it of drinks) {
-    const w = it.food!.thirst!
-    // Tough As Nails: thirst tags 1–20, hydration tags 10–100 (%)
-    addTag(`${D}/toughasnails/${itemTags}/thirst/${w.thirst}_thirst_drinks.json`, `${ns}:${it.id}`)
-    if (w.hydration > 0) addTag(`${D}/toughasnails/${itemTags}/hydration/${tanHydration(w.hydration)}_hydration_drinks.json`, `${ns}:${it.id}`)
-    // Legendary Survival Overhaul: one file per item
-    files.push({
-      path: `${D}/${ns}/legendarysurvivaloverhaul/thirst/consumables/${it.id}.json`,
-      text: json([{ effects: [], hydration: w.thirst, properties: {}, saturation: w.hydration }])
-    })
-    twt2[`${ns}:${it.id}`] = { thirst: w.thirst, quenched: w.hydration }
-  }
-  // Thirst Was Taken 2
-  if (drinks.length) files.push({ path: `${D}/${ns}/thirstwastaken2/drinks/${ns}.json`, text: json({ values: twt2 }) })
-
   for (const [path, values] of tags)
     files.push({
       path,
@@ -177,9 +159,6 @@ function cropLoot(ns: string, id: string, c: NonNullable<BlockIR['crop']>, seed:
 }
 
 /** Tough As Nails only has hydration tags for 10, 20 … 100 %: hydration 0–20 → nearest step. */
-function tanHydration(hydration: number): number {
-  return Math.min(100, Math.max(10, Math.round(hydration / 2) * 10))
-}
 
 function recipeJson(ctx: GenCtx, r: RecipeIR, ing: (i: Ingredient) => unknown, stack: (id: string, count?: number) => Record<string, unknown>): unknown {
   const { p } = ctx

@@ -34,7 +34,9 @@ export const SourceSchema = z.union([
   z.strictObject({ nodeId: z.literal(true) }),
   z.strictObject({ computed: z.string().max(1000) }),
   /** derive only: a value of the item being turned into a new record */
-  z.strictObject({ item: z.string().max(200) })
+  z.strictObject({ item: z.string().max(200) }),
+  /** derive with groupBy only: the list of this field of every item in the group */
+  z.strictObject({ collect: z.string().max(200) })
 ])
 export type Source = z.infer<typeof SourceSchema>
 
@@ -51,6 +53,8 @@ export const CompileSchema = z.strictObject({
       slot: z.string().regex(FIELD),
       /** push: add to the slot's list. ref: only keep the value for nodes that read it through an input */
       mode: z.enum(['push', 'ref']).default('push'),
+      /** only emit when this expression is true (scope: prop, input, nodeId) */
+      when: z.string().max(1000).optional(),
       value: ValueSchema
     })
     .optional(),
@@ -63,6 +67,8 @@ export const DeriveSchema = z.strictObject({
   /** "<extension id>.<slot>": the records to look at */
   from: z.string().regex(/^[a-z][a-z0-9-]{2,40}\.[A-Za-z_][A-Za-z0-9_]{0,40}$/),
   where: z.string().max(1000).optional(),
+  /** one new record per distinct value of this field of the items (instead of one per item) */
+  groupBy: z.string().regex(FIELD).optional(),
   value: ValueSchema
 })
 export type Derive = z.infer<typeof DeriveSchema>
@@ -82,8 +88,10 @@ export interface MappingHost {
 
 export interface MappedExtension {
   id: string
-  /** node type → its rules */
+  /** node type → its rules (nodes the extension defines) */
   compile: Map<string, NodeCompile>
+  /** node type → rules for nodes of other sources the extension attaches data to */
+  extend: Map<string, NodeCompile>
   derive: Derive[]
   /** default value of every property of a node type (so `prop` sources see defaults) */
   defaults: Map<string, Record<string, unknown>>
@@ -143,8 +151,14 @@ const FNS: Record<string, ExprFn> = {
 
 /** Runs the rules of every extension over the graph and fills `bag`. */
 export function runMappings(exts: MappedExtension[], host: MappingHost, bag: ExtBag): void {
+  /** extension nodes: the one extension that owns the type */
   const owner = new Map<string, { ext: MappedExtension; spec: NodeCompile }>()
-  for (const ext of exts) for (const [type, spec] of ext.compile) owner.set(type, { ext, spec })
+  /** nodes of other sources that extensions attach data to (any number of extensions per type) */
+  const attach = new Map<string, { ext: MappedExtension; spec: NodeCompile }[]>()
+  for (const ext of exts) {
+    for (const [type, spec] of ext.compile) owner.set(type, { ext, spec })
+    for (const [type, spec] of ext.extend) attach.set(type, [...(attach.get(type) ?? []), { ext, spec }])
+  }
   const memo = new Map<string, Record<string, unknown> | null>()
   const busy = new Set<string>()
 
@@ -156,21 +170,17 @@ export function runMappings(exts: MappedExtension[], host: MappingHost, bag: Ext
     return owner.has(src.node.type) ? valueOf(src.node.id) : host.idOf(src.node, src.handle)
   }
 
-  const valueOf = (nodeId: string): Record<string, unknown> | null => {
-    if (memo.has(nodeId)) return memo.get(nodeId)!
-    const node = host.nodes.get(nodeId)
-    const own = node && owner.get(node.type)
-    if (!node || !own) return null
-    if (busy.has(nodeId)) {
-      host.diag('error', nodeId, { en: 'This node is wired into itself', th: 'โหนดนี้ต่อวนเข้าตัวเอง' })
-      return null
-    }
-    busy.add(nodeId)
-    const { ext, spec } = own
+  /** Applies one rule set to one node; returns its record. */
+  const exec = (node: GraphNode, ext: MappedExtension, spec: NodeCompile): Record<string, unknown> | null => {
+    const nodeId = node.id
     const props = { ...(ext.defaults.get(node.type) ?? {}), ...node.data }
+    // expressions read `input.<pin>` (only pins that are wired exist)
     const inputs = new Proxy({} as Record<string, unknown>, {
       get: (_t, k) => (typeof k === 'string' ? input(nodeId, k) : undefined),
-      has: () => true
+      getOwnPropertyDescriptor: (_t, k) => {
+        const value = typeof k === 'string' ? input(nodeId, k) : undefined
+        return value === undefined ? undefined : { value, enumerable: true, configurable: true, writable: false }
+      }
     })
     const v: Record<string, unknown> = {}
     const scope = { prop: props, v, input: inputs, nodeId }
@@ -188,7 +198,7 @@ export function runMappings(exts: MappedExtension[], host: MappingHost, bag: Ext
       return undefined
     }
     let value: Record<string, unknown> | null = null
-    if (spec.emit) {
+    if (spec.emit && (!spec.emit.when || truthy(evalExpr(parseExpr(spec.emit.when), { scope, fns: FNS })))) {
       for (const [field, src] of Object.entries(spec.emit.value)) v[field] = evalSrc(src)
       value = { nodeId, ...v }
     }
@@ -205,31 +215,58 @@ export function runMappings(exts: MappedExtension[], host: MappingHost, bag: Ext
       }
       slotOf(ext.id, spec.emit.slot).push(value)
     }
+    return value
+  }
+
+  const valueOf = (nodeId: string): Record<string, unknown> | null => {
+    if (memo.has(nodeId)) return memo.get(nodeId)!
+    const node = host.nodes.get(nodeId)
+    const own = node && owner.get(node.type)
+    if (!node || !own) return null
+    if (busy.has(nodeId)) {
+      host.diag('error', nodeId, { en: 'This node is wired into itself', th: 'โหนดนี้ต่อวนเข้าตัวเอง' })
+      return null
+    }
+    busy.add(nodeId)
+    const value = exec(node, own.ext, own.spec)
     busy.delete(nodeId)
     memo.set(nodeId, value)
     return value
   }
 
-  for (const id of host.nodes.keys()) valueOf(id)
+  for (const [id, node] of host.nodes) {
+    valueOf(id)
+    for (const a of attach.get(node.type) ?? []) exec(node, a.ext, a.spec)
+  }
 
   // derived records: after every node emitted, in manifest order
   for (const ext of exts)
     for (const d of ext.derive) {
       const [fromExt, fromSlot] = d.from.split('.')
       const where = d.where ? parseExpr(d.where) : null
+      const read = (o: unknown, path: string) =>
+        path.split('.').reduce<unknown>((x, k) => (x && typeof x === 'object' ? (x as Record<string, unknown>)[k] : undefined), o)
+      const groups = new Map<string, Record<string, unknown>[]>()
       for (const item of bag[fromExt]?.[fromSlot] ?? []) {
+        if (where && !truthy(evalExpr(where, { scope: { item, v: {} }, fns: FNS }))) continue
+        const key = d.groupBy ? JSON.stringify(item[d.groupBy]) : String(groups.size)
+        groups.set(key, [...(groups.get(key) ?? []), item])
+      }
+      for (const group of groups.values()) {
+        const item = group[0]
         const v: Record<string, unknown> = {}
         const scope = { item, v }
-        if (where && !truthy(evalExpr(where, { scope, fns: FNS }))) continue
         for (const [field, src] of Object.entries(d.value)) {
           v[field] =
             'item' in src
-              ? src.item.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), item)
-              : 'const' in src
-                ? src.const
-                : 'computed' in src
-                  ? evalExpr(parseExpr(src.computed), { scope, fns: FNS })
-                  : undefined
+              ? read(item, src.item)
+              : 'collect' in src
+                ? group.map((g) => read(g, src.collect))
+                : 'const' in src
+                  ? src.const
+                  : 'computed' in src
+                    ? evalExpr(parseExpr(src.computed), { scope, fns: FNS })
+                    : undefined
         }
         slotOf(ext.id, d.slot).push(v)
       }
@@ -242,6 +279,7 @@ export function mappingExprs(c: NodeCompile | Derive): { src: string; roots: str
   const add = (src: string, roots: string[]) => out.push({ src, roots })
   const values = 'value' in c ? c.value : c.emit?.value
   for (const s of Object.values(values ?? {})) if ('computed' in s) add(s.computed, ['prop', 'v', 'input', 'nodeId', 'item'])
+  if ('emit' in c && c.emit?.when) add(c.emit.when, ['prop', 'v', 'input', 'nodeId'])
   if ('validate' in c) for (const r of c.validate) if ('if' in r) add(r.if, ['prop', 'v', 'input', 'nodeId'])
   if ('where' in c && c.where) add(c.where, ['item', 'v'])
   return out

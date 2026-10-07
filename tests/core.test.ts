@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { compile } from '../src/core/compile/compile'
+import { enableFirstParty } from '../src/core/ext/firstparty'
 import { FALLBACK_DEPS, TOOL_VERSIONS, generate } from '../src/core/gen/index'
 import { convertBBModel, rotateBoxes, shapeBoxes } from '../src/core/gen/model'
 import { PROFILES } from '../src/core/gen/profiles'
@@ -15,6 +16,8 @@ import { CONTROL_PRESETS, ModelControlsSchema, gestureFor, keyName } from '../sr
 import { boxUnwrap, faceQuad, faceUv, floodFill, moveBy, newCube, newModel, normalize, toSaved, uvToPixel } from '../src/core/modelEdit'
 import { GameOptionsSchema, keyLabel, mcKeyFromCode, mcKeyFromMouse, mergeOptionsTxt, optionsEntries } from '../src/core/gameOptions'
 import { HAT_BBMODEL, writeFixture } from '../scripts/fixture'
+
+enableFirstParty()
 
 const dir = mkdtempSync(join(tmpdir(), 'nkw-test-'))
 const project = writeFixture(dir)
@@ -240,7 +243,7 @@ describe('compiler', () => {
   })
   it('gives thirst values to every supported thirst mod without depending on them', () => {
     const { ir } = compile(project)
-    expect(ir.items.find((i) => i.id === 'ruby_juice')!.food!.thirst).toEqual({ thirst: 8, hydration: 6 })
+    expect(ir.ext.thirst.drinks.find((d) => d.id === 'ruby_juice')).toMatchObject({ thirst: 8, hydration: 6, drink: true })
     const gen = (loader: 'fabric' | 'quilt' | 'forge' | 'neoforge', mc: string) =>
       generate(ir, { loader, mc }, { ...FALLBACK_DEPS[mc], ...deps } as never, read)
     const text = (files: ReturnType<typeof gen>, end: string) => files.find((f) => f.path.endsWith(end))?.text

@@ -83,7 +83,7 @@ const Emit = z.union([
   z.strictObject({ kind: z.literal('file'), path: z.string().max(200), template: PATH })
 ])
 const GenerateSchema = z.strictObject({
-  id: KEY,
+  id: z.string().regex(/^[A-Za-z_][A-Za-z0-9_-]{0,40}$/),
   /** expression over the generation scope */
   when: z.string().max(500).optional(),
   /** a list to repeat over; each entry is `item` in the template */
@@ -97,7 +97,9 @@ const ExtendSchema = z.strictObject({
   inputs: z.array(PinSpec).max(60).default([]),
   outputs: z.array(PinSpec).max(60).default([]),
   afterProp: KEY.optional(),
-  afterInput: KEY.optional()
+  afterInput: KEY.optional(),
+  /** data this extension collects from every node of that type (read props of the node, and the pins it added) */
+  compile: CompileSchema.optional()
 })
 
 const HookSchema = z.strictObject({
@@ -157,8 +159,8 @@ export interface LoadedExtension {
 
 export type LoadResult = { ok: true; ext: LoadedExtension } | { ok: false; errors: string[] }
 
-const TEMPLATE_FNS = ['any', ...Object.keys(MAPPING_FNS)]
-const SCOPE_ROOTS = ['ir', 'ext', 'profile', 'loader', 'mc', 'meta', 'item', 'loop', 'modId', 'pkg']
+const TEMPLATE_FNS = ['any', 'reg', ...Object.keys(MAPPING_FNS)]
+const SCOPE_ROOTS = ['ir', 'ext', 'profile', 'loader', 'mc', 'meta', 'item', 'loop', 'modId', 'pkg', 'forge', 'paths']
 
 const text = (f: string | Uint8Array): string => (typeof f === 'string' ? f : new TextDecoder().decode(f))
 const zerr = (e: z.ZodError, where: string) => e.issues.map((i) => `${where}: ${i.path.join('.') || '(root)'} — ${i.message}`)
@@ -276,7 +278,7 @@ export function loadExtension(files: FileMap): LoadResult {
         if ('prop' in s && !(s.prop in dflt) && !manifest.extendNodes.some((x) => x.type === spec.type && x.props.some((p) => p.key === s.prop)))
           errors.push(`${path}: reads unknown property "${s.prop}"`)
         if ('input' in s && !inputs.some((i) => i.id === s.input)) errors.push(`${path}: reads unknown input "${s.input}"`)
-        if ('item' in s) errors.push(`${path}: "item" sources only work in derive`)
+        if ('item' in s || 'collect' in s) errors.push(`${path}: "item" and "collect" sources only work in derive`)
       }
     }
     defaults.set(spec.type, dflt)
@@ -304,6 +306,7 @@ export function loadExtension(files: FileMap): LoadResult {
   }
 
   const extend: NonNullable<Contribution['extend']> = {}
+  const extendCompile = new Map<string, NodeCompile>()
   for (const x of manifest.extendNodes) {
     if (extend[x.type]) errors.push(`extendNodes: "${x.type}" listed twice`)
     const own: Record<string, unknown> = {}
@@ -313,11 +316,29 @@ export function loadExtension(files: FileMap): LoadResult {
     for (const p of [...inputs, ...outputs])
       if (!ownPins.has(p.type) && !registry.pinColors[p.type]) errors.push(`extendNodes ${x.type}: pin "${p.id}" has unknown type "${p.type}"`)
     extend[x.type] = { props, inputs, outputs, afterProp: x.afterProp, afterInput: x.afterInput }
-    // `prop` sources of this extension's mapping may read what it adds
+    // what the mapping may read: the node's own properties, plus what this extension adds
     const d = mapDefaultsFor(x.type)
     for (const [k, v] of Object.entries(own)) d[k] = v
+    if (x.compile) {
+      extendCompile.set(x.type, x.compile)
+      const known = new Set([...Object.keys(own), ...(registry.map[x.type]?.props ?? []).map((p) => p.key)])
+      for (const e of mappingExprs(x.compile)) {
+        const bad = checkExpr(e.src, e.roots)
+        if (bad) errors.push(`extendNodes ${x.type}: ${bad}`)
+      }
+      for (const s of Object.values(x.compile.emit?.value ?? {})) {
+        if ('prop' in s && !known.has(s.prop)) errors.push(`extendNodes ${x.type}: reads unknown property "${s.prop}"`)
+        if ('input' in s && !(x.inputs.some((i) => i.id === s.input) || registry.map[x.type]?.inputs.some((i) => i.id === s.input)))
+          errors.push(`extendNodes ${x.type}: reads unknown input "${s.input}"`)
+      }
+    }
   }
 
+  for (const d of manifest.derive)
+    for (const [k, src] of Object.entries(d.value)) {
+      if ('collect' in src && !d.groupBy) errors.push(`derive ${d.slot}: "${k}" uses collect without groupBy`)
+      if ('prop' in src || 'input' in src || 'nodeId' in src) errors.push(`derive ${d.slot}: "${k}" can only use item, collect, const or computed`)
+    }
   for (const d of manifest.derive)
     for (const x of mappingExprs(d)) {
       const bad = checkExpr(x.src, x.roots)
@@ -384,7 +405,7 @@ export function loadExtension(files: FileMap): LoadResult {
       manifest,
       nodes,
       contribution: { nodes, categories, pinTypes: manifest.pinTypes, extend },
-      mapped: { id: manifest.id, compile, derive: manifest.derive, defaults },
+      mapped: { id: manifest.id, compile, extend: extendCompile, derive: manifest.derive, defaults },
       templates,
       files
     }

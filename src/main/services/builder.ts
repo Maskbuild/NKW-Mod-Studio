@@ -15,6 +15,9 @@ import { ASSET_RE, type Project, type Target } from '@core/project'
 import { ensureGradle, ensureJdk, findJdks, gradleLaunch, type Progress } from './toolchain'
 import { linkedModDeps, resolveDeps } from './versions'
 import { loadMod, modJarPath } from './vanilla'
+import { enableFirstParty } from '@core/ext/firstparty'
+
+enableFirstParty()
 
 const SAFE_PATH = /^[A-Za-z0-9_.][A-Za-z0-9_./-]*$/
 

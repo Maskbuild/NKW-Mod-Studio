@@ -10,6 +10,9 @@ import { compile } from '../src/core/compile/compile'
 import { FALLBACK_DEPS, TOOL_VERSIONS, generate } from '../src/core/gen/index'
 import { encodePng } from '../src/main/services/png'
 import { writeFixture } from '../scripts/fixture'
+import { enableFirstParty } from '../src/core/ext/firstparty'
+
+enableFirstParty()
 
 /** A zip (stored, no compression) with the given files. */
 function zip(files: Record<string, Buffer | string>): Buffer {

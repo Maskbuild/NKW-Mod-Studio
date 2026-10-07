@@ -4,9 +4,12 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { compile } from '../src/core/compile/compile'
+import { enableFirstParty } from '../src/core/ext/firstparty'
 import { FALLBACK_DEPS, TOOL_VERSIONS, generate } from '../src/core/gen/index'
 import { PROFILES } from '../src/core/gen/profiles'
 import { writeFixture } from '../scripts/fixture'
+
+enableFirstParty()
 
 /**
  * Golden snapshot: a hash of every file generated from the fixture project for every loader × Minecraft
