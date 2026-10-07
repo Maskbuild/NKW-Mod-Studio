@@ -4,8 +4,6 @@ import { crc32, deflateSync } from 'node:zlib'
 import type { GraphEdge, GraphNode, Project } from '../src/core/project'
 import { NODE_DEF_MAP, defaultData } from '../src/core/nodes/defs'
 import { bbmodelToGeo } from '../src/core/gen/geo'
-import { PROFILES } from '../src/core/gen/profiles'
-import { SCRIPT_PRESETS } from '../src/core/scriptApi'
 
 /** A top hat made in Blockbench as a plain Java block model (no armor bones): brim + crown. */
 export const HAT_BBMODEL = JSON.stringify({
@@ -356,20 +354,6 @@ export function writeFixture(dir: string): Project {
   wire('tex_ruby', 'out', 'piece_json2', 'icon')
   wire('m_crown', 'out', 'piece_json2', 'geo')
   wire('m_crown', 'out', 'piece_json', 'geo')
-  // Script nodes: both ready-made examples for every loader × version (real mod code), each logging a
-  // marker when its class is loaded so the in-game smoke test can see it was registered
-  for (const p of PROFILES)
-    for (const loader of p.loaders)
-      for (const preset of SCRIPT_PRESETS) {
-        const key = `${loader}-${p.mc}`
-        const code = preset
-          .code({ loader, mc: p.mc })
-          .replace(
-            /(public class (\w+)[^{]*\{)/,
-            (_m, head: string, cls: string) => `${head}\n    static {\n        NkwMod.LOGGER.info("[NKW] script loaded: ${cls}");\n    }\n`
-          )
-        node(`sc_${preset.id}_${key.replace(/[.-]/g, '_')}`, 'script', { targets: [key], code })
-      }
   node('piece_legs', 'armorPiece', { id: 'plain_leggings', name: 'Plain Leggings', slot: 'leggings' })
   wire('am', 'out', 'piece_legs', 'material')
   wire('tex_ruby', 'out', 'piece_legs', 'icon')

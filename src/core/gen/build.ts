@@ -1,5 +1,4 @@
 import { NKW_ICON_PNG_BASE64 } from './icon'
-import { scriptAppliesTo } from '../scriptApi'
 import { LINK_RE, shippedCredits, type ProjectMeta } from '../project'
 import { RES, json, type GenCtx, type ResolvedDeps } from './types'
 
@@ -170,9 +169,6 @@ ${
         content { includeGroupAndSubgroups 'org.quiltmc' }
     }`
       : ''
-  /** Script classes that implement ModInitializer / ClientModInitializer (Fabric/Quilt entrypoints). */
-  const entry = (kind: 'main' | 'client') =>
-    ctx.ir.scripts.filter((s) => s.entry[kind] && scriptAppliesTo(s.targets, ctx.target)).map((s) => `${pkg}.${s.className}`)
   const fdDep = ctx.fd && deps.farmersDelight ? deps.farmersDelight : null
   const geckoDep = ctx.gecko && deps.geckolib ? deps.geckolib : null
 
@@ -264,7 +260,7 @@ ${toolchain}
           license,
           environment: '*',
           icon: `assets/${ns}/icon.png`,
-          entrypoints: { main: [`${pkg}.NkwMod`, ...entry('main')], client: [`${pkg}.NkwClient`, ...entry('client')] },
+          entrypoints: { main: [`${pkg}.NkwMod`], client: [`${pkg}.NkwClient`] },
           depends: {
             fabricloader: '>=0.14.0',
             minecraft: mcRange,
@@ -303,7 +299,7 @@ ${toolchain}
               license
             },
             intermediate_mappings: 'net.fabricmc:intermediary',
-            entrypoints: { main: [`${pkg}.NkwMod`, ...entry('main')], client: [`${pkg}.NkwClient`, ...entry('client')] },
+            entrypoints: { main: [`${pkg}.NkwMod`], client: [`${pkg}.NkwClient`] },
             depends: [
               { id: 'quilt_loader', versions: '>=0.17.0' },
               { id: 'minecraft', versions: mcRange },

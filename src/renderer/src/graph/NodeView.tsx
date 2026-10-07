@@ -1,5 +1,4 @@
 import { memo, useCallback, useEffect, type CSSProperties } from 'react'
-import { JAVA_KEYWORDS } from '@core/scriptApi'
 import { Handle, NodeResizer, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
 import { useTranslation } from 'react-i18next'
 import { EFFECTS, NODE_DEF_MAP, breakRuleEntries, gameCropIds, PIN_COLORS, visibleInputs, type Category, type PinDef } from '@core/nodes/defs'
@@ -18,7 +17,6 @@ export const CATEGORY_COLOR: Record<Category, string> = {
   sound: '#10b981',
   recipe: '#e11d48',
   fd: '#84cc16',
-  script: '#a855f7',
   addon: '#0ea5e9',
   mob: '#b91c1c',
   effect: '#ec4899',
@@ -126,8 +124,6 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
         </div>
       )
     }
-    case 'script':
-      return <CodePreview code={String(data.code ?? '')} targets={Array.isArray(data.targets) ? (data.targets as string[]) : []} />
     case 'gameCrop': {
       const ids = gameCropIds(data)
       const opts = NODE_DEF_MAP.gameCrop.props.find((p) => p.key === 'crops')?.options ?? []
@@ -168,76 +164,6 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
         )
       return null
   }
-}
-
-const KEYWORDS = new Set(JAVA_KEYWORDS)
-
-/** One line of Java with simple VS Code-like colours (keywords, types, strings, comments, annotations). */
-function JavaLine({ text }: { text: string }) {
-  const parts: { t: string; c?: string }[] = []
-  const re = /(\/\/.*$|\/\*.*?(?:\*\/|$)|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|@\w+|\b\d[\w.]*\b|\b[A-Za-z_$][\w$]*\b)/g
-  let last = 0
-  let m: RegExpExecArray | null
-  while ((m = re.exec(text))) {
-    if (m.index > last) parts.push({ t: text.slice(last, m.index) })
-    const tok = m[0]
-    const c =
-      tok.startsWith('//') || tok.startsWith('/*')
-        ? 'cm'
-        : tok[0] === '"' || tok[0] === "'"
-          ? 'st'
-          : tok[0] === '@'
-            ? 'an'
-            : /^\d/.test(tok)
-              ? 'nu'
-              : KEYWORDS.has(tok)
-                ? 'kw'
-                : /^[A-Z]/.test(tok)
-                  ? 'ty'
-                  : undefined
-    parts.push({ t: tok, c })
-    last = m.index + tok.length
-  }
-  if (last < text.length) parts.push({ t: text.slice(last) })
-  return (
-    <div className="code-line">
-      {parts.map((p, i) =>
-        p.c ? (
-          <span key={i} className={`ck-${p.c}`}>
-            {p.t}
-          </span>
-        ) : (
-          p.t
-        )
-      )}
-      {'\u200b'}
-    </div>
-  )
-}
-
-/** Canvas preview of a Script node: file name, targets and the start of the class (package/imports skipped). */
-function CodePreview({ code, targets }: { code: string; targets: string[] }) {
-  const { t } = useTranslation()
-  const all = code.replace(/\r\n?/g, '\n').split('\n')
-  const body = all.filter((l) => !/^\s*(package|import)\s[^;]*;\s*$/.test(l))
-  while (body.length && !body[0].trim()) body.shift()
-  const shown = body.slice(0, 12)
-  const indent = Math.min(...shown.filter((l) => l.trim()).map((l) => /^\s*/.exec(l)![0].replace(/\t/g, '    ').length), 99)
-  const cls = /(?:^|[\s;}])public\s+(?:(?:final|abstract|static)\s+)*(?:class|interface|enum|record)\s+([A-Za-z_$][\w$]*)/.exec(code)?.[1]
-  return (
-    <div className="code-preview">
-      <div className="code-head">
-        <span className="mono">{cls ? `${cls}.java` : '—'}</span>
-        <span className="code-targets">{targets.length ? targets.map((x) => x.replace('-', ' ')).join(', ') : t('script.allTargets')}</span>
-      </div>
-      <div className="code-body">
-        {shown.map((l, i) => (
-          <JavaLine key={i} text={l.replace(/\t/g, '    ').slice(indent === 99 ? 0 : indent)} />
-        ))}
-        {body.length > shown.length && <div className="code-more">{t('ws.moreLines', { count: body.length - shown.length })}</div>}
-      </div>
-    </div>
-  )
 }
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
@@ -332,6 +258,28 @@ const RerouteView = memo(function RerouteView() {
   )
 })
 
-export const NODE_TYPES = Object.fromEntries(
-  Object.keys(NODE_DEF_MAP).map((t) => [t, t === 'comment' ? CommentView : t === 'reroute' ? RerouteView : NodeView])
-)
+/**
+ * A node whose type does not exist (removed from the app, or from an extension that is not installed): a
+ * gray card. Its data stays in the project; React Flow uses the `default` type for every unknown type.
+ */
+const MissingView = memo(function MissingView({ type, selected }: NodeProps<FlowNode>) {
+  return (
+    <div className={`nk missing${selected ? ' sel' : ''}`}>
+      <div className="nk-head">
+        <span aria-hidden>⚠</span>
+        <span className="nk-title mono">{type}</span>
+      </div>
+      <div className="nk-sub">
+        {L({
+          en: 'This node type is not available (removed, or its extension is not installed). Its data is kept.',
+          th: 'ไม่มีโหนดชนิดนี้แล้ว (ถูกเอาออก หรือยังไม่ได้ติดตั้งส่วนเสริมของมัน) ข้อมูลยังเก็บไว้'
+        })}
+      </div>
+    </div>
+  )
+})
+
+export const NODE_TYPES = {
+  ...Object.fromEntries(Object.keys(NODE_DEF_MAP).map((t) => [t, t === 'comment' ? CommentView : t === 'reroute' ? RerouteView : NodeView])),
+  default: MissingView
+}

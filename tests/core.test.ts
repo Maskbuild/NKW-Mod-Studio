@@ -2,13 +2,12 @@ import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { compile, scriptBracketProblem } from '../src/core/compile/compile'
+import { compile } from '../src/core/compile/compile'
 import { FALLBACK_DEPS, TOOL_VERSIONS, generate } from '../src/core/gen/index'
 import { convertBBModel, rotateBoxes, shapeBoxes } from '../src/core/gen/model'
 import { PROFILES } from '../src/core/gen/profiles'
 import { NODE_DEF_MAP, gameCropIds, visibleInputs } from '../src/core/nodes/defs'
 import { bbmodelToGeo } from '../src/core/gen/geo'
-import { isReservedClass, importInsertPos, parseJavacError, scriptClassName, scriptEntrypoints, scriptSource } from '../src/core/scriptApi'
 import { ASSET_RE, ProjectSchema, overrideKey, toId, type Project } from '../src/core/project'
 import { safeJoin } from '../src/main/services/builder'
 import { applyOverrides } from '../src/core/gen/overrides'
@@ -395,56 +394,6 @@ describe('compiler', () => {
     expect(ir.items.some((i) => i.id === 'glow_shard')).toBe(false)
     expect(ir.recipes.length).toBe(compile(project).ir.recipes.length - 1)
     expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
-  })
-  it('writes Script nodes as Java files of the mod (package set, per target, Fabric entrypoints)', () => {
-    const fab = compile(project, { loader: 'fabric', mc: '1.20.1' })
-    expect(fab.diagnostics.filter((d) => d.severity === 'error')).toEqual([])
-    expect(fab.ir.scripts.map((s) => s.className).sort()).toEqual(['MagicWand', 'Welcome'])
-    const files = generate(fab.ir, { loader: 'fabric', mc: '1.20.1' }, { ...FALLBACK_DEPS['1.20.1'], ...deps } as never, read)
-    const wand = files.find((f) => f.path.endsWith('/nkwtest/MagicWand.java'))!.text!
-    expect(wand.startsWith('package com.nkw.nkwtest;')).toBe(true)
-    const meta = JSON.parse(files.find((f) => f.path.endsWith('fabric.mod.json'))!.text!)
-    expect(meta.entrypoints.main[0]).toBe('com.nkw.nkwtest.NkwMod')
-    expect([...meta.entrypoints.main].sort()).toEqual(['com.nkw.nkwtest.MagicWand', 'com.nkw.nkwtest.NkwMod', 'com.nkw.nkwtest.Welcome'])
-    // Forge finds @EventBusSubscriber classes itself: no entrypoints, the file is just there
-    const forge = compile(project, { loader: 'forge', mc: '1.20.1' })
-    const ff = generate(forge.ir, { loader: 'forge', mc: '1.20.1' }, { ...FALLBACK_DEPS['1.20.1'], ...deps } as never, read)
-    expect(ff.find((f) => f.path.endsWith('/Welcome.java'))!.text).toContain('@Mod.EventBusSubscriber(modid = NkwMod.MOD_ID)')
-    // a file for another target is left out
-    expect(ff.filter((f) => f.path.endsWith('/Welcome.java')).length).toBe(1)
-  })
-  it('reserves every class name the generator writes', () => {
-    for (const p of PROFILES)
-      for (const loader of p.loaders) {
-        const target = { loader, mc: p.mc }
-        const { ir } = compile(project, target)
-        const scripts = new Set(ir.scripts.map((s) => s.className))
-        for (const f of generate(ir, target, { ...FALLBACK_DEPS[p.mc], ...deps } as never, read)) {
-          const m = /\/([A-Za-z]+)\.java$/.exec(f.path)
-          if (m && !scripts.has(m[1])) expect(isReservedClass(m[1]), `${m[1]} (${loader} ${p.mc})`).toBe(true)
-        }
-      }
-  })
-  it('keeps Java line numbers when setting the package, and parses javac errors', () => {
-    expect(scriptSource('package x.y;\nclass A {}', 'com.m')).toBe('package com.m;\nclass A {}')
-    expect(scriptSource('// hi\npublic class A {}', 'com.m')).toBe('package com.m; // hi\npublic class A {}')
-    expect(scriptClassName('// public class Wrong\nimport a.b;\n@Foo\npublic final class Right implements X {}')).toBe('Right')
-    expect(scriptEntrypoints('public class A implements ClientModInitializer {')).toEqual({ main: false, client: true })
-    expect(parseJavacError('I:\\x\\src\\main\\java\\com\\nkw\\m\\Welcome.java:12: error: cannot find symbol')).toEqual({
-      cls: 'Welcome',
-      line: 12,
-      message: 'cannot find symbol',
-      severity: 'error'
-    })
-    expect(importInsertPos('package a;\nimport b.C;\n\nclass X {}', 'd.E')).toEqual({ pos: 22, text: '\nimport d.E;' })
-    expect(importInsertPos('package a;\nimport d.E;\nclass X {}', 'd.E')).toBeNull()
-  })
-  it('catches unbalanced brackets and quotes in scripts', () => {
-    expect(scriptBracketProblem('if (a) { b(); }')).toBeNull()
-    expect(scriptBracketProblem('// )))\nx("}");')).toBeNull()
-    expect(scriptBracketProblem('if (a) {\n  b();')?.line).toBe(1)
-    expect(scriptBracketProblem('x("abc);')?.en).toContain('unclosed string')
-    expect(scriptBracketProblem('a());')?.en).toContain('unexpected ")"')
   })
   it('imports MobEffects for weapon effects even when no food uses effects', () => {
     const p = structuredClone(project)
@@ -1012,10 +961,6 @@ describe('review fixes', () => {
     // creative tabs skip items that are not in the game (another mod missing)
     expect(files.find((f) => f.path.endsWith('/ModTabs.java'))!.text!).toContain('!= Items.AIR')
   })
-  it('accepts Java text blocks in scripts', () => {
-    expect(scriptBracketProblem('String s = """\n  } ) ]\n  """;')).toBeNull()
-    expect(scriptBracketProblem('void a() { String s = """\n{\n"""; ')).not.toBeNull()
-  })
   it('keeps option lines without a colon untouched', () => {
     expect(mergeOptionsTxt('version:3\nweird\n', { versio: 'x' })).toBe('version:3\nweird\nversio:x\n')
   })
@@ -1144,5 +1089,16 @@ describe('review fixes', () => {
     const files = generate(ir, target, { ...FALLBACK_DEPS[target.mc], ...deps } as never, read)
     expect(files.some((f) => f.path.endsWith('nkw/nkwtest-harvest.json') || f.path.endsWith('/NkwConfig.java'))).toBe(false)
     expect(files.filter((f) => f.text?.includes('NkwConfig')).map((f) => f.path)).toEqual([])
+  })
+  it('keeps nodes of a removed type (Script) in the project and only warns', () => {
+    const p = structuredClone(project)
+    p.graph.nodes.push({ id: 'old_script', type: 'script', position: { x: 0, y: 0 }, data: { code: 'public class Old {}' } })
+    const { diagnostics } = compile(p, { loader: 'fabric', mc: '1.21.1' })
+    expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([])
+    expect(diagnostics.some((d) => d.nodeId === 'old_script' && d.severity === 'warning' && /no longer supported/.test(d.message.en))).toBe(true)
+    // the file still accepts it, and a node type that never existed is still an error
+    expect(ProjectSchema.safeParse(p).success).toBe(true)
+    p.graph.nodes.push({ id: 'odd', type: 'neverExisted', position: { x: 0, y: 0 }, data: {} })
+    expect(compile(p, { loader: 'fabric', mc: '1.21.1' }).diagnostics.some((d) => d.nodeId === 'odd' && d.severity === 'error')).toBe(true)
   })
 })

@@ -21,12 +21,11 @@ This guide walks you through NKW Mod Studio from installing it to playing your m
 13. [Recipes](#13-recipes)
 14. [Farmer's Delight](#14-farmers-delight)
 15. [Creative tabs](#15-creative-tabs)
-16. [Java scripts (advanced)](#16-java-scripts-advanced)
-17. [Test in game and export a .jar](#17-test-in-game-and-export-a-jar)
-18. [Settings](#18-settings)
-19. [Keyboard shortcuts](#19-keyboard-shortcuts)
-20. [Troubleshooting](#20-troubleshooting)
-21. [Walkthrough: a ruby sword from start to finish](#21-walkthrough-a-ruby-sword-from-start-to-finish)
+16. [Test in game and export a .jar](#16-test-in-game-and-export-a-jar)
+17. [Settings](#17-settings)
+18. [Keyboard shortcuts](#18-keyboard-shortcuts)
+19. [Troubleshooting](#19-troubleshooting)
+20. [Walkthrough: a ruby sword from start to finish](#20-walkthrough-a-ruby-sword-from-start-to-finish)
 
 ---
 
@@ -612,26 +611,7 @@ Items not wired into any tab are handled by the project setting **Items not conn
 - _Hidden_: only obtainable with `/give`.
 - _Put them in a main tab automatically_.
 
-## 16. Java scripts (advanced)
-
-The **Java Class (Script)** node lets you add a real Java source file to your mod, written the same way as in any Minecraft mod. Use it for behavior the nodes don't cover. You need to know Java and the loader's API.
-
-- **Use for**: pick the loaders and versions the file is written for. None = all. Java APIs differ between loaders and versions, and the file is left out of builds for other targets.
-- **Your mod's own classes are available**: `NkwMod` (with `MOD_ID`), `ModItems`, `ModBlocks`, `ModSounds`.
-- **Forge / NeoForge**: put `@EventBusSubscriber` on the class and `@SubscribeEvent` on event methods.
-- **Fabric / Quilt**: `implements ModInitializer` (or `ClientModInitializer`). The app registers the class as an entrypoint for you.
-- **The editor works like an IDE**:
-  - Highlighting and live checks.
-  - Completion while typing. Classes are **imported automatically**. Ctrl+Space shows suggestions.
-  - Hover a class to see its package.
-  - Ctrl+F searches.
-  - The expand button opens a large editor.
-- **Insert an example…**: replaces the code with a ready-made class written for the selected loader and version.
-- **Check code**: compiles the mod with Gradle for the selected target. Java errors are underlined on their lines.
-- On the canvas, the node shows the class name, its targets and a preview of the first lines.
-- The class name must not clash with the classes the app generates. Problems will tell you if it does.
-
-## 17. Test in game and export a .jar
+## 16. Test in game and export a .jar
 
 ### ▶ Test in game
 
@@ -653,7 +633,7 @@ Click **⬇ Export .jar**. When the build finishes, choose where to save the `.j
 
 To release for several versions, switch **Target** and export once per target.
 
-## 18. Settings
+## 17. Settings
 
 Open with the gear button.
 
@@ -672,7 +652,7 @@ The **Test game** tab sets up Minecraft for "Test in game" (written to the test 
 
 The **Model editor** tab sets the model editor's mouse and keys: a Blockbench, Maya or Blender preset, or your own (see [Model editor](#model-editor-3d-models)).
 
-## 19. Keyboard shortcuts
+## 18. Keyboard shortcuts
 
 | Keys | Action |
 |---|---|
@@ -689,14 +669,13 @@ The **Model editor** tab sets the model editor's mouse and keys: a Blockbench, M
 | Alt+click pin | Disconnect that pin's wires |
 | Space + drag, right/middle drag | Pan |
 | F2 / Del (Assets) | Rename / Delete file |
-| Ctrl+Space / Ctrl+F (script editor) | Suggestions / Search |
 | Ctrl+Shift+P / Ctrl+P | Command palette / Open a generated file |
 | Ctrl+B / Ctrl+J / Ctrl+Alt+B | Side bar / Problems & Console / Properties |
 | Ctrl+Tab / Ctrl+W | Next tab / Close tab |
 | G S R B V, or Maya Q W E R (model editor) | Move, Scale, Rotate, Paint, Select |
 | F / A (model editor) | Frame selected / everything |
 
-## 20. Troubleshooting
+## 19. Troubleshooting
 
 | Problem | What to do |
 |---|---|
@@ -708,12 +687,11 @@ The **Model editor** tab sets the model editor's mouse and keys: a Blockbench, M
 | A 3D armor shows as 2D | 3D armor only works on 1.20.1 and 1.21.1. |
 | Farmer's Delight recipes are missing | The selected target has no Farmer's Delight version (see section 14). |
 | Sound doesn't fade with distance | Convert it again with **Mono** on. |
-| Script error in Check code | The underlined line shows the javac error. Make sure the code fits the selected loader and version. |
 | Windows SmartScreen warning | **More info → Run anyway**. |
 
 To report a bug, open an issue on [GitHub](https://github.com/Maskbuild/NKW-Mod-Studio/issues) with the Console log.
 
-## 21. Walkthrough: a ruby sword from start to finish
+## 20. Walkthrough: a ruby sword from start to finish
 
 1. **New project** → template **Empty** → name `Ruby Mod`, ID `ruby_mod`, target **Fabric 1.21.1** → Create.
 2. Drop `ruby.png` and `ruby_sword.png` onto the canvas. Two **Texture** nodes appear.

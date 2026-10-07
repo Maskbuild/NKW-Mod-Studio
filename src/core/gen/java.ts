@@ -1,5 +1,4 @@
 import type { ArmorMatIR, ArmorSlot, AttributeIR, BlockIR, EffectIR, HitIR, ItemIR, MobIR, ToolMatIR, ToolType } from '../ir'
-import { scriptAppliesTo, scriptSource } from '../scriptApi'
 import { geoLoopName } from './geo'
 import { geckoArmorSource } from './gecko'
 import { genHarvest, genHarvestHud, harvestUiIndex, usesHarvest, usesHud } from './harvest'
@@ -733,7 +732,6 @@ ${accept(tb, '            ')}
   if (attrItems.length) genAttributes(ctx, attrItems, get, out)
   // Script nodes: the user's own Java files, in the mod's package (Forge/NeoForge find @EventBusSubscriber
   // classes themselves; Fabric/Quilt entrypoints are added to the mod metadata)
-  for (const s of ir.scripts) if (scriptAppliesTo(s.targets, ctx.target)) out(s.className, scriptSource(s.code, pkg))
 
   const count = `${ir.items.length + ir.blocks.length} items, ${ir.blocks.length} blocks, ${ir.sounds.length} sounds, ${ir.recipes.length} recipes`
   const idFn = p.rlFactory

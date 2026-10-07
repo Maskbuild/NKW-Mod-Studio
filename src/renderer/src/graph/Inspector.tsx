@@ -16,7 +16,6 @@ import { CraftGrid } from './CraftGrid'
 import { useIde } from '../ide/ideStore'
 import { ArmorFitField } from './ArmorFit'
 import { TabOrder } from './TabOrder'
-import { ScriptEditor, ScriptTargets } from './ScriptEditor'
 import { HarvestUiPreview } from './HarvestUiPreview'
 import { BlockListField } from './BlockList'
 import { TagGrid } from './TagPreview'
@@ -644,10 +643,6 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
       return <ArmorFitField node={node} />
     case 'tabOrder':
       return <TabOrder node={node} />
-    case 'code':
-      return <ScriptEditor node={node} />
-    case 'scriptTargets':
-      return <ScriptTargets node={node} />
     default:
       return (
         <div className="field">

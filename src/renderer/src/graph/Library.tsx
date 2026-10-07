@@ -6,7 +6,7 @@ import { L } from '../i18n'
 import { useStore } from '../store'
 import { ISearch } from '../components/Icons'
 
-const ORDER: Category[] = ['item', 'block', 'farm', 'armor', 'effect', 'sound', 'recipe', 'fd', 'mob', 'script', 'addon', 'asset', 'util']
+const ORDER: Category[] = ['item', 'block', 'farm', 'armor', 'effect', 'sound', 'recipe', 'fd', 'mob', 'addon', 'asset', 'util']
 
 export function useAddCentered() {
   const rf = useReactFlow()

@@ -1,6 +1,6 @@
 import { ASSET_RE, ID_RE, NSID_RE, type GraphNode, type Project, type Target } from '../project'
 import { parseFit } from '../gen/geo'
-import { isReservedClass, scriptAppliesTo, scriptClassName, scriptEntrypoints } from '../scriptApi'
+import { REMOVED_NODE_TYPES } from '../nodes/removed'
 import { ATTRIBUTES, BREAK_TOOLS, EFFECTS, NODE_DEF_MAP, TOOL_LEVELS, breakRuleEntries, canConnect, gameCropIds, pinOf, type L10n } from '../nodes/defs'
 import type {
   ArmorMatIR,
@@ -54,59 +54,6 @@ export interface CompileResult {
 
 /** Material id used by tools / armor with no material wired in (iron stats). */
 const DEFAULT_MAT = 'nkw_iron'
-
-/**
- * Brackets / quotes the generated Java would choke on, found before building (Gradle would report the
- * same, much later). Skips strings, chars and comments.
- */
-export function scriptBracketProblem(code: string): { en: string; th: string; line: number } | null {
-  const stack: { ch: string; line: number }[] = []
-  const pairs: Record<string, string> = { ')': '(', ']': '[', '}': '{' }
-  let line = 1
-  for (let i = 0; i < code.length; i++) {
-    const c = code[i]
-    if (c === '\n') line++
-    if (c === '/' && code[i + 1] === '/') {
-      while (i < code.length && code[i] !== '\n') i++
-      line++
-      continue
-    }
-    if (c === '/' && code[i + 1] === '*') {
-      const end = code.indexOf('*/', i + 2)
-      if (end < 0) return { en: `unclosed comment (line ${line})`, th: `คอมเมนต์ไม่ได้ปิด (บรรทัด ${line})`, line }
-      line += code.slice(i, end).split('\n').length - 1
-      i = end + 1
-      continue
-    }
-    // Java text block: """ … """
-    if (code.startsWith('"""', i)) {
-      const end = code.indexOf('"""', i + 3)
-      if (end < 0) return { en: `unclosed text block (line ${line})`, th: `ข้อความหลายบรรทัด (""") ไม่ได้ปิด (บรรทัด ${line})`, line }
-      line += code.slice(i, end).split('\n').length - 1
-      i = end + 2
-      continue
-    }
-    if (c === '"' || c === "'") {
-      let j = i + 1
-      while (j < code.length && code[j] !== c && code[j] !== '\n') j += code[j] === '\\' ? 2 : 1
-      if (code[j] !== c)
-        return {
-          en: `unclosed ${c === '"' ? 'string' : 'character'} (line ${line})`,
-          th: `${c === '"' ? 'ข้อความ' : 'ตัวอักษร'}ไม่ได้ปิดเครื่องหมายคำพูด (บรรทัด ${line})`,
-          line
-        }
-      i = j
-      continue
-    }
-    if (c === '(' || c === '[' || c === '{') stack.push({ ch: c, line })
-    else if (c in pairs) {
-      const top = stack.pop()
-      if (!top || top.ch !== pairs[c]) return { en: `unexpected "${c}" (line ${line})`, th: `มี "${c}" เกินมา (บรรทัด ${line})`, line }
-    }
-  }
-  const open = stack.pop()
-  return open ? { en: `"${open.ch}" is never closed (line ${open.line})`, th: `"${open.ch}" ยังไม่ได้ปิด (บรรทัด ${open.line})`, line: open.line } : null
-}
 
 /** Blocks you can see through: copies of them must not hide the faces of their neighbours. */
 const SEE_THROUGH =
@@ -165,7 +112,9 @@ export function compile(project: Project, target?: Target): CompileResult {
     // disabled nodes stay on the canvas but are not part of the mod (their wires are ignored too)
     if (n.data.disabled === true) continue
     if (!NODE_DEF_MAP[n.type]) {
-      err(n.id, `Unknown node type "${n.type}"`, `ไม่รู้จักโหนดชนิด "${n.type}"`)
+      const gone = REMOVED_NODE_TYPES[n.type]
+      if (gone) warn(n.id, gone.en, gone.th)
+      else err(n.id, `Unknown node type "${n.type}"`, `ไม่รู้จักโหนดชนิด "${n.type}"`)
       continue
     }
     nodes.set(n.id, n)
@@ -492,7 +441,6 @@ export function compile(project: Project, target?: Target): CompileResult {
     sounds: [],
     recipes: [],
     tabs: [],
-    scripts: [],
     mobs: [],
     gameCrops: [],
     breakRules: [],
@@ -1293,30 +1241,6 @@ export function compile(project: Project, target?: Target): CompileResult {
           })
         break
       }
-      case 'script': {
-        const code = str(d, 'code')
-        const targets = Array.isArray(d.targets) ? (d.targets as unknown[]).filter((x): x is string => typeof x === 'string') : []
-        if (target && !scriptAppliesTo(targets, target)) break
-        if (code.length > 200000) {
-          err(n.id, 'The file is too long (max 200,000 characters)', 'ไฟล์ยาวเกินไป (สูงสุด 200,000 ตัวอักษร)')
-          break
-        }
-        const className = scriptClassName(code)
-        if (!className) {
-          err(n.id, 'Java: declare a public class (e.g. "public class MyScript {")', 'Java: ต้องมี public class (เช่น "public class MyScript {")')
-          break
-        }
-        if (isReservedClass(className))
-          err(
-            n.id,
-            `Java: the class name "${className}" is used by the generated mod — pick another`,
-            `Java: ชื่อคลาส "${className}" ม็อดใช้อยู่แล้ว ตั้งชื่ออื่น`
-          )
-        const unbalanced = scriptBracketProblem(code)
-        if (unbalanced) err(n.id, `Java: ${unbalanced.en}`, `Java: ${unbalanced.th}`)
-        ir.scripts.push({ nodeId: n.id, className, targets, code, entry: scriptEntrypoints(code) })
-        break
-      }
       case 'creativeTab': {
         const id = str(d, 'id') || 'main'
         if (!ID_RE.test(id)) err(n.id, `Invalid ID "${id}" (use a-z, 0-9, _)`, `ID "${id}" ไม่ถูกต้อง (ใช้ a-z, 0-9, _)`)
@@ -1376,12 +1300,6 @@ export function compile(project: Project, target?: Target): CompileResult {
       repair: { item: 'minecraft:iron_ingot' },
       vanillaLook: 'iron'
     })
-
-  // two script files with the same class for the same target
-  for (const [i, a] of ir.scripts.entries())
-    for (const b of ir.scripts.slice(i + 1))
-      if (a.className === b.className && (!a.targets.length || !b.targets.length || a.targets.some((x) => b.targets.includes(x))))
-        err(b.nodeId, `Java: class "${b.className}" is already defined by another Script node`, `Java: คลาส "${b.className}" มีในโหนดสคริปต์อื่นแล้ว`)
 
   // ── cross-checks ──
   const seen = new Map<string, string>()

@@ -1,5 +1,4 @@
 import type { Edge, Node, XYPosition } from '@xyflow/react'
-import { parseJavacError } from '@core/scriptApi'
 import { create } from 'zustand'
 import { NODE_DEF_MAP, PIN_COLORS, defaultData, pinOf } from '@core/nodes/defs'
 import type { Diagnostic } from '@core/ir'
@@ -90,8 +89,6 @@ export interface BuildState {
   progress: { msg: string; done?: number; total?: number } | null
   logs: string[]
   lastCode: number | null
-  /** javac errors of Script classes from the last build (file class, line, message) */
-  javaErrors: { cls: string; line: number; message: string; severity: 'error' | 'warning' }[]
 }
 
 interface State {
@@ -177,7 +174,7 @@ export const useStore = create<State>((set, get) => ({
   issues: {},
   assets: [],
   clipboard: null,
-  build: { running: false, task: null, progress: null, logs: [], lastCode: null, javaErrors: [] },
+  build: { running: false, task: null, progress: null, logs: [], lastCode: null },
   toasts: [],
   vanilla: {},
 
@@ -206,7 +203,7 @@ export const useStore = create<State>((set, get) => ({
       dirty: false,
       diagnostics: [],
       issues: {},
-      build: { running: false, task: null, progress: null, logs: [], lastCode: null, javaErrors: [] }
+      build: { running: false, task: null, progress: null, logs: [], lastCode: null }
     })
     void get().refreshAssets()
   },
@@ -458,17 +455,11 @@ export const useStore = create<State>((set, get) => ({
   appendLogs(lines) {
     set((s) => {
       const logs = s.build.logs.length + lines.length > 6000 ? [...s.build.logs.slice(-(6000 - lines.length)), ...lines] : [...s.build.logs, ...lines]
-      // javac errors of Script files are shown in their editor
-      const found = lines
-        .map(parseJavacError)
-        .filter((e): e is NonNullable<typeof e> => !!e)
-        .filter((e) => !s.build.javaErrors.some((x) => x.cls === e.cls && x.line === e.line && x.message === e.message))
-      return { build: { ...s.build, logs, javaErrors: found.length ? [...s.build.javaErrors, ...found].slice(-200) : s.build.javaErrors } }
+      return { build: { ...s.build, logs } }
     })
   },
   setBuild(p) {
-    // a new build starts with no javac errors
-    set((s) => ({ build: { ...s.build, ...(p.running ? { javaErrors: [] } : {}), ...p } }))
+    set((s) => ({ build: { ...s.build, ...p } }))
   }
 }))
 

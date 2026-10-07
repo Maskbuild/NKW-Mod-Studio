@@ -317,18 +317,6 @@ export interface TabIR {
   items: string[]
 }
 
-/** A Java source file written by the user (Script node). */
-export interface ScriptIR {
-  nodeId: string
-  /** the public class = file name */
-  className: string
-  /** targets it applies to, as "loader-mc"; empty = all */
-  targets: string[]
-  code: string
-  /** Fabric/Quilt entrypoints the class implements */
-  entry: { main: boolean; client: boolean }
-}
-
 /** Where a stat bonus is active. */
 export type AttrSlot = 'mainhand' | 'offhand' | 'hand' | 'head' | 'chest' | 'legs' | 'feet' | 'inventory'
 
@@ -387,7 +375,6 @@ export interface ModIR {
   sounds: SoundIR[]
   recipes: RecipeIR[]
   tabs: TabIR[]
-  scripts: ScriptIR[]
   mobs: MobIR[]
   gameCrops: GameCropIR[]
   breakRules: BreakRuleIR[]

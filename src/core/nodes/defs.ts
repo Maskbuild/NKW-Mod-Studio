@@ -1,4 +1,3 @@
-import { SCRIPT_STARTER } from '../scriptApi'
 import { t, type L10n } from '../l10n'
 /**
  * Node catalogue shared by the editor (rendering, inspector) and the compiler.
@@ -85,8 +84,6 @@ export type PropKind =
   | 'craftGrid'
   | 'armorFit'
   | 'tabOrder'
-  | 'code'
-  | 'scriptTargets'
   | 'blockList'
 
 export interface PropDef {
@@ -106,7 +103,7 @@ export interface PropDef {
   noTags?: boolean
 }
 
-export type Category = 'asset' | 'item' | 'block' | 'farm' | 'armor' | 'effect' | 'sound' | 'recipe' | 'fd' | 'mob' | 'script' | 'addon' | 'util'
+export type Category = 'asset' | 'item' | 'block' | 'farm' | 'armor' | 'effect' | 'sound' | 'recipe' | 'fd' | 'mob' | 'addon' | 'util'
 
 export interface NodeDef {
   type: string
@@ -196,7 +193,6 @@ export const CATEGORY_LABEL: Record<Category, L10n> = {
   recipe: t('Recipes', 'สูตรคราฟ'),
   fd: t("Farmer's Delight", "Farmer's Delight"),
   mob: t('Mobs & monsters', 'ม็อบและมอนสเตอร์'),
-  script: t('Scripts', 'สคริปต์'),
   addon: t('Add-ons (other mods)', 'ส่วนเสริม (ม็อดอื่น)'),
   util: t('Utility', 'เครื่องมือ')
 }
@@ -1785,33 +1781,6 @@ export const NODE_DEFS: NodeDef[] = [
       { key: 'dropMax', label: t('Each drop: count max', 'ของดรอปแต่ละอย่าง: สูงสุด'), kind: 'int', default: 2, min: 0, max: 64 },
       { key: 'eggColor', label: t('Spawn egg colour', 'สีไข่เกิด'), kind: 'color', default: '#4b7f52' },
       { key: 'eggSpots', label: t('Spawn egg spots', 'สีจุดไข่เกิด'), kind: 'color', default: '#e11d48' }
-    ]
-  },
-
-  // ───────────── Scripts ─────────────
-  {
-    type: 'script',
-    category: 'script',
-    title: t('Java Class (Script)', 'คลาส Java (สคริปต์)'),
-    description: t(
-      "A Java source file of your mod, written like in any Minecraft mod: imports, classes, events. Forge/NeoForge: annotate the class with @EventBusSubscriber. Fabric/Quilt: implement ModInitializer — it is registered as an entrypoint. Your mod's classes (NkwMod, ModItems, ModBlocks, ModSounds) can be used directly.",
-      'ไฟล์ Java ของม็อด เขียนแบบม็อด Minecraft ทั่วไป (import, class, event) — Forge/NeoForge: ใส่ @EventBusSubscriber ที่ class / Fabric/Quilt: implements ModInitializer แล้วแอปลงทะเบียน entrypoint ให้ ใช้ class ของม็อดเรา (NkwMod, ModItems, ModBlocks, ModSounds) ได้เลย'
-    ),
-    icon: '☕',
-    inputs: [],
-    outputs: [],
-    props: [
-      {
-        key: 'targets',
-        label: t('Use for', 'ใช้กับ'),
-        kind: 'scriptTargets',
-        default: [],
-        hint: t(
-          'Java APIs differ between loaders and versions: pick the targets this file is written for (none = all).',
-          'API ของ Java ต่างกันในแต่ละ loader/เวอร์ชัน เลือกเป้าหมายที่ไฟล์นี้เขียนไว้ (ไม่เลือก = ทั้งหมด)'
-        )
-      },
-      { key: 'code', label: t('Code', 'โค้ด'), kind: 'code', default: SCRIPT_STARTER }
     ]
   },
 
