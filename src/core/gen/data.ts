@@ -200,41 +200,5 @@ function recipeJson(ctx: GenCtx, r: RecipeIR, ing: (i: Ingredient) => unknown, s
         addition: ing(r.addition),
         result: stack(r.result)
       }
-    case 'fdCutting': {
-      if (!ctx.fd) return null
-      return {
-        type: 'farmersdelight:cutting',
-        ingredients: [ing(r.input)],
-        tool: fdTool(ctx, r.tool),
-        result: r.results.map((x) => {
-          const base = p.stackId ? { item: { id: x.item, count: x.count } } : { item: x.item, ...(x.count !== 1 ? { count: x.count } : {}) }
-          return x.chance < 1 ? { ...base, chance: x.chance } : base
-        })
-      }
-    }
-    case 'fdCooking': {
-      if (!ctx.fd) return null
-      return {
-        type: 'farmersdelight:cooking',
-        recipe_book_tab: r.tab,
-        ingredients: r.ingredients.map(ing),
-        result: { ...stack(r.result), count: r.count },
-        ...(r.container ? { container: stack(r.container) } : {}),
-        experience: r.xp,
-        cookingtime: r.time
-      }
-    }
-  }
-}
-
-function fdTool(ctx: GenCtx, tool: string): unknown {
-  const modern = ctx.p.smithingTransform // 1.20+: vanilla tool tags exist
-  switch (tool) {
-    case 'knife':
-      return { tag: ctx.fd!.knifeTag }
-    case 'shears':
-      return { item: 'minecraft:shears' }
-    default:
-      return modern ? { tag: `minecraft:${tool}s` } : { type: 'farmersdelight:tool_action', action: `${tool}_dig` }
   }
 }

@@ -2,6 +2,8 @@ import { z } from 'zod'
 import type { GraphNode } from '../project'
 import { ID_RE, NSID_RE } from '../project'
 import type { L10n } from '../l10n'
+import type { Manifest } from './manifest'
+import { targetConfigFor } from './support'
 import { exprCalls, exprNames, evalExpr, MATH_FNS, parseExpr, truthy, type Expr, type ExprFn } from './expr'
 
 /**
@@ -12,12 +14,35 @@ import { exprCalls, exprNames, evalExpr, MATH_FNS, parseExpr, truthy, type Expr,
  */
 
 const FIELD = /^[A-Za-z_][A-Za-z0-9_]{0,40}$/
+/** a pin or property name, possibly with {i} for numbered slots */
+const PINREF = /^[A-Za-z_][A-Za-z0-9_{}]{0,40}$/
 const L10nSchema = z.strictObject({ en: z.string().max(2000), th: z.string().max(2000) })
 
-export const SourceSchema = z.union([
+export type Source =
+  | {
+      prop: string
+      as?: 'string' | 'number' | 'int' | 'bool' | 'list' | 'nsid' | 'nsidList'
+      default?: string | number | boolean | null | string[]
+      min?: number
+      max?: number
+      mul?: number
+      values?: string[]
+      trim?: boolean
+      optional?: boolean
+    }
+  | { input: string; required?: boolean }
+  | { ingredient: string; required?: boolean }
+  | { rows: { count: number; required: string; fields: Record<string, Source> } }
+  | { const: string | number | boolean | null }
+  | { nodeId: true }
+  | { computed: string }
+  | { item: string }
+  | { collect: string }
+
+export const SourceSchema: z.ZodType<Source> = z.union([
   /** a property of the node (or one the extension added to a core node), cleaned up by `as` */
   z.strictObject({
-    prop: z.string().regex(FIELD),
+    prop: z.string().regex(PINREF),
     as: z.enum(['string', 'number', 'int', 'bool', 'list', 'nsid', 'nsidList']).optional(),
     default: z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())]).optional(),
     min: z.number().optional(),
@@ -26,10 +51,30 @@ export const SourceSchema = z.union([
     mul: z.number().optional(),
     /** only these values are accepted (anything else becomes the default) */
     values: z.array(z.string().max(80)).max(64).optional(),
-    trim: z.boolean().optional()
+    trim: z.boolean().optional(),
+    /** the node may not have this property (then the default is used); skips the existence check */
+    optional: z.boolean().optional()
   }),
   /** what is wired into an input pin: the value another extension node made, or the id of a game object */
-  z.strictObject({ input: z.string().regex(FIELD), required: z.boolean().optional() }),
+  z.strictObject({ input: z.string().regex(PINREF), required: z.boolean().optional() }),
+  /** what is wired into an ingredient pin: {item} or {tag} */
+  z.strictObject({ ingredient: z.string().regex(PINREF), required: z.boolean().optional() }),
+  /**
+   * A list made from numbered slots: for i = 1..count one row is made from `fields` (where "{i}" in a property
+   * or pin name becomes i). A row is left out when its `required` field is empty.
+   */
+  z.strictObject({
+    rows: z.strictObject({
+      count: z.number().int().min(1).max(32),
+      required: z.string().regex(FIELD),
+      fields: z
+        .record(
+          z.string().regex(FIELD),
+          z.lazy(() => SourceSchema)
+        )
+        .refine((o) => Object.keys(o).length >= 1 && Object.keys(o).length <= 12)
+    })
+  }),
   z.strictObject({ const: z.union([z.string(), z.number(), z.boolean(), z.null()]) }),
   z.strictObject({ nodeId: z.literal(true) }),
   z.strictObject({ computed: z.string().max(1000) }),
@@ -38,7 +83,6 @@ export const SourceSchema = z.union([
   /** derive with groupBy only: the list of this field of every item in the group */
   z.strictObject({ collect: z.string().max(200) })
 ])
-export type Source = z.infer<typeof SourceSchema>
 
 const RuleSchema = z.union([
   z.strictObject({ if: z.string().max(1000), diag: z.enum(['error', 'warning']), msg: L10nSchema }),
@@ -83,6 +127,10 @@ export interface MappingHost {
   source(nodeId: string, handle: string): { node: GraphNode; handle: string } | null
   /** the game id (item/block) a core node produces on a pin, or null */
   idOf(node: GraphNode, handle: string): string | null
+  /** the target being compiled for (none when only checking a project) */
+  target: { loader: string; mc: string } | null
+  /** what is wired into an ingredient pin ({item} or {tag}), or null */
+  ingredient(nodeId: string, handle: string): { item: string } | { tag: string } | null
   diag(severity: 'error' | 'warning', nodeId: string | undefined, msg: L10n): void
 }
 
@@ -93,6 +141,7 @@ export interface MappedExtension {
   /** node type → rules for nodes of other sources the extension attaches data to */
   extend: Map<string, NodeCompile>
   derive: Derive[]
+  targetConfig: Manifest['targetConfig']
   /** default value of every property of a node type (so `prop` sources see defaults) */
   defaults: Map<string, Record<string, unknown>>
 }
@@ -145,6 +194,16 @@ const fill = (m: L10n, scope: Record<string, unknown>): L10n => {
 
 const FNS: Record<string, ExprFn> = {
   ...MATH_FNS,
+  /** the text after the first separator ("mod:thing" → "thing"), or all of it when there is none */
+  after: (x, sep) => {
+    const t = String(x ?? '')
+    const i = t.indexOf(String(sep))
+    return i < 0 ? t : t.slice(i + String(sep).length)
+  },
+  replace: (x, a, b) =>
+    String(x ?? '')
+      .split(String(a))
+      .join(String(b)),
   isId: (x) => typeof x === 'string' && ID_RE.test(x),
   isNsid: (x) => typeof x === 'string' && NSID_RE.test(x)
 }
@@ -158,6 +217,17 @@ export function runMappings(exts: MappedExtension[], host: MappingHost, bag: Ext
   for (const ext of exts) {
     for (const [type, spec] of ext.compile) owner.set(type, { ext, spec })
     for (const [type, spec] of ext.extend) attach.set(type, [...(attach.get(type) ?? []), { ext, spec }])
+  }
+  /** how many times each name was handed out (recipe_name, recipe_name_2 …) */
+  const names = new Map<string, number>()
+  const fns: Record<string, ExprFn> = {
+    ...FNS,
+    unique: (base) => {
+      const b = String(base)
+      const c = (names.get(b) ?? 0) + 1
+      names.set(b, c)
+      return c === 1 ? b : `${b}_${c}`
+    }
   }
   const memo = new Map<string, Record<string, unknown> | null>()
   const busy = new Set<string>()
@@ -183,28 +253,51 @@ export function runMappings(exts: MappedExtension[], host: MappingHost, bag: Ext
       }
     })
     const v: Record<string, unknown> = {}
-    const scope = { prop: props, v, input: inputs, nodeId }
-    const evalSrc = (s: Source): unknown => {
-      if ('prop' in s) return clean(s, props[s.prop])
+    const scope = {
+      prop: props,
+      v,
+      input: inputs,
+      nodeId,
+      target: host.target,
+      cfg: host.target ? targetConfigFor({ targetConfig: ext.targetConfig }, host.target.loader, host.target.mc) : null
+    }
+    const evalSrc = (s: Source, i?: number): unknown => {
+      const nm = (n: string) => (i === undefined ? n : n.replace(/\{i\}/g, String(i)))
+      if ('prop' in s) return clean(s, props[nm(s.prop)])
       if ('input' in s) {
-        const x = input(nodeId, s.input)
+        const x = input(nodeId, nm(s.input))
         if ((x === undefined || x === null) && s.required)
-          host.diag('error', nodeId, { en: `Connect something to "${s.input}"`, th: `ต้องต่อบางอย่างเข้า "${s.input}"` })
+          host.diag('error', nodeId, { en: `Connect something to "${nm(s.input)}"`, th: `ต้องต่อบางอย่างเข้า "${nm(s.input)}"` })
         return x ?? null
+      }
+      if ('ingredient' in s) {
+        const x = host.ingredient(nodeId, nm(s.ingredient))
+        if (!x && s.required)
+          host.diag('error', nodeId, { en: `Connect an ingredient to "${nm(s.ingredient)}"`, th: `ต่อวัตถุดิบเข้าช่อง "${nm(s.ingredient)}"` })
+        return x
+      }
+      if ('rows' in s) {
+        const rows: Record<string, unknown>[] = []
+        for (let k = 1; k <= s.rows.count; k++) {
+          const row: Record<string, unknown> = {}
+          for (const [f, src] of Object.entries(s.rows.fields)) row[f] = evalSrc(src, k)
+          if (row[s.rows.required] !== null && row[s.rows.required] !== undefined && row[s.rows.required] !== '') rows.push(row)
+        }
+        return rows
       }
       if ('const' in s) return s.const
       if ('nodeId' in s) return nodeId
-      if ('computed' in s) return evalExpr(parseExpr(s.computed), { scope, fns: FNS })
+      if ('computed' in s) return evalExpr(parseExpr(s.computed), { scope: i === undefined ? scope : { ...scope, i }, fns })
       return undefined
     }
     let value: Record<string, unknown> | null = null
-    if (spec.emit && (!spec.emit.when || truthy(evalExpr(parseExpr(spec.emit.when), { scope, fns: FNS })))) {
+    if (spec.emit) {
       for (const [field, src] of Object.entries(spec.emit.value)) v[field] = evalSrc(src)
-      value = { nodeId, ...v }
+      if (!spec.emit.when || truthy(evalExpr(parseExpr(spec.emit.when), { scope, fns }))) value = { nodeId, ...v }
     }
     for (const rule of spec.validate) {
       if ('if' in rule) {
-        if (truthy(evalExpr(parseExpr(rule.if), { scope, fns: FNS }))) host.diag(rule.diag, nodeId, fill(rule.msg, scope))
+        if (truthy(evalExpr(parseExpr(rule.if), { scope, fns }))) host.diag(rule.diag, nodeId, fill(rule.msg, scope))
       }
     }
     if (spec.emit && value && spec.emit.mode === 'push') {
@@ -278,9 +371,9 @@ export function mappingExprs(c: NodeCompile | Derive): { src: string; roots: str
   const out: { src: string; roots: string[] }[] = []
   const add = (src: string, roots: string[]) => out.push({ src, roots })
   const values = 'value' in c ? c.value : c.emit?.value
-  for (const s of Object.values(values ?? {})) if ('computed' in s) add(s.computed, ['prop', 'v', 'input', 'nodeId', 'item'])
-  if ('emit' in c && c.emit?.when) add(c.emit.when, ['prop', 'v', 'input', 'nodeId'])
-  if ('validate' in c) for (const r of c.validate) if ('if' in r) add(r.if, ['prop', 'v', 'input', 'nodeId'])
+  for (const s of Object.values(values ?? {})) if ('computed' in s) add(s.computed, ['prop', 'v', 'input', 'nodeId', 'item', 'target', 'cfg', 'i'])
+  if ('emit' in c && c.emit?.when) add(c.emit.when, ['prop', 'v', 'input', 'nodeId', 'target', 'cfg'])
+  if ('validate' in c) for (const r of c.validate) if ('if' in r) add(r.if, ['prop', 'v', 'input', 'nodeId', 'target', 'cfg'])
   if ('where' in c && c.where) add(c.where, ['item', 'v'])
   return out
 }
@@ -294,8 +387,31 @@ export function checkExpr(src: string, roots: string[], extraFns: string[] = [])
     return `${(err as Error).message}: ${src}`
   }
   for (const n of exprNames(e)) if (!roots.includes(n)) return `Unknown name "${n}" in: ${src}`
-  for (const f of exprCalls(e)) if (!(f in FNS) && !extraFns.includes(f)) return `Unknown function "${f}" in: ${src}`
+  for (const f of exprCalls(e)) if (!(f in FNS) && f !== 'unique' && !extraFns.includes(f)) return `Unknown function "${f}" in: ${src}`
   return null
 }
 
 export { FNS as MAPPING_FNS }
+
+/**
+ * Checks the sources of a node's rules against the node: every property and pin they read must exist
+ * (numbered "{i}" names are checked for each row), and "item" / "collect" belong to derive only.
+ */
+export function sourceProblems(values: Record<string, Source> | undefined, props: Set<string>, pins: Set<string>): string[] {
+  const out: string[] = []
+  const visit = (s: Source, i?: number) => {
+    const nm = (n: string) => (i === undefined ? n : n.replace(/\{i\}/g, String(i)))
+    if ('prop' in s) {
+      if (!s.optional && !props.has(nm(s.prop))) out.push(`reads unknown property "${nm(s.prop)}"`)
+    } else if ('input' in s) {
+      if (!pins.has(nm(s.input))) out.push(`reads unknown input "${nm(s.input)}"`)
+    } else if ('ingredient' in s) {
+      if (!pins.has(nm(s.ingredient))) out.push(`reads unknown input "${nm(s.ingredient)}"`)
+    } else if ('rows' in s) {
+      if (!(s.rows.required in s.rows.fields)) out.push(`rows: "required" must name one of the fields`)
+      for (let k = 1; k <= s.rows.count; k++) for (const f of Object.values(s.rows.fields)) visit(f, k)
+    } else if ('item' in s || 'collect' in s) out.push('"item" and "collect" sources only work in derive')
+  }
+  for (const s of Object.values(values ?? {})) visit(s)
+  return [...new Set(out)]
+}

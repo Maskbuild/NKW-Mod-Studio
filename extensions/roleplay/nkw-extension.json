@@ -14,12 +14,7 @@
   "pinTypes": {
     "harvestUi": "#84cc16"
   },
-  "nodes": [
-    "nodes/breakRule.json",
-    "nodes/regenBlock.json",
-    "nodes/gameCrop.json",
-    "nodes/harvestUi.json"
-  ],
+  "nodes": ["nodes/breakRule.json", "nodes/regenBlock.json", "nodes/gameCrop.json", "nodes/harvestUi.json"],
   "extendNodes": [
     {
       "type": "crop",

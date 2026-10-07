@@ -1117,69 +1117,6 @@ const CORE_NODE_DEFS: NodeDef[] = [
   },
 
   // ───────────── Farmer's Delight ─────────────
-  {
-    type: 'fdCutting',
-    category: 'fd',
-    title: t('Cutting Board', 'เขียง'),
-    description: t("Farmer's Delight cutting board recipe", "สูตรเขียงของ Farmer's Delight"),
-    icon: '🔪',
-    inputs: [
-      { id: 'input', label: t('Input', 'วัตถุดิบ'), type: 'ingredient' },
-      { id: 'out1', label: t('Result 1', 'ผลลัพธ์ 1'), type: 'item', right: true, group: 'out' },
-      { id: 'out2', label: t('Result 2', 'ผลลัพธ์ 2'), type: 'item', optional: true, right: true, group: 'out' },
-      { id: 'out3', label: t('Result 3', 'ผลลัพธ์ 3'), type: 'item', optional: true, right: true, group: 'out' },
-      { id: 'out4', label: t('Result 4', 'ผลลัพธ์ 4'), type: 'item', optional: true, right: true, group: 'out' }
-    ],
-    outputs: [],
-    props: [
-      {
-        key: 'tool',
-        label: t('Tool', 'เครื่องมือ'),
-        kind: 'select',
-        default: 'knife',
-        options: [
-          opt('knife', 'Knife', 'มีด'),
-          opt('axe', 'Axe', 'ขวาน'),
-          opt('pickaxe', 'Pickaxe', 'อีเต้อ'),
-          opt('shovel', 'Shovel', 'พลั่ว'),
-          opt('shears', 'Shears', 'กรรไกร')
-        ]
-      },
-      { key: 'count1', label: t('Result 1 count', 'จำนวนผลลัพธ์ 1'), kind: 'int', default: 2, min: 1, max: 64 },
-      { key: 'count2', label: t('Result 2 count', 'จำนวนผลลัพธ์ 2'), kind: 'int', default: 1, min: 1, max: 64 },
-      { key: 'chance2', label: t('Result 2 chance', 'โอกาสผลลัพธ์ 2'), kind: 'float', default: 1, min: 0, max: 1, step: 0.05 },
-      { key: 'count3', label: t('Result 3 count', 'จำนวนผลลัพธ์ 3'), kind: 'int', default: 1, min: 1, max: 64 },
-      { key: 'chance3', label: t('Result 3 chance', 'โอกาสผลลัพธ์ 3'), kind: 'float', default: 1, min: 0, max: 1, step: 0.05 },
-      { key: 'count4', label: t('Result 4 count', 'จำนวนผลลัพธ์ 4'), kind: 'int', default: 1, min: 1, max: 64 },
-      { key: 'chance4', label: t('Result 4 chance', 'โอกาสผลลัพธ์ 4'), kind: 'float', default: 1, min: 0, max: 1, step: 0.05 }
-    ]
-  },
-  {
-    type: 'fdCooking',
-    category: 'fd',
-    title: t('Cooking Pot', 'หม้อต้ม'),
-    description: t("Farmer's Delight cooking pot recipe (up to 6 ingredients)", "สูตรหม้อต้มของ Farmer's Delight (วัตถุดิบสูงสุด 6 อย่าง)"),
-    icon: '🍲',
-    inputs: [
-      ...slots(6, 'i', 'Ingredient', 'วัตถุดิบ', 'ingredient', { group: 'ing' }),
-      { id: 'container', label: t('Container (e.g. bowl)', 'ภาชนะ (เช่น ชาม)'), type: 'item', optional: true },
-      resultPin()
-    ],
-    outputs: [],
-    props: [
-      countProp(),
-      { key: 'xp', label: t('Experience', 'ค่าประสบการณ์'), kind: 'float', default: 1, min: 0, max: 100, step: 0.1 },
-      { key: 'time', label: t('Cook time (ticks)', 'เวลา (tick)'), kind: 'int', default: 200, min: 1, max: 72000 },
-      {
-        key: 'tab',
-        label: t('Recipe book tab', 'หมวดในสมุดสูตร'),
-        kind: 'select',
-        default: 'meals',
-        options: [opt('meals', 'Meals', 'อาหารจานหลัก'), opt('drinks', 'Drinks', 'เครื่องดื่ม'), opt('misc', 'Misc', 'อื่น ๆ')]
-      }
-    ]
-  },
-
   // ───────────── Mobs ─────────────
   {
     type: 'mob',
@@ -1416,7 +1353,6 @@ registry.register('core', {
     effect: { label: t('Effects & abilities', 'เอฟเฟกต์และความสามารถ'), color: '#ec4899', order: 4 },
     sound: { label: t('Sound & Music', 'เสียงและเพลง'), color: '#10b981', order: 5 },
     recipe: { label: t('Recipes', 'สูตรคราฟ'), color: '#e11d48', order: 6 },
-    fd: { label: t("Farmer's Delight", "Farmer's Delight"), color: '#84cc16', order: 7 },
     mob: { label: t('Mobs & monsters', 'ม็อบและมอนสเตอร์'), color: '#b91c1c', order: 8 },
     addon: { label: t('Add-ons (other mods)', 'ส่วนเสริม (ม็อดอื่น)'), color: '#0ea5e9', order: 9 },
     asset: { label: t('Assets', 'ไฟล์ทรัพยากร'), color: '#f59e0b', order: 10 },

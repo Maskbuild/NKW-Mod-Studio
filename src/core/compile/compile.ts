@@ -478,7 +478,6 @@ export function compile(project: Project, target?: Target): CompileResult {
     return c === 1 ? base : `${base}_${c}`
   }
 
-  let usesFD = false
   let usesGeo = false
   let usesDefaultTool = false
   let usesDefaultArmor = false
@@ -1215,42 +1214,6 @@ export function compile(project: Project, target?: Target): CompileResult {
           })
         break
       }
-      case 'fdCutting': {
-        usesFD = true
-        const input = ingredient(n.id, 'input', true)
-        const results: { item: string; count: number; chance: number }[] = []
-        for (let i = 1; i <= 4; i++) {
-          const it = item(n.id, `out${i}`, i === 1)
-          if (it) results.push({ item: it, count: int(d, `count${i}`, 1, 1, 64), chance: i === 1 ? 1 : clamp(num(d, `chance${i}`, 1), 0, 1) })
-        }
-        if (input && results.length)
-          ir.recipes.push({ kind: 'fdCutting', name: recipeName(results[0].item, 'cutting'), nodeId: n.id, input, tool: sel(n, 'tool'), results })
-        break
-      }
-      case 'fdCooking': {
-        usesFD = true
-        const ings: Ingredient[] = []
-        for (let i = 1; i <= 6; i++) {
-          const g = ingredient(n.id, `i${i}`, false)
-          if (g) ings.push(g)
-        }
-        const result = item(n.id, 'result', true)
-        if (!ings.length) err(n.id, 'Add at least one ingredient', 'ใส่วัตถุดิบอย่างน้อย 1 อย่าง')
-        else if (result)
-          ir.recipes.push({
-            kind: 'fdCooking',
-            name: recipeName(result, 'cooking'),
-            nodeId: n.id,
-            ingredients: ings,
-            container: item(n.id, 'container', false),
-            result,
-            count: int(d, 'count', 1, 1, 64),
-            xp: num(d, 'xp', 1),
-            time: clamp(Math.round(num(d, 'time', 200)), 1, 72000),
-            tab: sel(n, 'tab')
-          })
-        break
-      }
       case 'creativeTab': {
         const id = str(d, 'id') || 'main'
         if (!ID_RE.test(id)) err(n.id, `Invalid ID "${id}" (use a-z, 0-9, _)`, `ID "${id}" ไม่ถูกต้อง (ใช้ a-z, 0-9, _)`)
@@ -1373,20 +1336,13 @@ export function compile(project: Project, target?: Target): CompileResult {
     else {
       const p = getProfile(target.mc)
       const fdItems = JSON.stringify([ir.recipes, ir.tabs, ir.blocks, ir.breakRules]).includes('farmersdelight:')
+      const usesFD = !!(ir.ext['farmers-delight']?.cuttingRecipes?.length || ir.ext['farmers-delight']?.cookingRecipes?.length)
       if (fdItems && !usesFD && !farmersDelightFor(target.loader, target.mc))
         warn(
           undefined,
           `Farmer's Delight items are used but Farmer's Delight is not available for ${target.loader} ${target.mc}`,
           `มีการใช้ไอเทมของ Farmer's Delight แต่ ${target.loader} ${target.mc} ไม่มี Farmer's Delight`
         )
-      if (usesFD && !farmersDelightFor(target.loader, target.mc))
-        for (const r of ir.recipes)
-          if (r.kind === 'fdCutting' || r.kind === 'fdCooking')
-            warn(
-              r.nodeId,
-              `Farmer's Delight is not available for ${target.loader} ${target.mc}; recipe skipped`,
-              `ไม่มี Farmer's Delight สำหรับ ${target.loader} ${target.mc} — ข้ามสูตรนี้`
-            )
       if (!separateIconMode({ p, loader: target.loader }))
         for (const it of ir.items)
           if (it.separateIcon)
@@ -1428,6 +1384,8 @@ export function compile(project: Project, target?: Target): CompileResult {
       nodes,
       source,
       idOf: itemIdOf,
+      target: target ? { loader: target.loader, mc: target.mc } : null,
+      ingredient: (nodeId, handle) => ingredient(nodeId, handle, false),
       diag: (severity, nodeId, message) => diags.push({ severity, nodeId, message })
     },
     ir.ext

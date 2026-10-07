@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "id": "farmers-delight",
+  "name": {
+    "en": "Farmer's Delight",
+    "th": "Farmer's Delight"
+  },
+  "description": {
+    "en": "Cutting board and cooking pot recipes for the Farmer's Delight mod.",
+    "th": "สูตรเขียงและหม้อต้มสำหรับม็อด Farmer's Delight"
+  },
+  "version": "1.0.0",
+  "minApp": "0.2.1",
+  "targets": {},
+  "categories": {
+    "fd": {
+      "label": {
+        "en": "Farmer's Delight",
+        "th": "Farmer's Delight"
+      },
+      "color": "#84cc16",
+      "order": 7
+    }
+  },
+  "targetConfig": [
+    {
+      "loaders": ["forge"],
+      "mc": "1.18.2, 1.19.2, 1.20.1",
+      "values": {
+        "slug": "farmers-delight",
+        "knifeTag": "forge:tools/knives"
+      }
+    },
+    {
+      "loaders": ["neoforge"],
+      "mc": "1.21.1",
+      "values": {
+        "slug": "farmers-delight",
+        "knifeTag": "c:tools/knife"
+      }
+    },
+    {
+      "loaders": ["fabric", "quilt"],
+      "mc": "1.20.1",
+      "values": {
+        "slug": "farmers-delight-refabricated",
+        "knifeTag": "c:tools/knives"
+      }
+    },
+    {
+      "loaders": ["fabric", "quilt"],
+      "mc": "1.21.1",
+      "values": {
+        "slug": "farmers-delight-refabricated",
+        "knifeTag": "c:tools/knife"
+      }
+    }
+  ],
+  "nodes": ["nodes/fdCutting.json", "nodes/fdCooking.json"],
+  "generate": [
+    {
+      "id": "cutting",
+      "when": "cfg != null",
+      "each": "ext.cuttingRecipes",
+      "emit": [
+        {
+          "kind": "json",
+          "path": "resources/data/{{ modId }}/{{ paths.recipes }}/{{ item.name }}.json",
+          "template": "templates/cutting.tpl"
+        }
+      ]
+    },
+    {
+      "id": "cooking",
+      "when": "cfg != null",
+      "each": "ext.cookingRecipes",
+      "emit": [
+        {
+          "kind": "json",
+          "path": "resources/data/{{ modId }}/{{ paths.recipes }}/{{ item.name }}.json",
+          "template": "templates/cooking.tpl"
+        }
+      ]
+    }
+  ]
+}

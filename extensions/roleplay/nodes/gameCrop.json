@@ -30,9 +30,7 @@
         "th": "พืช (เลือกได้หลายอย่าง)"
       },
       "kind": "multi",
-      "default": [
-        "minecraft:wheat"
-      ],
+      "default": ["minecraft:wheat"],
       "hint": {
         "en": "All of them use the settings below.",
         "th": "ทุกพืชที่เลือกใช้ค่าด้านล่างเหมือนกัน"

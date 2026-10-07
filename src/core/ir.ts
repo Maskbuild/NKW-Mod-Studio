@@ -290,17 +290,6 @@ export type RecipeIR = { name: string; nodeId: string } & (
   | { kind: 'cooking'; station: 'smelting' | 'blasting' | 'smoking' | 'campfire_cooking'; input: Ingredient; result: string; xp: number; time: number }
   | { kind: 'stonecutting'; input: Ingredient; result: string; count: number }
   | { kind: 'smithing'; template: Ingredient | null; base: Ingredient; addition: Ingredient; result: string }
-  | { kind: 'fdCutting'; input: Ingredient; tool: string; results: { item: string; count: number; chance: number }[] }
-  | {
-      kind: 'fdCooking'
-      ingredients: Ingredient[]
-      container: string | null
-      result: string
-      count: number
-      xp: number
-      time: number
-      tab: string
-    }
 )
 
 export interface TabIR {

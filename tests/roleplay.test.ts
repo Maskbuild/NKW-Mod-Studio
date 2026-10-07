@@ -68,8 +68,8 @@ describe('projects and missing extensions', () => {
 
   it('a project remembers the extensions its nodes come from', () => {
     const used = usedExtensions(project.graph.nodes)
-    expect(used.map((u) => u.id)).toEqual(['roleplay', 'thirst'])
-    expect(used[0].version).toBe('1.0.0')
+    expect(used.map((u) => u.id)).toEqual(['farmers-delight', 'roleplay', 'thirst'])
+    expect(used.every((u) => u.version === '1.0.0')).toBe(true)
     expect(ProjectSchema.parse({ ...project, extensions: used }).extensions).toEqual(used)
   })
 

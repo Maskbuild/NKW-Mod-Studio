@@ -51,9 +51,7 @@
       },
       "kind": "blockList",
       "noTags": true,
-      "default": [
-        "minecraft:iron_ore"
-      ],
+      "default": ["minecraft:iron_ore"],
       "hint": {
         "en": "Full blocks (ores, stone, logs, wood …) look best: the copy uses the original block model. Blocks of this mod: tick them here or wire their Block pin into the Mod block pins.",
         "th": "บล็อกเต็มก้อน (แร่ หิน ท่อนไม้ ไม้ …) จะสวยที่สุด เพราะบล็อกที่สร้างใช้โมเดลของบล็อกต้นฉบับ · บล็อกของม็อดเรา: ติ๊กในรายการ หรือต่อขา \"บล็อก\" เข้าขา \"บล็อกของม็อด\""

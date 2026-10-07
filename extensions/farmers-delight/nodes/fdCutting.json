@@ -1,0 +1,260 @@
+{
+  "type": "fdCutting",
+  "category": "fd",
+  "title": {
+    "en": "Cutting Board",
+    "th": "เขียง"
+  },
+  "description": {
+    "en": "Farmer's Delight cutting board recipe",
+    "th": "สูตรเขียงของ Farmer's Delight"
+  },
+  "icon": "🔪",
+  "inputs": [
+    {
+      "id": "input",
+      "label": {
+        "en": "Input",
+        "th": "วัตถุดิบ"
+      },
+      "type": "ingredient"
+    },
+    {
+      "id": "out1",
+      "label": {
+        "en": "Result 1",
+        "th": "ผลลัพธ์ 1"
+      },
+      "type": "item",
+      "right": true,
+      "group": "out"
+    },
+    {
+      "id": "out2",
+      "label": {
+        "en": "Result 2",
+        "th": "ผลลัพธ์ 2"
+      },
+      "type": "item",
+      "optional": true,
+      "right": true,
+      "group": "out"
+    },
+    {
+      "id": "out3",
+      "label": {
+        "en": "Result 3",
+        "th": "ผลลัพธ์ 3"
+      },
+      "type": "item",
+      "optional": true,
+      "right": true,
+      "group": "out"
+    },
+    {
+      "id": "out4",
+      "label": {
+        "en": "Result 4",
+        "th": "ผลลัพธ์ 4"
+      },
+      "type": "item",
+      "optional": true,
+      "right": true,
+      "group": "out"
+    }
+  ],
+  "outputs": [],
+  "props": [
+    {
+      "key": "tool",
+      "label": {
+        "en": "Tool",
+        "th": "เครื่องมือ"
+      },
+      "kind": "select",
+      "default": "knife",
+      "options": [
+        {
+          "value": "knife",
+          "label": {
+            "en": "Knife",
+            "th": "มีด"
+          }
+        },
+        {
+          "value": "axe",
+          "label": {
+            "en": "Axe",
+            "th": "ขวาน"
+          }
+        },
+        {
+          "value": "pickaxe",
+          "label": {
+            "en": "Pickaxe",
+            "th": "อีเต้อ"
+          }
+        },
+        {
+          "value": "shovel",
+          "label": {
+            "en": "Shovel",
+            "th": "พลั่ว"
+          }
+        },
+        {
+          "value": "shears",
+          "label": {
+            "en": "Shears",
+            "th": "กรรไกร"
+          }
+        }
+      ]
+    },
+    {
+      "key": "count1",
+      "label": {
+        "en": "Result 1 count",
+        "th": "จำนวนผลลัพธ์ 1"
+      },
+      "kind": "int",
+      "default": 2,
+      "min": 1,
+      "max": 64
+    },
+    {
+      "key": "count2",
+      "label": {
+        "en": "Result 2 count",
+        "th": "จำนวนผลลัพธ์ 2"
+      },
+      "kind": "int",
+      "default": 1,
+      "min": 1,
+      "max": 64
+    },
+    {
+      "key": "chance2",
+      "label": {
+        "en": "Result 2 chance",
+        "th": "โอกาสผลลัพธ์ 2"
+      },
+      "kind": "float",
+      "default": 1,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "key": "count3",
+      "label": {
+        "en": "Result 3 count",
+        "th": "จำนวนผลลัพธ์ 3"
+      },
+      "kind": "int",
+      "default": 1,
+      "min": 1,
+      "max": 64
+    },
+    {
+      "key": "chance3",
+      "label": {
+        "en": "Result 3 chance",
+        "th": "โอกาสผลลัพธ์ 3"
+      },
+      "kind": "float",
+      "default": 1,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "key": "count4",
+      "label": {
+        "en": "Result 4 count",
+        "th": "จำนวนผลลัพธ์ 4"
+      },
+      "kind": "int",
+      "default": 1,
+      "min": 1,
+      "max": 64
+    },
+    {
+      "key": "chance4",
+      "label": {
+        "en": "Result 4 chance",
+        "th": "โอกาสผลลัพธ์ 4"
+      },
+      "kind": "float",
+      "default": 1,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    }
+  ],
+  "compile": {
+    "emit": {
+      "slot": "cuttingRecipes",
+      "value": {
+        "input": {
+          "ingredient": "input",
+          "required": true
+        },
+        "tool": {
+          "prop": "tool",
+          "as": "string",
+          "values": ["knife", "axe", "pickaxe", "shovel", "shears"],
+          "default": "knife"
+        },
+        "results": {
+          "rows": {
+            "count": 4,
+            "required": "item",
+            "fields": {
+              "item": {
+                "input": "out{i}"
+              },
+              "count": {
+                "prop": "count{i}",
+                "as": "int",
+                "min": 1,
+                "max": 64,
+                "default": 1
+              },
+              "chance": {
+                "prop": "chance{i}",
+                "as": "number",
+                "min": 0,
+                "max": 1,
+                "default": 1,
+                "optional": true
+              }
+            }
+          }
+        },
+        "name": {
+          "computed": "unique(replace(after(v.results[0].item, ':'), '/', '_') + '_cutting')"
+        }
+      },
+      "when": "v.input != null && len(v.results) > 0"
+    },
+    "validate": [
+      {
+        "if": "len(v.results) == 0",
+        "diag": "error",
+        "msg": {
+          "en": "Connect an item to \"out1\"",
+          "th": "ต่อไอเทมเข้าช่อง \"out1\""
+        }
+      },
+      {
+        "if": "target != null && cfg == null",
+        "diag": "warning",
+        "msg": {
+          "en": "Farmer's Delight is not available for {target.loader} {target.mc}; recipe skipped",
+          "th": "ไม่มี Farmer's Delight สำหรับ {target.loader} {target.mc} — ข้ามสูตรนี้"
+        }
+      }
+    ]
+  }
+}

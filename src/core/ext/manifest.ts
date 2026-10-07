@@ -4,7 +4,7 @@ import type { NodeDef, PinDef, PropDef } from '../nodes/defs'
 import type { CategoryInfo, Contribution } from './registry'
 import { compileExpr } from './expr'
 import { isRange, isVersion } from './semver'
-import { CompileSchema, DeriveSchema, MAPPING_FNS, checkExpr, mappingExprs, type MappedExtension, type NodeCompile } from './mapping'
+import { CompileSchema, DeriveSchema, MAPPING_FNS, checkExpr, sourceProblems, mappingExprs, type MappedExtension, type NodeCompile } from './mapping'
 import { parseEra, parseTemplate, templateInfo, TemplateError, type Template } from './tpl'
 import { registry } from './registry'
 import '../nodes/defs'
@@ -79,6 +79,8 @@ export const NodeFileSchema = z.strictObject({
 export type NodeFile = z.infer<typeof NodeFileSchema>
 
 const Emit = z.union([
+  /** a JSON file: the template writes JSON (any spacing), it is checked and written in the app's usual layout */
+  z.strictObject({ kind: z.literal('json'), path: z.string().max(200), template: PATH }),
   z.strictObject({ kind: z.literal('java'), class: z.string().max(200), template: PATH }),
   z.strictObject({ kind: z.literal('file'), path: z.string().max(200), template: PATH })
 ])
@@ -100,6 +102,16 @@ const ExtendSchema = z.strictObject({
   afterInput: KEY.optional(),
   /** data this extension collects from every node of that type (read props of the node, and the pins it added) */
   compile: CompileSchema.optional()
+})
+
+const TargetConfigSchema = z.strictObject({
+  loaders: z
+    .array(z.enum(['fabric', 'quilt', 'forge', 'neoforge']))
+    .max(4)
+    .optional(),
+  mc: z.string().max(100).optional(),
+  /** values templates and rules read as `cfg` for targets this entry fits (the first entry that fits wins) */
+  values: z.record(KEY, z.union([z.string().max(300), z.number(), z.boolean()]))
 })
 
 const HookSchema = z.strictObject({
@@ -139,6 +151,8 @@ export const ManifestSchema = z.strictObject({
   nodes: z.array(PATH).max(FILE_LIMITS.nodes).default([]),
   /** properties and pins this extension adds to node types of the app or of other extensions */
   extendNodes: z.array(ExtendSchema).max(40).default([]),
+  /** per-target values (library versions, tags …); none fits = the extension has nothing for that target */
+  targetConfig: z.array(TargetConfigSchema).max(40).default([]),
   derive: z.array(DeriveSchema).max(40).default([]),
   generate: z.array(GenerateSchema).max(200).default([]),
   hooks: z.array(HookSchema).max(100).default([])
@@ -159,8 +173,8 @@ export interface LoadedExtension {
 
 export type LoadResult = { ok: true; ext: LoadedExtension } | { ok: false; errors: string[] }
 
-const TEMPLATE_FNS = ['any', 'reg', ...Object.keys(MAPPING_FNS)]
-const SCOPE_ROOTS = ['ir', 'ext', 'profile', 'loader', 'mc', 'meta', 'item', 'loop', 'modId', 'pkg', 'forge', 'paths']
+const TEMPLATE_FNS = ['any', 'reg', 'ing', 'stack', ...Object.keys(MAPPING_FNS)]
+const SCOPE_ROOTS = ['ir', 'ext', 'profile', 'loader', 'mc', 'meta', 'item', 'loop', 'modId', 'pkg', 'forge', 'paths', 'cfg']
 
 const text = (f: string | Uint8Array): string => (typeof f === 'string' ? f : new TextDecoder().decode(f))
 const zerr = (e: z.ZodError, where: string) => e.issues.map((i) => `${where}: ${i.path.join('.') || '(root)'} — ${i.message}`)
@@ -274,12 +288,8 @@ export function loadExtension(files: FileMap): LoadResult {
         const bad = checkExpr(x.src, x.roots)
         if (bad) errors.push(`${path}: ${bad}`)
       }
-      for (const s of Object.values(spec.compile.emit?.value ?? {})) {
-        if ('prop' in s && !(s.prop in dflt) && !manifest.extendNodes.some((x) => x.type === spec.type && x.props.some((p) => p.key === s.prop)))
-          errors.push(`${path}: reads unknown property "${s.prop}"`)
-        if ('input' in s && !inputs.some((i) => i.id === s.input)) errors.push(`${path}: reads unknown input "${s.input}"`)
-        if ('item' in s || 'collect' in s) errors.push(`${path}: "item" and "collect" sources only work in derive`)
-      }
+      const known = new Set([...Object.keys(dflt), ...manifest.extendNodes.filter((x) => x.type === spec.type).flatMap((x) => x.props.map((p) => p.key))])
+      for (const msg of sourceProblems(spec.compile.emit?.value, known, new Set(inputs.map((i) => i.id)))) errors.push(`${path}: ${msg}`)
     }
     defaults.set(spec.type, dflt)
     nodes.push({
@@ -326,11 +336,8 @@ export function loadExtension(files: FileMap): LoadResult {
         const bad = checkExpr(e.src, e.roots)
         if (bad) errors.push(`extendNodes ${x.type}: ${bad}`)
       }
-      for (const s of Object.values(x.compile.emit?.value ?? {})) {
-        if ('prop' in s && !known.has(s.prop)) errors.push(`extendNodes ${x.type}: reads unknown property "${s.prop}"`)
-        if ('input' in s && !(x.inputs.some((i) => i.id === s.input) || registry.map[x.type]?.inputs.some((i) => i.id === s.input)))
-          errors.push(`extendNodes ${x.type}: reads unknown input "${s.input}"`)
-      }
+      const pins = new Set([...x.inputs.map((i) => i.id), ...(registry.map[x.type]?.inputs ?? []).map((i) => i.id)])
+      for (const msg of sourceProblems(x.compile.emit?.value, known, pins)) errors.push(`extendNodes ${x.type}: ${msg}`)
     }
   }
 
@@ -393,6 +400,9 @@ export function loadExtension(files: FileMap): LoadResult {
       errors.push(e instanceof TemplateError ? e.message : `hooks[${i}]: ${(e as Error).message}`)
     }
   })
+  manifest.targetConfig.forEach((c, i) => {
+    if (c.mc && parseEra(c.mc) === null) errors.push(`targetConfig[${i}].mc: bad version range "${c.mc}"`)
+  })
   if (manifest.targets.mc && parseEra(manifest.targets.mc) === null) errors.push(`targets.mc: bad version range "${manifest.targets.mc}"`)
 
   if (errors.length) return { ok: false, errors }
@@ -405,7 +415,7 @@ export function loadExtension(files: FileMap): LoadResult {
       manifest,
       nodes,
       contribution: { nodes, categories, pinTypes: manifest.pinTypes, extend },
-      mapped: { id: manifest.id, compile, extend: extendCompile, derive: manifest.derive, defaults },
+      mapped: { id: manifest.id, compile, extend: extendCompile, derive: manifest.derive, defaults, targetConfig: manifest.targetConfig },
       templates,
       files
     }

@@ -12,7 +12,7 @@ export type { GenFile, ResolvedDeps, AssetReader } from './types'
 
 /** FD recipes, or any Farmer's Delight item/tag/block used as an ingredient, result, drop, tab entry, crop or rule. */
 function usesFarmersDelight(ir: ModIR): boolean {
-  if (ir.recipes.some((r) => r.kind === 'fdCutting' || r.kind === 'fdCooking')) return true
+  if (ir.ext['farmers-delight']?.cuttingRecipes?.length || ir.ext['farmers-delight']?.cookingRecipes?.length) return true
   return JSON.stringify([ir.recipes, ir.tabs, ir.blocks, ir.toolMats, ir.armorMats, ir.gameCrops, ir.breakRules]).includes('farmersdelight:')
 }
 
