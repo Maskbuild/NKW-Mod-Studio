@@ -26,6 +26,8 @@ This guide walks you through NKW Mod Studio from installing it to playing your m
 18. [Keyboard shortcuts](#18-keyboard-shortcuts)
 19. [Troubleshooting](#19-troubleshooting)
 20. [Walkthrough: a ruby sword from start to finish](#20-walkthrough-a-ruby-sword-from-start-to-finish)
+21. [Extensions](#21-extensions)
+22. [Skins (extension)](#22-skins-extension)
 
 ---
 
@@ -296,6 +298,8 @@ Like Item, plus:
 
 ### Thirst (add-on)
 
+_Part of the **Thirst** extension._
+
 Found under **Add-ons (other mods)** in the node library. Wire it into a Food node to give that food or drink a water value in thirst mods:
 
 | Setting | Meaning |
@@ -385,6 +389,8 @@ Category **Farming**. A plant that grows in up to 8 stages.
 
 ### Harvest a game crop
 
+_Part of the **Roleplay** extension, like Break Rule, Regenerating Blocks, the Timer window, the config file and the hand-harvest settings of the Crop node._
+
 Gives a crop of Minecraft, Farmer's Delight or another mod the same hand harvest. It still grows like in the game, and breaking it still works as usual.
 
 - **Crop**: wheat, carrots, potatoes, beetroots, nether wart, sweet berry bush, cocoa, or Farmer's Delight cabbages, onions, tomatoes and rice. **Another block** takes any block ID with an `age` property (a crop of another mod).
@@ -401,16 +407,17 @@ Gives a crop of Minecraft, Farmer's Delight or another mod the same hand harvest
 
 ### Timer window
 
-Category **Utility**. How a timer windows on screen — picking crops by hand and breaking blocks. Wire its output into the **Timer window** pin of Crop, Harvest a game crop, Regenerating Blocks or Break Rule nodes; one window can be used by many nodes. The right panel shows a live preview on a pretend game screen.
+_Part of the **Roleplay** extension._ Category **Utility**. How the timer looks on screen — picking crops by hand and breaking blocks. Wire its output into the **Timer window** pin of Crop, Harvest a game crop, Regenerating Blocks or Break Rule nodes; one window can be used by many nodes. The panel shows a live preview on a pretend game screen (drag the slider to see any progress, press **Play** to loop, switch between picking a crop and breaking a block, or to the last seconds).
 
-- **Template**:
-  - _Text_: `Harvesting ■■■□□□□□□□ 1.2 s` (the look from before).
-  - _Bar that fills up_.
-  - _Circle that fills around the crosshair_ (clockwise from the top).
-- **Colour**, and for the bar and circle a **background colour** and **background opacity**.
-- Text and bar: **position** (under the crosshair, above the hotbar, top of the screen) and **move down** (negative = up).
-- Bar: **width** and **height**. Circle: **size** (radius) and **line thickness**; as thick as the size gives a filled circle.
-- **Show the seconds left**.
+A timer window is a small **box** made of **elements**, drawn bottom to top:
+
+- **Ready-made looks**: Bar, Text, Circle (the older looks), Glowing bar, Pill with time, Pulsing circle. Old projects keep their look until you edit it.
+- **Window**: where the box sits on the screen (under the crosshair, above the hotbar, top, centre or a corner), how far to move it, and its size.
+- **Elements**: Rectangle, Bar (fills in any of four directions), Circle (start angle, clockwise or not), Text (`{seconds}`, `{percent}` and `{bar}`; English and Thai versions), Image (a PNG of your project). Each has an **anchor** (a corner, an edge or the middle of the box), a position, a size, an **opacity**, and when it is **shown** (always, only when picking a crop, only when breaking a block, or only in the last 3 seconds).
+- **Colours**: one colour or a **gradient** (across or top to bottom, each end with its own opacity), a background for bars and circles, an outline for rectangles and bars.
+- **Animations** (up to 8 per element): opacity, move across / down, size, or colour; **over time** (once, repeating, or back and forth), **with the progress**, or **in the last 3 seconds**; with an easing.
+
+Pictures are shown in Minecraft 1.20.1 – 1.21.1 (other versions leave them out). The preview and the game use the same layout rules.
 
 ### Break Rule (tool & level)
 
@@ -590,6 +597,8 @@ Ingredients can be your own items, **Existing Item** nodes, or **Item Tag** node
 
 ## 14. Farmer's Delight
 
+_These nodes come from the **Farmer's Delight** extension._
+
 | Node | Settings |
 |---|---|
 | **Cutting Board** | One input. Tool: knife, axe, pickaxe, shovel or shears. Up to 4 results, each with a count and a chance. |
@@ -709,5 +718,35 @@ To report a bug, open an issue on [GitHub](https://github.com/Maskbuild/NKW-Mod-
 9. Check **Problems** → "No problems". Click **▶ Test in game**.
 10. In game, open the creative inventory → **Ruby Mod** tab. Craft the sword, hit a mob, and it gets slowed.
 11. Happy with it? Click **⬇ Export .jar** and share your mod.
+
+---
+
+## 21. Extensions
+
+Many features are **extensions**: Roleplay (Break Rule, Regenerating Blocks, Harvest a game crop, the hand-harvest settings of Crop, the Timer window, the config file), Farmer's Delight, Thirst and Skins. An extension adds nodes (and what they generate into your mod). It is a folder of data files — it cannot run code inside the app.
+
+**Install**: *Settings → Extensions* (or the banner on the home page). Click **Install** on an official extension, or write a GitHub address:
+
+- `owner/repo` or `https://github.com/owner/repo` — the latest release (or, with no release, the newest commit of the main branch)
+- `owner/repo#v1.2.0` — a tag, branch or commit
+- `owner/repo#main:extensions/roleplay` — an extension inside a bigger repository
+
+You first see a card (name, version, what it adds, where it comes from, the exact commit); then **Install**. It is downloaded once and works **offline** afterwards. Each extension can be turned **off**, **updated** (when a newer release exists), **rolled back** to the previous version, or **removed**. Developers can install a folder from their own disk.
+
+**Projects** remember the extensions they use. If one is missing, the nodes show as gray cards (their settings are kept), Problems explains what is needed, and a banner offers to install it. Turn the extension back on and everything is as before.
+
+## 22. Skins (extension)
+
+Install **Skins** from *Settings → Extensions*. It works on **Fabric, Quilt and NeoForge, Minecraft 1.20.1 – 1.21.1** (Forge, older and newer versions: not yet — the app tells you).
+
+1. Add a **Skin** node for each skin: name (English / Thai), ID, the **skin file** (a square PNG: 64, 128, 256, 512, 1024 or 2048 pixels), an optional **mouth-open** PNG of the same size, arms (wide / slim) and a **Figura set**.
+2. Add one **Skin wardrobe** node: the window title, the **key** that opens the wardrobe (players can change it in Controls) and/or a **wardrobe block** (give it a texture; right-click it to open the window), and whether Figura avatars win.
+3. Select the wardrobe node to see the **wardrobe**: a sample model (drag to turn it) wearing the selected skin, every skin as a card with its names, picture and size check, and the mouth-open view.
+
+In game the window lists your skins; the choice is remembered per world and **everyone on the server sees it** (the mod must be on the server and on the clients). The skin file size is checked when you build.
+
+- **Mouth**: with a mouth-open picture, the mouth opens while the player writes in chat and whenever another mod calls `NkwSkins`'s speaking switch (the command `/<modid>_skin mouth true|false` does the same by hand). **Plasmo Voice is not connected automatically yet**: its API could not be checked, so voice activity does not move the mouth on its own.
+- **Figura**: *Export Figura avatars…* writes one avatar folder per set (an `avatar.json`, the pictures and a small script that puts the skin on the player model). With *Let Figura avatars win* on, a player who has a Figura avatar sees that instead of the skin. Skin textures larger than 64 pixels work because the model keeps the 64-pixel layout.
+- The arms in game follow the player's own model (wide or slim); the setting on the Skin node is used by the preview and by Figura.
 
 Have fun making mods! — **Nam Kueap Wan (NKW)**
