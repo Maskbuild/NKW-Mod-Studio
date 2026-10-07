@@ -1,12 +1,17 @@
 /// <reference lib="webworker" />
 import { compile } from '@core/compile/compile'
+import { applyBundle, type ExtBundle } from '@core/ext/bundle'
 import { enableFirstParty } from '@core/ext/firstparty'
 import type { Project, Target } from '@core/project'
 
 enableFirstParty()
 
 // Validation runs off the UI thread so typing and dragging stay smooth.
-self.onmessage = (e: MessageEvent<{ seq: number; project: Project; target?: Target }>) => {
+self.onmessage = (e: MessageEvent<{ kind: 'ext'; bundle: ExtBundle } | { kind?: undefined; seq: number; project: Project; target?: Target }>) => {
+  if (e.data.kind === 'ext') {
+    applyBundle(e.data.bundle)
+    return
+  }
   const { seq, project, target } = e.data
   try {
     const { diagnostics } = compile(project, target)

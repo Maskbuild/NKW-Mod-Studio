@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { loadExtension } from '../src/core/ext/manifest'
+import { extHost } from '../src/core/ext/host'
+import { ExtensionRuntime } from '../src/main/services/extruntime'
 import { ExtensionStore, fetchFromGit, previewOf, readFolder, resolveRef, type GitNet } from '../src/main/services/extensions'
 import { makeZip } from './helpers/zip'
 
@@ -164,5 +166,57 @@ describe('fetching and installing', () => {
     writeFileSync(join(dir, 'nodes', 'n.json'), node)
     const files = await readFolder(dir)
     expect([...files.keys()].sort()).toEqual(['nkw-extension.json', 'nodes/n.json'])
+  })
+})
+
+describe('extension runtime (what the app does on top of the cache)', () => {
+  const make = (net: GitNet = fakeNet(), appVersion = '0.2.1') => {
+    const root = mkdtempSync(join(tmpdir(), 'nkw-rt-'))
+    return new ExtensionRuntime(new ExtensionStore(root), net, appVersion)
+  }
+
+  it('inspect → install turns the extension on and hands its files to the renderer', async () => {
+    const rt = make()
+    const info = await rt.inspectGit('a/b')
+    expect(info).toMatchObject({ installed: null, errors: [], missing: [], via: 'release', label: 'v1' })
+    expect(extHost.has('demo-ext')).toBe(false)
+    await rt.install(info.token)
+    expect(extHost.has('demo-ext')).toBe(true)
+    expect(rt.bundle().map((b) => b.id)).toEqual(['demo-ext'])
+    expect(Object.keys(rt.bundle()[0].files).sort()).toEqual(['README.md', 'nkw-extension.json', 'nodes/n.json'])
+    await expect(rt.install(info.token)).rejects.toThrow(/expired/)
+    await rt.setEnabled('demo-ext', false)
+    expect(extHost.has('demo-ext')).toBe(false)
+    await rt.setEnabled('demo-ext', true)
+    expect(extHost.has('demo-ext')).toBe(true)
+    await rt.remove('demo-ext')
+    expect(extHost.has('demo-ext')).toBe(false)
+  })
+
+  it('blocks an extension that needs a newer app or another extension', async () => {
+    const needsApp = makeZip({ 'r/nkw-extension.json': manifest('1.0.0', { minApp: '9.0.0' }), 'r/nodes/n.json': node })
+    const rt = make(fakeNet({ zips: { [SHA]: needsApp } }))
+    const info = await rt.inspectGit('a/b')
+    expect(info.errors[0]).toMatch(/9\.0\.0/)
+    await expect(rt.install(info.token)).rejects.toThrow(/9\.0\.0/)
+
+    const needsExt = makeZip({ 'r/nkw-extension.json': manifest('1.0.0', { requires: { roleplay: '>=1.0.0' } }), 'r/nodes/n.json': node })
+    const info2 = await make(fakeNet({ zips: { [SHA]: needsExt } })).inspectGit('a/b')
+    expect(info2.missing).toEqual(['roleplay >=1.0.0'])
+  })
+
+  it('reports invalid extensions with the reasons', async () => {
+    const bad = makeZip({ 'r/nkw-extension.json': manifest('1.0.0', { id: 'X' }), 'r/nodes/n.json': node })
+    await expect(make(fakeNet({ zips: { [SHA]: bad } })).inspectGit('a/b')).rejects.toThrow(/not a valid extension[\s\S]*id/)
+  })
+
+  it('finds updates (a new release or commit) and skips local and commit-pinned installs', async () => {
+    const rt = make()
+    await rt.install((await rt.inspectGit('a/b')).token)
+    expect(await rt.checkUpdates()).toEqual([])
+    const newer = make(fakeNet({ commits: { v1: SHA2 } }))
+    ;(rt as unknown as { net: GitNet }).net = (newer as unknown as { net: GitNet }).net
+    expect(await rt.checkUpdates()).toEqual([{ id: 'demo-ext', current: 'aaaaaaa', latest: 'bbbbbbb', label: 'v1' }])
+    await rt.remove('demo-ext')
   })
 })

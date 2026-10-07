@@ -1,0 +1,9 @@
+{
+  "note": "Where the official extensions live. Change a source here and the app follows; users can still install any other repository.",
+  "extensions": [
+    { "id": "roleplay", "source": "Maskbuild/NKW-Mod-Studio#main:extensions/roleplay" },
+    { "id": "farmers-delight", "source": "Maskbuild/NKW-Mod-Studio#main:extensions/farmers-delight" },
+    { "id": "thirst", "source": "Maskbuild/NKW-Mod-Studio#main:extensions/thirst" },
+    { "id": "skins", "source": "Maskbuild/NKW-Mod-Studio#main:extensions/skins" }
+  ]
+}

@@ -18,10 +18,12 @@ export function Home() {
   const { t } = useTranslation()
   const settings = useStore((s) => s.settings)!
   const [wizard, setWizard] = useState<TemplateId | null>(null)
-  const [showSettings, setShowSettings] = useState(false)
+  const [showSettings, setShowSettings] = useState<false | 'app' | 'extensions'>(false)
+  const [noExtensions, setNoExtensions] = useState(false)
   const [version, setVersion] = useState('')
   useEffect(() => {
     void api.appInfo().then((i) => setVersion(i.version))
+    void api.extBundle().then((b) => setNoExtensions(b.length === 0))
   }, [])
 
   const open = async (fn: () => Promise<{ dir: string; project: import('@core/project').Project } | null>) => {
@@ -42,7 +44,7 @@ export function Home() {
           {t('app.name')}
         </div>
         <div className="drag" />
-        <button className="btn ghost" onClick={() => setShowSettings(true)}>
+        <button className="btn ghost" onClick={() => setShowSettings('app')}>
           <ISettings /> {t('home.settings')}
         </button>
       </div>
@@ -63,6 +65,18 @@ export function Home() {
             </button>
           </div>
         </section>
+
+        {noExtensions && (
+          <section className="ext-banner">
+            <div className="grow">
+              <b>{t('home.extTitle')}</b>
+              <div className="muted">{t('home.extText')}</div>
+            </div>
+            <button className="btn primary" onClick={() => setShowSettings('extensions')}>
+              {t('home.extButton')}
+            </button>
+          </section>
+        )}
 
         <section>
           <h3 className="sec-title">{t('home.templates')}</h3>
@@ -126,7 +140,15 @@ export function Home() {
       </div>
 
       {wizard && <NewProjectDialog template={wizard} onClose={() => setWizard(null)} onCreated={(r) => useStore.getState().openProject(r.dir, r.project)} />}
-      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+      {showSettings && (
+        <SettingsDialog
+          section={showSettings}
+          onClose={() => {
+            setShowSettings(false)
+            void api.extBundle().then((b) => setNoExtensions(b.length === 0))
+          }}
+        />
+      )}
     </div>
   )
 }

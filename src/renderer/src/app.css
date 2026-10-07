@@ -2524,3 +2524,39 @@ img.frame0 {
   height: auto;
   padding: 0 8px;
 }
+
+/* extensions */
+.ext-panel h4 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  opacity: 0.8;
+}
+.ext-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+  border-radius: 8px;
+}
+.ext-card.review {
+  border-color: var(--accent, #6366f1);
+}
+.warn-text {
+  color: #d97706;
+  font-size: 12px;
+}
+.err-text {
+  color: #dc2626;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+.ext-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}

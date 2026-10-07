@@ -4,6 +4,7 @@ import { api } from './api'
 import { useStore } from './store'
 import { Home } from './pages/Home'
 import { Toasts } from './components/Toasts'
+import { refreshExtensions } from './ext/extensions'
 
 const Workspace = lazy(() => import('./pages/Workspace'))
 
@@ -13,6 +14,7 @@ export function App() {
 
   useEffect(() => {
     void api.settings().then((s) => useStore.getState().setSettings(s))
+    void refreshExtensions()
   }, [])
 
   useEffect(() => {

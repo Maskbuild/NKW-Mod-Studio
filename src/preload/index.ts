@@ -33,7 +33,16 @@ const INVOKE = new Set([
   'build:stop',
   'build:openFolder',
   'build:clean',
-  'shell:openExternal'
+  'shell:openExternal',
+  'ext:list',
+  'ext:bundle',
+  'ext:inspect',
+  'ext:inspectFolder',
+  'ext:install',
+  'ext:remove',
+  'ext:setEnabled',
+  'ext:rollback',
+  'ext:checkUpdates'
 ])
 const EVENTS = new Set(['build:log', 'build:progress', 'build:done', 'vanilla:progress'])
 

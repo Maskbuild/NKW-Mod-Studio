@@ -91,6 +91,15 @@ export const api = {
   openBuildFolder: (t: Target) => call<boolean>('build:openFolder', t),
   cleanBuild: (t: Target) => call<boolean>('build:clean', t),
   openExternal: (url: string) => call<boolean>('shell:openExternal', { url }),
+  extList: () => call<ExtList>('ext:list'),
+  extBundle: () => call<{ id: string; files: Record<string, string> }[]>('ext:bundle'),
+  extInspect: (source: string) => call<ExtInspected>('ext:inspect', { source }),
+  extInspectFolder: () => call<ExtInspected | null>('ext:inspectFolder'),
+  extInstall: (token: string) => call<ExtRecord>('ext:install', { token }),
+  extRemove: (id: string) => call<void>('ext:remove', { id }),
+  extSetEnabled: (id: string, enabled: boolean) => call<void>('ext:setEnabled', { id, enabled }),
+  extRollback: (id: string) => call<ExtRecord>('ext:rollback', { id }),
+  extCheckUpdates: () => call<{ id: string; current: string; latest: string; label: string }[]>('ext:checkUpdates'),
   on: <T>(channel: 'build:log' | 'build:progress' | 'build:done' | 'vanilla:progress', cb: (p: T) => void) => window.nkw.on(channel, cb as (p: unknown) => void)
 }
 
@@ -110,6 +119,48 @@ export interface ModrinthHit {
   /** last update (ISO date) */
   updated: string
   env: 'client' | 'server' | 'both' | 'any'
+}
+
+export interface ExtPreview {
+  id: string
+  name: { en: string; th: string }
+  description: { en: string; th: string }
+  version: string
+  author?: string
+  minApp?: string
+  requires: Record<string, string>
+  nodes: number
+  generates: number
+  size: number
+  files: number
+  targets: { mc?: string; loaders?: string[] }
+}
+export interface ExtInspected {
+  token: string
+  preview: ExtPreview
+  source: string
+  sha: string
+  via: string
+  label: string
+  installed: { version: string; sha: string } | null
+  errors: string[]
+  missing: string[]
+}
+export interface ExtRecord {
+  id: string
+  version: string
+  source: string
+  sha: string
+  via: string
+  enabled: boolean
+  installedAt: string
+  dir: string
+  previous: { version: string; sha: string; dir: string }[]
+}
+export interface ExtList {
+  installed: ExtRecord[]
+  official: { id: string; source: string }[]
+  problems: { id: string; errors: string[] }[]
 }
 
 export const assetUrl = (asset: string) => `nkw-asset://project/${asset}`

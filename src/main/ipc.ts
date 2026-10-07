@@ -42,6 +42,10 @@ import { readdir } from 'node:fs/promises'
 import { assetPath, buildDir, findJar, previewFiles, startBuild, type RunningBuild } from './services/builder'
 import { createProjectDir, readProject, saveProject, type SettingsStore } from './services/store'
 import { TEMPLATE_IDS, applyTemplate } from './templates'
+import { ExtensionStore } from './services/extensions'
+import { ExtensionRuntime } from './services/extruntime'
+import { getBuffer, getJson } from './services/net'
+import official from '@core/ext/official.json'
 
 /** The one project the renderer may touch. All paths are resolved relative to it. */
 let currentDir: string | null = null
@@ -254,6 +258,38 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
     if (r.canceled) return { imported: [], errors: [] }
     return importEach(dir, r.filePaths.slice(0, 32), 'sound', audio, folder)
   })
+
+  // ───────── extensions (installed from git, used offline from the local cache) ─────────
+  const extRuntime = new ExtensionRuntime(new ExtensionStore(join(toolsDir(), 'extensions')), { getJson: (url) => getJson(url), getBuffer }, app.getVersion())
+  let extProblems: { id: string; errors: string[] }[] = []
+  void extRuntime.sync().then((p) => (extProblems = p))
+  const EXT_ID = z.object({ id: z.string().regex(/^[a-z][a-z0-9-]{2,40}$/) })
+  handle('ext:list', z.undefined(), async () => ({
+    installed: await extRuntime.store.list(),
+    official: official.extensions,
+    problems: extProblems
+  }))
+  handle('ext:bundle', z.undefined(), () => extRuntime.bundle())
+  // installing is something the user asks for in the dialog, so it needs no separate download permission
+  handle('ext:inspect', z.object({ source: z.string().min(3).max(300) }), ({ source }) => extRuntime.inspectGit(source))
+  handle('ext:inspectFolder', z.undefined(), async (_a, w) => {
+    const th = settings.get().language === 'th'
+    const r = await dialog.showOpenDialog(w, { title: th ? 'เลือกโฟลเดอร์ส่วนเสริม' : 'Choose an extension folder', properties: ['openDirectory'] })
+    if (r.canceled || !r.filePaths[0]) return null
+    return extRuntime.inspectFolder(r.filePaths[0])
+  })
+  handle('ext:install', z.object({ token: z.string().uuid() }), async ({ token }) => {
+    const rec = await extRuntime.install(token)
+    extProblems = extProblems.filter((p) => p.id !== rec.id)
+    return rec
+  })
+  handle('ext:remove', EXT_ID, ({ id }) => extRuntime.remove(id))
+  handle('ext:setEnabled', EXT_ID.extend({ enabled: z.boolean() }), async ({ id, enabled }) => {
+    await extRuntime.setEnabled(id, enabled)
+  })
+  handle('ext:rollback', EXT_ID, ({ id }) => extRuntime.rollback(id))
+  // looking for updates in the background only happens when downloads are allowed
+  handle('ext:checkUpdates', z.undefined(), () => (settings.get().allowDownloads ? extRuntime.checkUpdates() : []))
 
   // ───────── asset tree: folders, rename, move, delete ─────────
   const PATH = z.string().min(3).max(300)

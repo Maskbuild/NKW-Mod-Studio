@@ -14,6 +14,7 @@ import { VanillaPanel } from '../graph/VanillaPanel'
 import { DEFAULT_LAYOUT, Resizer, useLayout } from '../components/Resizer'
 import { IDownload, IFolder, IHome, ILayout, IPlay, IRedo, ISettings, IStop, IUndo, Logo } from '../components/Icons'
 import { SettingsDialog, type SettingsSection } from './SettingsDialog'
+import { currentBundle, onBundleChange } from '../ext/extensions'
 import { useIde, watchGeneratedFiles } from '../ide/ideStore'
 import { ActivityBar, EditorTabs, StatusBar } from '../ide/Chrome'
 import { CodeExplorer } from '../ide/CodeExplorer'
@@ -37,6 +38,12 @@ function useValidation() {
       if (!project) return
       worker.postMessage({ seq: ++seq, project, target: s.targets[s.activeTarget] })
     }
+    // the worker needs the same extensions as the editor; checking again once they change
+    worker.postMessage({ kind: 'ext', bundle: currentBundle() })
+    const offExt = onBundleChange((bundle) => {
+      worker.postMessage({ kind: 'ext', bundle })
+      run()
+    })
     run()
     const unsub = useStore.subscribe((s, prev) => {
       if (s.nodes !== prev.nodes || s.edges !== prev.edges || s.meta !== prev.meta || s.targets !== prev.targets || s.activeTarget !== prev.activeTarget) {
@@ -46,6 +53,7 @@ function useValidation() {
     })
     return () => {
       unsub()
+      offExt()
       clearTimeout(timer)
       worker.terminate()
     }
