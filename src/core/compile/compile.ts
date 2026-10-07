@@ -1,5 +1,7 @@
 import { ASSET_RE, ID_RE, NSID_RE, type GraphNode, type Project, type Target } from '../project'
 import { parseFit } from '../gen/geo'
+import { extHost } from '../ext/host'
+import { runMappings } from '../ext/mapping'
 import { REMOVED_NODE_TYPES } from '../nodes/removed'
 import { ATTRIBUTES, BREAK_TOOLS, EFFECTS, NODE_DEF_MAP, TOOL_LEVELS, breakRuleEntries, canConnect, gameCropIds, pinOf, type L10n } from '../nodes/defs'
 import type {
@@ -445,7 +447,8 @@ export function compile(project: Project, target?: Target): CompileResult {
     gameCrops: [],
     breakRules: [],
     dependsOn: [],
-    textureAnims: {}
+    textureAnims: {},
+    ext: {}
   }
 
   const names = (n: GraphNode) => ({
@@ -1412,5 +1415,16 @@ export function compile(project: Project, target?: Target): CompileResult {
   }
 
   if (!ir.items.length && !ir.blocks.length) warn(undefined, 'The mod has no items or blocks yet', 'ม็อดยังไม่มีไอเทมหรือบล็อกเลย')
+  runMappings(
+    extHost.mapped(),
+    {
+      nodes,
+      source,
+      idOf: itemIdOf,
+      diag: (severity, nodeId, message) => diags.push({ severity, nodeId, message })
+    },
+    ir.ext
+  )
+
   return { ir, diagnostics: diags }
 }

@@ -382,6 +382,8 @@ export interface ModIR {
   dependsOn: { modId: string; title: string; required: boolean }[]
   /** animated textures (asset path → .mcmeta animation settings) */
   textureAnims: Record<string, { frametime: number; interpolate: boolean }>
+  /** data the extensions' nodes produced: extension id → slot → records */
+  ext: Record<string, Record<string, Record<string, unknown>[]>>
 }
 
 export interface Diagnostic {
