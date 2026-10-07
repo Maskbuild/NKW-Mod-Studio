@@ -24,7 +24,8 @@ import type {
   ToolMatIR
 } from '../ir'
 import type { BreakDrops, BreakRuleIR, GameCropIR, HarvestUiIR } from '../ir'
-import { farmersDelightFor, getProfile, isSupported, mcAtLeast } from '../gen/profiles'
+import { getProfile, isSupported, mcAtLeast } from '../gen/profiles'
+import { targetConfigFor } from '../ext/support'
 import { separateIconMode } from '../gen/assets'
 
 const ARMOR_SLOTS: ArmorSlot[] = ['helmet', 'chestplate', 'leggings', 'boots']
@@ -843,7 +844,8 @@ export function compile(project: Project, target?: Target): CompileResult {
         const input = (['click', 'hold', 'stand'].includes(str(d, 'input')) ? str(d, 'input') : 'hold') as GameCropIR['input']
         // "like the game": picked bushes go back to their picked stage, everything else breaks
         const NORMAL: Record<string, number> = { 'minecraft:sweet_berry_bush': 1, 'farmersdelight:tomatoes': 0 }
-        const fdMissing = !!target && !farmersDelightFor(target.loader, target.mc)
+        const fdExt = extHost.get('farmers-delight')
+        const fdMissing = !!target && !!fdExt && !targetConfigFor(fdExt.manifest, target.loader, target.mc)
         for (const block of blocks) {
           if (!NSID_RE.test(block) || block.split(':')[0] === ir.meta.modId) {
             err(
@@ -1335,9 +1337,10 @@ export function compile(project: Project, target?: Target): CompileResult {
     if (!isSupported(target.loader, target.mc)) err(undefined, `${target.loader} ${target.mc} is not supported`, `ไม่รองรับ ${target.loader} ${target.mc}`)
     else {
       const p = getProfile(target.mc)
+      const fdExt = extHost.get('farmers-delight')
       const fdItems = JSON.stringify([ir.recipes, ir.tabs, ir.blocks, ir.breakRules]).includes('farmersdelight:')
       const usesFD = !!(ir.ext['farmers-delight']?.cuttingRecipes?.length || ir.ext['farmers-delight']?.cookingRecipes?.length)
-      if (fdItems && !usesFD && !farmersDelightFor(target.loader, target.mc))
+      if (fdItems && !usesFD && fdExt && !targetConfigFor(fdExt.manifest, target.loader, target.mc))
         warn(
           undefined,
           `Farmer's Delight items are used but Farmer's Delight is not available for ${target.loader} ${target.mc}`,

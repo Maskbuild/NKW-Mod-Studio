@@ -1,7 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { FALLBACK_DEPS, FORGE_GRADLE, TOOL_VERSIONS } from '@core/gen/index'
-import { farmersDelightFor } from '@core/gen/profiles'
 import type { ResolvedDeps } from '@core/gen/types'
 import type { LinkedMod, Target } from '@core/project'
 import { getJson, getText } from './net'
@@ -126,6 +125,17 @@ export async function linkedModDeps(mods: LinkedMod[], target: Target, cacheDir:
   return out
 }
 
+/** Modrinth projects extensions want in test runs, as Maven coordinates (a project without a build for this target is left out). */
+export async function extModDeps(slugs: string[], target: Target, cacheDir: string): Promise<string[]> {
+  const loader = target.loader === 'quilt' ? 'fabric' : target.loader
+  const out: string[] = []
+  for (const slug of slugs) {
+    const v = await cached(cacheDir, `ext-mod:${slug}:${target.mc}:${loader}`, () => modrinth(slug, target.mc, loader, true))
+    if (v) out.push(`maven.modrinth:${slug}:${v}`)
+  }
+  return out
+}
+
 export async function resolveDeps(target: Target, cacheDir: string): Promise<ResolvedDeps> {
   const { loader, mc } = target
   const fb = FALLBACK_DEPS[mc] ?? {}
@@ -194,12 +204,6 @@ export async function resolveDeps(target: Target, cacheDir: string): Promise<Res
     }
   }
 
-  const fd = farmersDelightFor(loader, mc)
-  if (fd) {
-    const mrLoader = loader === 'quilt' ? 'fabric' : loader
-    const v = await cached(cacheDir, `fd-id:${fd.slug}:${mc}:${mrLoader}`, () => modrinth(fd.slug, mc, mrLoader, true))
-    deps.farmersDelight = v ? `maven.modrinth:${fd.slug}:${v}` : null
-  }
   if (mc === '1.20.1' || mc === '1.21.1') {
     const mrLoader = loader === 'quilt' ? 'fabric' : loader
     const v = await cached(cacheDir, `geckolib-id:${mc}:${mrLoader}`, () => modrinth('geckolib', mc, mrLoader, true))

@@ -11,9 +11,10 @@ import { getProfile } from '@core/gen/profiles'
 import { mergeOptionsTxt } from '@core/gameOptions'
 import { applyOverrides } from '@core/gen/overrides'
 import type { GenFile, ResolvedDeps } from '@core/gen/types'
-import { ASSET_RE, type Project, type Target } from '@core/project'
+import { ASSET_RE, javaPackage, type Project, type Target } from '@core/project'
 import { ensureGradle, ensureJdk, findJdks, gradleLaunch, type Progress } from './toolchain'
-import { linkedModDeps, resolveDeps } from './versions'
+import { extTestSlugs } from '@core/gen/extgen'
+import { extModDeps, linkedModDeps, resolveDeps } from './versions'
 import { loadMod, modJarPath } from './vanilla'
 import { enableFirstParty } from '@core/ext/firstparty'
 
@@ -117,6 +118,15 @@ export async function startBuild(o: BuildOptions): Promise<RunningBuild> {
 
   o.progress('Resolving versions')
   const deps: ResolvedDeps = await resolveDeps(o.target, o.toolsDir)
+  try {
+    deps.extMods = await extModDeps(
+      extTestSlugs({ ir, p: profile, loader: o.target.loader, target: o.target, ns: ir.meta.modId, pkg: javaPackage(ir.meta) }),
+      o.target,
+      o.toolsDir
+    )
+  } catch (e) {
+    o.log(`[NKW] Mods the extensions want in the test are left out (offline?): ${(e as Error).message}`)
+  }
   const outDir = buildDir(o.projectDir, o.target)
   // linked mods in the test run: Modrinth ones through Gradle, .jar files copied next to the build
   const linked = (o.project.mods ?? []).filter((m) => m.role && m.role !== 'none')

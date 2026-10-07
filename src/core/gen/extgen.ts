@@ -12,7 +12,7 @@ import { RES, fabricLike, forgeNames, json, type GenCtx } from './types'
  */
 
 /** Does any id in the mod (outside extension data) start with this prefix, e.g. "farmersdelight:". */
-const anyUse = (ctx: GenCtx): ExprFn => {
+const anyUse = (ctx: Pick<GenCtx, 'ir'>): ExprFn => {
   let text: string | null = null
   return (prefix) => {
     text ??= JSON.stringify(ctx.ir, (k, v) => (k === 'ext' ? undefined : v))
@@ -21,7 +21,7 @@ const anyUse = (ctx: GenCtx): ExprFn => {
 }
 
 /** Folders of the data pack that differ between versions. */
-function dataPaths(ctx: GenCtx) {
+function dataPaths(ctx: Pick<GenCtx, 'p'>) {
   const dir = (plural: string, singular: string) => (ctx.p.pluralDataDirs ? plural : singular)
   return {
     data: `${RES}/data`,
@@ -31,7 +31,7 @@ function dataPaths(ctx: GenCtx) {
   }
 }
 
-function scopeFor(ctx: GenCtx, ext: LoadedExtension): Record<string, unknown> {
+export function scopeFor(ctx: Pick<GenCtx, 'ir' | 'p' | 'loader' | 'target' | 'ns' | 'pkg'>, ext: LoadedExtension): Record<string, unknown> {
   const ir = { ...ctx.ir, ext: undefined }
   return {
     ir,
@@ -109,4 +109,20 @@ export function genExtensions(ctx: GenCtx, out: (cls: string, text: string) => v
       run(h.when, h.each, (scope) => ctx.hooks.add(h.site, renderTemplate(ext.templates[`hook:${i}`], { scope, fns }).trim(), h.order))
     )
   }
+}
+
+/** Modrinth projects the enabled extensions want in test runs for this mod and target. */
+export function extTestSlugs(ctx: Pick<GenCtx, 'ir' | 'p' | 'loader' | 'target' | 'ns' | 'pkg'>): string[] {
+  const out: string[] = []
+  for (const ext of extHost.list()) {
+    if (!extensionSupports(ext.manifest, ctx.loader, ctx.target.mc)) continue
+    const scope = scopeFor(ctx, ext)
+    const fns: Record<string, ExprFn> = { ...MATH_FNS, any: anyUse(ctx) }
+    for (const m of ext.manifest.testMods) {
+      if (m.when && !truthy(evalExpr(parseExpr(m.when), { scope, fns }))) continue
+      const slug = evalExpr(parseExpr(m.slug), { scope, fns })
+      if (typeof slug === 'string' && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(slug) && !out.includes(slug)) out.push(slug)
+    }
+  }
+  return out
 }

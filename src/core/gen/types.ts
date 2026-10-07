@@ -29,8 +29,9 @@ export interface ResolvedDeps {
   forgeGradle?: string
   neoforge?: string
   mdg?: string
+  /** mods the enabled extensions need in test runs (maven.modrinth:slug:version) */
+  extMods?: string[]
   /** maven coordinates (maven.modrinth:slug:version) */
-  farmersDelight?: string | null
   geckolib?: string | null
   /** AppleSkin (hunger / saturation display) for test runs only */
   appleSkin?: string | null
@@ -80,7 +81,6 @@ export interface GenCtx {
   pkg: string
   deps: ResolvedDeps
   read: AssetReader
-  fd: { slug: string; knifeTag: string } | null
   gecko: boolean
   /** item id → GeckoLib resource name (items sharing an identical model share one) */
   geoNames: Map<string, string>

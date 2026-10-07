@@ -132,7 +132,7 @@ describe('linked mods', () => {
     }
     const gen = (loader: 'fabric' | 'forge' | 'neoforge' | 'quilt', mc: string) => {
       const { ir, diagnostics } = compile(project, { loader, mc })
-      const deps = { ...TOOL_VERSIONS, ...FALLBACK_DEPS[mc], farmersDelight: 'maven.modrinth:farmers-delight:DDDD4444', ...linked }
+      const deps = { ...TOOL_VERSIONS, ...FALLBACK_DEPS[mc], extMods: ['maven.modrinth:farmers-delight:DDDD4444'], ...linked }
       const files = generate(ir, { loader, mc }, deps as never, read)
       return { ir, diagnostics, text: (end: string) => files.find((f) => f.path.endsWith(end))?.text ?? '' }
     }

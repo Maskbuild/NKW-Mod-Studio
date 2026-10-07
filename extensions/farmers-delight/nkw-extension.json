@@ -82,5 +82,11 @@
         }
       ]
     }
+  ],
+  "testMods": [
+    {
+      "when": "cfg != null && (len(ext.cuttingRecipes) > 0 || len(ext.cookingRecipes) > 0 || any('farmersdelight:'))",
+      "slug": "cfg.slug"
+    }
   ]
 }

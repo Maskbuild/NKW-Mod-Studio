@@ -5,16 +5,10 @@ import { genBuild } from './build'
 import { genData } from './data'
 import { genJava } from './java'
 import { configResource, usesConfig } from './config'
-import { farmersDelightFor, getProfile } from './profiles'
+import { getProfile } from './profiles'
 import { HookSites, type AssetReader, type GenCtx, type GenFile, type ResolvedDeps } from './types'
 
 export type { GenFile, ResolvedDeps, AssetReader } from './types'
-
-/** FD recipes, or any Farmer's Delight item/tag/block used as an ingredient, result, drop, tab entry, crop or rule. */
-function usesFarmersDelight(ir: ModIR): boolean {
-  if (ir.ext['farmers-delight']?.cuttingRecipes?.length || ir.ext['farmers-delight']?.cookingRecipes?.length) return true
-  return JSON.stringify([ir.recipes, ir.tabs, ir.blocks, ir.toolMats, ir.armorMats, ir.gameCrops, ir.breakRules]).includes('farmersdelight:')
-}
 
 function geoNames(ir: ModIR): Map<string, string> {
   const byKey = new Map<string, string>()
@@ -41,7 +35,6 @@ function geoNames(ir: ModIR): Map<string, string> {
 export function generate(ir: ModIR, target: Target, deps: ResolvedDeps, read: AssetReader): GenFile[] {
   const p = getProfile(target.mc)
   if (!p.loaders.includes(target.loader)) throw new Error(`${target.loader} is not available for ${target.mc}`)
-  const usesFD = usesFarmersDelight(ir)
   const usesGeo = ir.items.some((i) => i.armor?.geo) || ir.mobs.some((m) => m.body === 'model3d' && m.geo)
   const ctx: GenCtx = {
     ir,
@@ -52,7 +45,6 @@ export function generate(ir: ModIR, target: Target, deps: ResolvedDeps, read: As
     pkg: javaPackage(ir.meta),
     deps,
     read,
-    fd: usesFD ? farmersDelightFor(target.loader, target.mc) : null,
     gecko: usesGeo && p.geckoArmor && !!deps.geckolib,
     geoNames: geoNames(ir),
     files: [],

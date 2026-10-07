@@ -225,12 +225,3 @@ export function isSupported(loader: Loader, mc: string): boolean {
   const p = PROFILES.find((x) => x.mc === mc)
   return !!p && p.loaders.includes(loader)
 }
-
-/** Farmer's Delight availability (Modrinth hosted builds). */
-export function farmersDelightFor(loader: Loader, mc: string): { slug: string; knifeTag: string } | null {
-  if (loader === 'forge' && ['1.18.2', '1.19.2', '1.20.1'].includes(mc)) return { slug: 'farmers-delight', knifeTag: 'forge:tools/knives' }
-  if (loader === 'neoforge' && mc === '1.21.1') return { slug: 'farmers-delight', knifeTag: 'c:tools/knife' }
-  if ((loader === 'fabric' || loader === 'quilt') && mc === '1.20.1') return { slug: 'farmers-delight-refabricated', knifeTag: 'c:tools/knives' }
-  if ((loader === 'fabric' || loader === 'quilt') && mc === '1.21.1') return { slug: 'farmers-delight-refabricated', knifeTag: 'c:tools/knife' }
-  return null
-}

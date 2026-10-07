@@ -169,7 +169,7 @@ ${
         content { includeGroupAndSubgroups 'org.quiltmc' }
     }`
       : ''
-  const fdDep = ctx.fd && deps.farmersDelight ? deps.farmersDelight : null
+  const extDeps = deps.extMods ?? []
   const geckoDep = ctx.gecko && deps.geckolib ? deps.geckolib : null
 
   if (loader === 'fabric' || loader === 'quilt') {
@@ -185,10 +185,10 @@ ${
     if (deps.modMenu) extraDeps.push(`    modRuntimeOnly '${deps.modMenu}'`)
     if (deps.appleSkin) extraDeps.push(`    modRuntimeOnly '${deps.appleSkin}'`)
     if (deps.appleSkin && deps.clothConfig) extraDeps.push(`    modRuntimeOnly '${deps.clothConfig}'`)
-    if (fdDep) extraDeps.push(`    modRuntimeOnly '${fdDep}'`)
+    for (const c of extDeps) extraDeps.push(`    modRuntimeOnly '${c}'`)
     if (geckoDep) extraDeps.push(`    modImplementation '${geckoDep}'`)
     // linked mods (test runs): from Modrinth, and .jar files picked on disk
-    const linked = linkedTestMods(deps, [fdDep, geckoDep, deps.modMenu, deps.appleSkin, deps.clothConfig])
+    const linked = linkedTestMods(deps, [...extDeps, geckoDep, deps.modMenu, deps.appleSkin, deps.clothConfig])
     for (const c of linked) extraDeps.push(`    modRuntimeOnly '${c}'`)
     for (const id of deps.localMods ?? []) extraDeps.push(`    modRuntimeOnly files('${localJar(id)}')`)
     files.push({
@@ -215,7 +215,7 @@ dependencies {
     modImplementation 'net.fabricmc.fabric-api:fabric-api:${deps.fabricApi}'
 ${extraDeps.join('\n')}
 }
-${fabricBundledMods([fdDep, geckoDep, ...linked].filter((d): d is string => !!d))}
+${fabricBundledMods([...extDeps, geckoDep, ...linked].filter((d): d is string => !!d))}
 loom {
     runs {${
       loader === 'quilt'
@@ -348,10 +348,10 @@ side="BOTH"
 
   if (loader === 'forge') {
     const deobf = (c: string) => (p.forgeNoReobf ? `'${c}'` : `fg.deobf('${c}')`)
-    if (fdDep) extraDeps.push(`    runtimeOnly ${deobf(fdDep)}`)
+    for (const c of extDeps) extraDeps.push(`    runtimeOnly ${deobf(c)}`)
     if (deps.appleSkin) extraDeps.push(`    runtimeOnly ${deobf(deps.appleSkin)}`)
     if (geckoDep) extraDeps.push(`    implementation ${deobf(geckoDep)}`)
-    for (const c of linkedTestMods(deps, [fdDep, geckoDep, deps.appleSkin])) extraDeps.push(`    runtimeOnly ${deobf(c)}`)
+    for (const c of linkedTestMods(deps, [...extDeps, geckoDep, deps.appleSkin])) extraDeps.push(`    runtimeOnly ${deobf(c)}`)
     for (const id of deps.localMods ?? []) extraDeps.push(`    runtimeOnly ${deobf(`nkwlocal:${id}:1`)}`)
     files.push({
       path: 'build.gradle',
@@ -427,10 +427,10 @@ tasks.named('jar', Jar).configure {
   }
 
   // NeoForge (ModDevGradle)
-  if (fdDep) extraDeps.push(`    runtimeOnly '${fdDep}'`)
+  for (const c of extDeps) extraDeps.push(`    runtimeOnly '${c}'`)
   if (deps.appleSkin) extraDeps.push(`    runtimeOnly '${deps.appleSkin}'`)
   if (geckoDep) extraDeps.push(`    implementation '${geckoDep}'`)
-  for (const c of linkedTestMods(deps, [fdDep, geckoDep, deps.appleSkin])) extraDeps.push(`    runtimeOnly '${c}'`)
+  for (const c of linkedTestMods(deps, [...extDeps, geckoDep, deps.appleSkin])) extraDeps.push(`    runtimeOnly '${c}'`)
   for (const id of deps.localMods ?? []) extraDeps.push(`    runtimeOnly files('${localJar(id)}')`)
   files.push({
     path: 'build.gradle',

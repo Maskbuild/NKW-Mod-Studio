@@ -114,6 +114,13 @@ const TargetConfigSchema = z.strictObject({
   values: z.record(KEY, z.union([z.string().max(300), z.number(), z.boolean()]))
 })
 
+const TestModSchema = z.strictObject({
+  /** expression over the generation scope: when this mod is needed */
+  when: z.string().max(500).optional(),
+  /** expression that gives the Modrinth project (slug) to add to test runs */
+  slug: z.string().max(300)
+})
+
 const HookSchema = z.strictObject({
   site: z.enum(['commonInit', 'forgeClientInit', 'fabricClientInit']),
   order: z.number().int().min(0).max(1000).default(100),
@@ -155,7 +162,9 @@ export const ManifestSchema = z.strictObject({
   targetConfig: z.array(TargetConfigSchema).max(40).default([]),
   derive: z.array(DeriveSchema).max(40).default([]),
   generate: z.array(GenerateSchema).max(200).default([]),
-  hooks: z.array(HookSchema).max(100).default([])
+  hooks: z.array(HookSchema).max(100).default([]),
+  /** mods from Modrinth the extension's features need in test runs (not dependencies of the mod) */
+  testMods: z.array(TestModSchema).max(20).default([])
 })
 export type Manifest = z.infer<typeof ManifestSchema>
 
@@ -399,6 +408,16 @@ export function loadExtension(files: FileMap): LoadResult {
     } catch (e) {
       errors.push(e instanceof TemplateError ? e.message : `hooks[${i}]: ${(e as Error).message}`)
     }
+  })
+  manifest.testMods.forEach((m, i) => {
+    for (const [k, v] of [
+      ['when', m.when],
+      ['slug', m.slug]
+    ] as const)
+      if (v) {
+        const bad = checkExpr(v, SCOPE_ROOTS, ['any'])
+        if (bad) errors.push(`testMods[${i}] ${k}: ${bad}`)
+      }
   })
   manifest.targetConfig.forEach((c, i) => {
     if (c.mc && parseEra(c.mc) === null) errors.push(`targetConfig[${i}].mc: bad version range "${c.mc}"`)

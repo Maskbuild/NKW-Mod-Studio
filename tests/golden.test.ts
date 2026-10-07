@@ -6,7 +6,9 @@ import { describe, expect, it } from 'vitest'
 import { compile } from '../src/core/compile/compile'
 import { enableFirstParty } from '../src/core/ext/firstparty'
 import { FALLBACK_DEPS, TOOL_VERSIONS, generate } from '../src/core/gen/index'
-import { PROFILES } from '../src/core/gen/profiles'
+import { PROFILES, getProfile } from '../src/core/gen/profiles'
+import { extTestSlugs } from '../src/core/gen/extgen'
+import { javaPackage } from '../src/core/project'
 import { writeFixture } from '../scripts/fixture'
 
 enableFirstParty()
@@ -23,7 +25,6 @@ const project = writeFixture(dir)
 const read = { readText: (a: string) => readFileSync(join(dir, 'assets', a), 'utf8') }
 const deps = {
   ...TOOL_VERSIONS,
-  farmersDelight: 'maven.modrinth:farmers-delight:x',
   geckolib: 'maven.modrinth:geckolib:x',
   modMenu: 'maven.modrinth:modmenu:x'
 }
@@ -37,7 +38,11 @@ function snapshot(): Snapshot {
     for (const loader of p.loaders) {
       const target = { loader, mc: p.mc }
       const { ir } = compile(project, target)
-      const files = generate(ir, target, { ...deps, ...FALLBACK_DEPS[p.mc], gradle: '8.14.3' }, read)
+      // the mods the extensions want in a test run (resolved online by the real builder)
+      const extMods = extTestSlugs({ ir, p: getProfile(p.mc), loader, target, ns: ir.meta.modId, pkg: javaPackage(ir.meta) }).map(
+        (s) => `maven.modrinth:${s}:x`
+      )
+      const files = generate(ir, target, { ...deps, ...FALLBACK_DEPS[p.mc], gradle: '8.14.3', extMods }, read)
       const hashes: Record<string, string> = {}
       for (const f of files)
         hashes[f.path] =

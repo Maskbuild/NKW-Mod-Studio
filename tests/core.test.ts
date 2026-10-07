@@ -24,7 +24,6 @@ const project = writeFixture(dir)
 const read = { readText: (a: string) => readFileSync(join(dir, 'assets', a), 'utf8') }
 const deps = {
   ...TOOL_VERSIONS,
-  farmersDelight: 'maven.modrinth:farmers-delight:x',
   geckolib: 'maven.modrinth:geckolib:x',
   modMenu: 'maven.modrinth:modmenu:x'
 }

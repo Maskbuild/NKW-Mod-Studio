@@ -16,7 +16,6 @@ for (const d of diagnostics) console.log(d.severity, d.nodeId ?? '', d.message.e
 const deps = {
   ...TOOL_VERSIONS,
   ...FALLBACK_DEPS[mc],
-  farmersDelight: 'maven.modrinth:farmers-delight:x',
   geckolib: 'maven.modrinth:geckolib:x'
 }
 const files = generate(ir, { loader, mc }, deps, { readText: (a) => readFileSync(join(projectDir, 'assets', a), 'utf8') })
