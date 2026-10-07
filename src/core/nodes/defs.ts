@@ -1,49 +1,17 @@
 import { t, type L10n } from '../l10n'
+import { registry } from '../ext/registry'
 /**
  * Node catalogue shared by the editor (rendering, inspector) and the compiler.
  * Every pin has a type; the editor refuses connections whose types don't match.
  */
 
-export type PinType =
-  | 'item'
-  | 'ingredient'
-  | 'texture'
-  | 'model'
-  | 'geo'
-  | 'sound'
-  | 'soundEvent'
-  | 'toolMat'
-  | 'armorMat'
-  | 'effect'
-  | 'animation'
-  | 'block'
-  | 'thirst'
-  | 'attribute'
-  | 'hit'
-  | 'harvestUi'
-  | 'any'
+/** A pin type id. The app's own are listed in CORE_PIN_TYPES; extensions add more through the registry. */
+export type PinType = string
 
 export type { L10n }
 
-export const PIN_COLORS: Record<PinType, string> = {
-  item: '#3b82f6',
-  ingredient: '#06b6d4',
-  texture: '#f59e0b',
-  model: '#a855f7',
-  geo: '#d946ef',
-  sound: '#22c55e',
-  soundEvent: '#10b981',
-  toolMat: '#ef4444',
-  armorMat: '#f97316',
-  effect: '#ec4899',
-  animation: '#8b5cf6',
-  block: '#7c3aed',
-  thirst: '#0ea5e9',
-  attribute: '#14b8a6',
-  hit: '#dc2626',
-  harvestUi: '#84cc16',
-  any: '#9ca3af'
-}
+/** Wire colour per pin type (shared with the registry: extension pin types show up here too). */
+export const PIN_COLORS = registry.pinColors
 
 export function canConnect(out: PinType, input: PinType): boolean {
   if (out === 'any' || input === 'any') return true
@@ -103,7 +71,8 @@ export interface PropDef {
   noTags?: boolean
 }
 
-export type Category = 'asset' | 'item' | 'block' | 'farm' | 'armor' | 'effect' | 'sound' | 'recipe' | 'fd' | 'mob' | 'addon' | 'util'
+/** A category id of the node library (the app's own are registered below; extensions add more). */
+export type Category = string
 
 export interface NodeDef {
   type: string
@@ -180,21 +149,6 @@ export const TOOL_LEVELS = ['wood', 'stone', 'iron', 'diamond', 'netherite'] as 
 export function breakRuleEntries(d: Record<string, unknown>): string[] {
   const list = Array.isArray(d.blocks) ? d.blocks.filter((c): c is string => typeof c === 'string') : []
   return [...new Set(list.map((x) => x.trim().toLowerCase()).filter(Boolean))]
-}
-
-export const CATEGORY_LABEL: Record<Category, L10n> = {
-  asset: t('Assets', 'ไฟล์ทรัพยากร'),
-  item: t('Items', 'ไอเทม'),
-  block: t('Blocks', 'บล็อก'),
-  farm: t('Farming', 'การเกษตร'),
-  armor: t('Armor', 'ชุดเกราะ'),
-  effect: t('Effects & abilities', 'เอฟเฟกต์และความสามารถ'),
-  sound: t('Sound & Music', 'เสียงและเพลง'),
-  recipe: t('Recipes', 'สูตรคราฟ'),
-  fd: t("Farmer's Delight", "Farmer's Delight"),
-  mob: t('Mobs & monsters', 'ม็อบและมอนสเตอร์'),
-  addon: t('Add-ons (other mods)', 'ส่วนเสริม (ม็อดอื่น)'),
-  util: t('Utility', 'เครื่องมือ')
 }
 
 const nameProps = (idDefault: string, nameDefault: string): PropDef[] => [
@@ -428,7 +382,7 @@ export const ATTRIBUTES: { id: string; field: string; since: string; label: L10n
 const effectIns = (en: string, th: string): PinDef[] =>
   [1, 2, 3].map((i) => ({ id: `effect${i}`, label: t(`${en} ${i}`, `${th} ${i}`), type: 'effect' as PinType, optional: true }))
 
-export const NODE_DEFS: NodeDef[] = [
+const CORE_NODE_DEFS: NodeDef[] = [
   // ───────────── Assets ─────────────
   {
     type: 'texture',
@@ -1962,7 +1916,9 @@ export const NODE_DEFS: NodeDef[] = [
   }
 ]
 
-export const NODE_DEF_MAP: Record<string, NodeDef> = Object.fromEntries(NODE_DEFS.map((d) => [d.type, d]))
+/** Every registered node definition and the same by type: shared with the registry, so they follow extensions. */
+export const NODE_DEFS = registry.defs
+export const NODE_DEF_MAP = registry.map
 
 export function defaultData(def: NodeDef): Record<string, unknown> {
   return Object.fromEntries(def.props.map((p) => [p.key, p.default]))
@@ -1991,3 +1947,40 @@ export function visibleInputs(def: NodeDef, wired: (id: string) => boolean): { l
   }
   return { left, right }
 }
+
+registry.register('core', {
+  nodes: CORE_NODE_DEFS,
+  categories: {
+    item: { label: t('Items', 'ไอเทม'), color: '#3b82f6', order: 0 },
+    block: { label: t('Blocks', 'บล็อก'), color: '#8b5cf6', order: 1 },
+    farm: { label: t('Farming', 'การเกษตร'), color: '#65a30d', order: 2 },
+    armor: { label: t('Armor', 'ชุดเกราะ'), color: '#f97316', order: 3 },
+    effect: { label: t('Effects & abilities', 'เอฟเฟกต์และความสามารถ'), color: '#ec4899', order: 4 },
+    sound: { label: t('Sound & Music', 'เสียงและเพลง'), color: '#10b981', order: 5 },
+    recipe: { label: t('Recipes', 'สูตรคราฟ'), color: '#e11d48', order: 6 },
+    fd: { label: t("Farmer's Delight", "Farmer's Delight"), color: '#84cc16', order: 7 },
+    mob: { label: t('Mobs & monsters', 'ม็อบและมอนสเตอร์'), color: '#b91c1c', order: 8 },
+    addon: { label: t('Add-ons (other mods)', 'ส่วนเสริม (ม็อดอื่น)'), color: '#0ea5e9', order: 9 },
+    asset: { label: t('Assets', 'ไฟล์ทรัพยากร'), color: '#f59e0b', order: 10 },
+    util: { label: t('Utility', 'เครื่องมือ'), color: '#71717a', order: 11 }
+  },
+  pinTypes: {
+    item: '#3b82f6',
+    ingredient: '#06b6d4',
+    texture: '#f59e0b',
+    model: '#a855f7',
+    geo: '#d946ef',
+    sound: '#22c55e',
+    soundEvent: '#10b981',
+    toolMat: '#ef4444',
+    armorMat: '#f97316',
+    effect: '#ec4899',
+    animation: '#8b5cf6',
+    block: '#7c3aed',
+    thirst: '#0ea5e9',
+    attribute: '#14b8a6',
+    hit: '#dc2626',
+    harvestUi: '#84cc16',
+    any: '#9ca3af'
+  }
+})

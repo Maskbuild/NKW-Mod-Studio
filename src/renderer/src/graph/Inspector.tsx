@@ -2,7 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from 'react-i18next'
 import { shallow } from 'zustand/shallow'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
-import { CATEGORY_LABEL, NODE_DEF_MAP, PIN_COLORS, gameCropIds, type NodeDef, type PropDef } from '@core/nodes/defs'
+import { registry } from '@core/ext/registry'
+import { NODE_DEF_MAP, PIN_COLORS, gameCropIds, type NodeDef, type PropDef } from '@core/nodes/defs'
 import { ASSET_RE, FOLDER_RE, ID_RE, LICENSES, LINK_RE, MetaSchema, NSID_RE, toId, type Credit } from '@core/project'
 import { L } from '../i18n'
 import { api, assetUrl, vanillaIconUrl, type AssetKind, type ImportedAsset } from '../api'
@@ -1020,7 +1021,7 @@ export function Inspector() {
         <span className="li-icon">{def.icon}</span>
         <div className="grow">
           <b>{L(def.title)}</b>
-          <div className="faint">{L(CATEGORY_LABEL[def.category])}</div>
+          <div className="faint">{L(registry.categories[def.category]?.label)}</div>
         </div>
       </div>
       <div className="insp-desc">{L(def.description)}</div>

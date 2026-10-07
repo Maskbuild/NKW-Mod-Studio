@@ -1,27 +1,13 @@
 import { memo, useCallback, useEffect, type CSSProperties } from 'react'
 import { Handle, NodeResizer, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
 import { useTranslation } from 'react-i18next'
-import { EFFECTS, NODE_DEF_MAP, breakRuleEntries, gameCropIds, PIN_COLORS, visibleInputs, type Category, type PinDef } from '@core/nodes/defs'
+import { EFFECTS, NODE_DEF_MAP, breakRuleEntries, gameCropIds, PIN_COLORS, visibleInputs, type PinDef } from '@core/nodes/defs'
+import { registry } from '@core/ext/registry'
 import { L } from '../i18n'
 import { assetUrl, vanillaIconUrl } from '../api'
 import { useItemInfo } from './VanillaPanel'
 import { TagStrip } from './TagPreview'
 import { useStore, type FlowNode } from '../store'
-
-export const CATEGORY_COLOR: Record<Category, string> = {
-  asset: '#f59e0b',
-  item: '#3b82f6',
-  block: '#8b5cf6',
-  farm: '#65a30d',
-  armor: '#f97316',
-  sound: '#10b981',
-  recipe: '#e11d48',
-  fd: '#84cc16',
-  addon: '#0ea5e9',
-  mob: '#b91c1c',
-  effect: '#ec4899',
-  util: '#71717a'
-}
 
 /** Returns a stable string of this node's connected handles, so nodes only re-render when their wires change. */
 function useConnected(id: string): Set<string> {
@@ -205,7 +191,7 @@ export const NodeView = memo(function NodeView({ id, type, data, selected }: Nod
   return (
     <div className={`nk${selected ? ' sel' : ''}${data.disabled ? ' off' : issue ? ` ${issue}` : ''}`}>
       <div className="nk-head">
-        <span className="dot" style={{ background: CATEGORY_COLOR[def.category] }} />
+        <span className="dot" style={{ background: registry.categoryColor(def.category) }} />
         <span aria-hidden>{def.icon}</span>
         <span className="nk-title" title={title}>
           {title}
@@ -279,7 +265,10 @@ const MissingView = memo(function MissingView({ type, selected }: NodeProps<Flow
   )
 })
 
-export const NODE_TYPES = {
-  ...Object.fromEntries(Object.keys(NODE_DEF_MAP).map((t) => [t, t === 'comment' ? CommentView : t === 'reroute' ? RerouteView : NodeView])),
-  default: MissingView
+/** React Flow node components for every registered node type (rebuilt when an extension adds or removes nodes). */
+export function buildNodeTypes() {
+  return {
+    ...Object.fromEntries(Object.keys(NODE_DEF_MAP).map((t) => [t, t === 'comment' ? CommentView : t === 'reroute' ? RerouteView : NodeView])),
+    default: MissingView
+  }
 }

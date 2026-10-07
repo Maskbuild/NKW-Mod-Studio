@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CATEGORY_LABEL, NODE_DEFS, canConnect, type NodeDef, type PinType } from '@core/nodes/defs'
+import { NODE_DEFS, canConnect, type NodeDef, type PinType } from '@core/nodes/defs'
+import { registry } from '@core/ext/registry'
 import { L } from '../i18n'
+import { useRegistryVersion } from '../ext/useRegistry'
 
 export interface Pending {
   /** the dragged pin's type and direction */
@@ -38,12 +40,13 @@ export function QuickAdd({
   const [idx, setIdx] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
 
+  const registryVersion = useRegistryVersion()
   const items = useMemo(() => {
     const needle = q.trim().toLowerCase()
     return NODE_DEFS.filter((d) => d.type !== 'comment' || !pending)
       .filter((d) => !pending || matchPin(d, pending))
       .filter((d) => !needle || [d.title.en, d.title.th, d.type, d.description.en, d.description.th].some((s) => s.toLowerCase().includes(needle)))
-  }, [q, pending])
+  }, [q, pending, registryVersion])
 
   useEffect(() => setIdx(0), [q])
   useEffect(() => {
@@ -86,7 +89,7 @@ export function QuickAdd({
             >
               <span aria-hidden>{d.icon}</span>
               {L(d.title)}
-              <small>{L(CATEGORY_LABEL[d.category])}</small>
+              <small>{L(registry.categories[d.category]?.label)}</small>
             </div>
           ))}
           {!items.length && <div className="empty">—</div>}
