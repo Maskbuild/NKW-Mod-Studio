@@ -1,5 +1,5 @@
 import type { L10n } from '../l10n'
-import type { NodeDef } from '../nodes/defs'
+import type { NodeDef, PinDef, PropDef } from '../nodes/defs'
 
 /**
  * The runtime registry of everything the node editor and the compiler know about: node definitions,
@@ -19,8 +19,20 @@ export interface CategoryInfo {
   order: number
 }
 
+/** Properties and pins a source adds to a node type that another source defined. */
+export interface NodeExtension {
+  props?: PropDef[]
+  inputs?: PinDef[]
+  outputs?: PinDef[]
+  /** insert after this property / input (default: at the end) */
+  afterProp?: string
+  afterInput?: string
+}
+
 /** What one source adds. */
 export interface Contribution {
+  /** node type → what to add to it */
+  extend?: Record<string, NodeExtension>
   nodes?: NodeDef[]
   categories?: Record<string, CategoryInfo>
   /** pin type id → wire colour */
@@ -56,6 +68,14 @@ class Registry {
         throw new Error(`Node type "${d.type}" is already defined${this.owner.has(`node:${d.type}`) ? ` by "${this.owner.get(`node:${d.type}`)}"` : ''}`)
       seen.add(d.type)
     }
+    const ext = c.extend ?? {}
+    for (const [type, x] of Object.entries(ext)) {
+      const def = this.map[type] ?? nodes.find((d) => d.type === type)
+      if (!def) throw new Error(`Cannot extend "${type}": no such node type`)
+      for (const p of x.props ?? []) if (def.props.some((q) => q.key === p.key)) throw new Error(`"${type}" already has a property "${p.key}"`)
+      for (const p of [...(x.inputs ?? []), ...(x.outputs ?? [])])
+        if ([...def.inputs, ...def.outputs].some((q) => q.id === p.id)) throw new Error(`"${type}" already has a pin "${p.id}"`)
+    }
     for (const [id, info] of Object.entries(cats)) {
       if (!ID_RE.test(id)) throw new Error(`Invalid category "${id}"`)
       if (this.categories[id]) throw new Error(`Category "${id}" is already defined by "${this.owner.get(`category:${id}`)}"`)
@@ -79,6 +99,16 @@ class Registry {
       this.map[d.type] = d
       this.owner.set(`node:${d.type}`, source)
     }
+    for (const [type, x] of Object.entries(ext)) {
+      const def = this.map[type]
+      const at = <T>(list: T[], add: T[], after: string | undefined, id: (v: T) => string) => {
+        const i = after === undefined ? -1 : list.findIndex((v) => id(v) === after)
+        list.splice(i < 0 ? list.length : i + 1, 0, ...add)
+      }
+      if (x.props?.length) at(def.props, x.props, x.afterProp, (v) => v.key)
+      if (x.inputs?.length) at(def.inputs, x.inputs, x.afterInput, (v) => v.id)
+      if (x.outputs?.length) def.outputs.push(...x.outputs)
+    }
     this.owned.set(source, c)
     this.changed()
   }
@@ -87,6 +117,15 @@ class Registry {
   unregister(source: string): void {
     const c = this.owned.get(source)
     if (!c) return
+    for (const [type, x] of Object.entries(c.extend ?? {})) {
+      const def = this.map[type]
+      if (!def) continue
+      const keys = new Set((x.props ?? []).map((p) => p.key))
+      const pins = new Set([...(x.inputs ?? []), ...(x.outputs ?? [])].map((p) => p.id))
+      def.props = def.props.filter((p) => !keys.has(p.key))
+      def.inputs = def.inputs.filter((p) => !pins.has(p.id))
+      def.outputs = def.outputs.filter((p) => !pins.has(p.id))
+    }
     const gone = new Set((c.nodes ?? []).map((d) => d.type))
     for (let i = this.defs.length - 1; i >= 0; i--) if (gone.has(this.defs[i].type)) this.defs.splice(i, 1)
     for (const t of gone) {

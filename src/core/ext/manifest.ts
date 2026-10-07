@@ -91,6 +91,15 @@ const GenerateSchema = z.strictObject({
   emit: z.array(Emit).min(1).max(20)
 })
 
+const ExtendSchema = z.strictObject({
+  type: TYPE,
+  props: z.array(PropSpec).max(60).default([]),
+  inputs: z.array(PinSpec).max(60).default([]),
+  outputs: z.array(PinSpec).max(60).default([]),
+  afterProp: KEY.optional(),
+  afterInput: KEY.optional()
+})
+
 const HookSchema = z.strictObject({
   site: z.enum(['commonInit', 'forgeClientInit', 'fabricClientInit']),
   order: z.number().int().min(0).max(1000).default(100),
@@ -126,6 +135,8 @@ export const ManifestSchema = z.strictObject({
     .default({}),
   pinTypes: z.record(z.string().regex(/^[a-zA-Z0-9_-]{1,40}$/), COLOR).default({}),
   nodes: z.array(PATH).max(FILE_LIMITS.nodes).default([]),
+  /** properties and pins this extension adds to node types of the app or of other extensions */
+  extendNodes: z.array(ExtendSchema).max(40).default([]),
   derive: z.array(DeriveSchema).max(40).default([]),
   generate: z.array(GenerateSchema).max(200).default([]),
   hooks: z.array(HookSchema).max(100).default([])
@@ -160,6 +171,32 @@ export function expandPins(specs: z.infer<typeof PinSpec>[]): PinDef[] {
     else for (let i = 1; i <= count; i++) out.push({ ...rest, id: `${s.id}${i}`, label: { en: `${s.label.en} ${i}`, th: `${s.label.th} ${i}` } } as PinDef)
   }
   return out
+}
+
+function buildProps(specs: z.infer<typeof PropSpec>[], path: string, dflt: Record<string, unknown>, errors: string[]): PropDef[] {
+  const props: PropDef[] = []
+  for (const p of specs) {
+    if (p.key in dflt) errors.push(`${path}: property "${p.key}" defined twice`)
+    dflt[p.key] = p.default
+    let showIf: PropDef['showIf']
+    if (p.showIf) {
+      const bad = checkExpr(p.showIf, ['data'])
+      if (bad) errors.push(`${path}: ${p.key}.showIf — ${bad}`)
+      else {
+        const fn = compileExpr(p.showIf)
+        showIf = (data) => {
+          try {
+            return !!fn({ scope: { data }, fns: {} })
+          } catch {
+            return true
+          }
+        }
+      }
+    }
+    if ((p.kind === 'select' || p.kind === 'multi') && !p.options?.length) errors.push(`${path}: ${p.key} needs options`)
+    props.push({ ...p, showIf } as PropDef)
+  }
+  return props
 }
 
 /** Validates a set of files and builds the extension. Pure: no disk, no network, no registration. */
@@ -218,30 +255,10 @@ export function loadExtension(files: FileMap): LoadResult {
   const nodes: NodeDef[] = []
   const compile = new Map<string, NodeCompile>()
   const defaults = new Map<string, Record<string, unknown>>()
+  const mapDefaultsFor = (type: string) => defaults.get(type) ?? defaults.set(type, {}).get(type)!
   for (const { path, spec } of nodeFiles) {
     const dflt: Record<string, unknown> = {}
-    const props: PropDef[] = []
-    for (const p of spec.props) {
-      if (p.key in dflt) errors.push(`${path}: property "${p.key}" defined twice`)
-      dflt[p.key] = p.default
-      let showIf: PropDef['showIf']
-      if (p.showIf) {
-        const bad = checkExpr(p.showIf, ['data'])
-        if (bad) errors.push(`${path}: ${p.key}.showIf — ${bad}`)
-        else {
-          const fn = compileExpr(p.showIf)
-          showIf = (data) => {
-            try {
-              return !!fn({ scope: { data }, fns: {} })
-            } catch {
-              return true
-            }
-          }
-        }
-      }
-      if ((p.kind === 'select' || p.kind === 'multi') && !p.options?.length) errors.push(`${path}: ${p.key} needs options`)
-      props.push({ ...p, showIf } as PropDef)
-    }
+    const props = buildProps(spec.props, path, dflt, errors)
     const inputs = expandPins(spec.inputs)
     const outputs = expandPins(spec.outputs)
     const pinIds = new Set<string>()
@@ -256,7 +273,8 @@ export function loadExtension(files: FileMap): LoadResult {
         if (bad) errors.push(`${path}: ${bad}`)
       }
       for (const s of Object.values(spec.compile.emit?.value ?? {})) {
-        if ('prop' in s && !(s.prop in dflt)) errors.push(`${path}: reads unknown property "${s.prop}"`)
+        if ('prop' in s && !(s.prop in dflt) && !manifest.extendNodes.some((x) => x.type === spec.type && x.props.some((p) => p.key === s.prop)))
+          errors.push(`${path}: reads unknown property "${s.prop}"`)
         if ('input' in s && !inputs.some((i) => i.id === s.input)) errors.push(`${path}: reads unknown input "${s.input}"`)
         if ('item' in s) errors.push(`${path}: "item" sources only work in derive`)
       }
@@ -283,6 +301,21 @@ export function loadExtension(files: FileMap): LoadResult {
     if (!ownCats.has(n.category) && !registry.categories[n.category]) errors.push(`node "${n.type}": unknown category "${n.category}"`)
     for (const p of [...n.inputs, ...n.outputs])
       if (!ownPins.has(p.type) && !registry.pinColors[p.type]) errors.push(`node "${n.type}": pin "${p.id}" has unknown type "${p.type}"`)
+  }
+
+  const extend: NonNullable<Contribution['extend']> = {}
+  for (const x of manifest.extendNodes) {
+    if (extend[x.type]) errors.push(`extendNodes: "${x.type}" listed twice`)
+    const own: Record<string, unknown> = {}
+    const props = buildProps(x.props, `extendNodes ${x.type}`, own, errors)
+    const inputs = expandPins(x.inputs)
+    const outputs = expandPins(x.outputs)
+    for (const p of [...inputs, ...outputs])
+      if (!ownPins.has(p.type) && !registry.pinColors[p.type]) errors.push(`extendNodes ${x.type}: pin "${p.id}" has unknown type "${p.type}"`)
+    extend[x.type] = { props, inputs, outputs, afterProp: x.afterProp, afterInput: x.afterInput }
+    // `prop` sources of this extension's mapping may read what it adds
+    const d = mapDefaultsFor(x.type)
+    for (const [k, v] of Object.entries(own)) d[k] = v
   }
 
   for (const d of manifest.derive)
@@ -350,7 +383,7 @@ export function loadExtension(files: FileMap): LoadResult {
     ext: {
       manifest,
       nodes,
-      contribution: { nodes, categories, pinTypes: manifest.pinTypes },
+      contribution: { nodes, categories, pinTypes: manifest.pinTypes, extend },
       mapped: { id: manifest.id, compile, derive: manifest.derive, defaults },
       templates,
       files

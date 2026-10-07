@@ -270,3 +270,42 @@ describe('extension code generation', () => {
     expect(() => genFiles(f)).toThrow(/tried to write/)
   })
 })
+
+describe('extendNodes', () => {
+  const ext = (x: Record<string, unknown>) => files(manifest({ extendNodes: [{ type: 'item', ...x }] }))
+  const prop = { key: 'glowAmount', label: L('Glow'), kind: 'int', default: 2, min: 0, max: 5 }
+
+  it('adds properties and pins to a node of the app and takes them away again', () => {
+    const before = registry.map.item.props.length
+    extHost.enable(
+      load(
+        ext({
+          props: [prop],
+          inputs: [{ id: 'cfg', label: L('Config'), type: 'democfg', optional: true }],
+          afterProp: 'id'
+        })
+      )
+    )
+    const def = registry.map.item
+    expect(def.props.findIndex((p) => p.key === 'glowAmount')).toBe(def.props.findIndex((p) => p.key === 'id') + 1)
+    expect(def.inputs.some((p) => p.id === 'cfg')).toBe(true)
+    extHost.disable('demo-ext')
+    expect(registry.map.item.props.length).toBe(before)
+    expect(registry.map.item.inputs.some((p) => p.id === 'cfg')).toBe(false)
+  })
+
+  it('rejects a clash with an existing property and unknown targets', () => {
+    expect(() => extHost.enable(load(ext({ props: [{ ...prop, key: 'id' }] })))).toThrow(/already has a property/)
+    extHost.clear()
+    expect(() => extHost.enable(load(files(manifest({ extendNodes: [{ type: 'nope', props: [prop] }] }))))).toThrow(/no such node type/)
+  })
+
+  it('the extension reads what it added through prop sources', () => {
+    const f = files(manifest({ extendNodes: [{ type: 'demoBox', props: [prop] }] }), {
+      'nodes/box.json': { ...box, compile: { emit: { slot: 'boxes', value: { glow: { prop: 'glowAmount', as: 'int', default: 2 } } } } }
+    })
+    extHost.enable(load(f))
+    const { ir } = compile(project([nd('b', 'demoBox', { glowAmount: 4 })]))
+    expect(ir.ext['demo-ext'].boxes[0].glow).toBe(4)
+  })
+})
