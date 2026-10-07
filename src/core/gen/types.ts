@@ -47,6 +47,30 @@ export interface AssetReader {
   readText(asset: string): string
 }
 
+/**
+ * Places in the generated main class that features (and later extensions) add code to, instead of the
+ * main class knowing about each feature. Lines are sorted by `order` (stable) when rendered.
+ */
+export class HookSites {
+  private lines: Record<string, { order: number; text: string }[]> = {}
+
+  /** Adds a line to a site ("commonInit": common setup; "forgeClientInit": client-only setup on Forge/NeoForge; "fabricClientInit": Fabric/Quilt client entrypoint). */
+  add(site: 'commonInit' | 'forgeClientInit' | 'fabricClientInit', text: string, order = 100): void {
+    ;(this.lines[site] ??= []).push({ order, text })
+  }
+
+  get(site: string): string[] {
+    return (this.lines[site] ?? [])
+      .map((l, i) => ({ ...l, i }))
+      .sort((a, b) => a.order - b.order || a.i - b.i)
+      .map((l) => l.text)
+  }
+
+  has(site: string): boolean {
+    return (this.lines[site]?.length ?? 0) > 0
+  }
+}
+
 export interface GenCtx {
   ir: ModIR
   target: Target
@@ -61,6 +85,7 @@ export interface GenCtx {
   /** item id → GeckoLib resource name (items sharing an identical model share one) */
   geoNames: Map<string, string>
   files: GenFile[]
+  hooks: HookSites
 }
 
 export const RES = 'src/main/resources'

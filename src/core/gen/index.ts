@@ -6,7 +6,7 @@ import { genData } from './data'
 import { genJava } from './java'
 import { configResource, usesConfig } from './config'
 import { farmersDelightFor, getProfile } from './profiles'
-import type { AssetReader, GenCtx, GenFile, ResolvedDeps } from './types'
+import { HookSites, type AssetReader, type GenCtx, type GenFile, type ResolvedDeps } from './types'
 
 export type { GenFile, ResolvedDeps, AssetReader } from './types'
 
@@ -55,7 +55,8 @@ export function generate(ir: ModIR, target: Target, deps: ResolvedDeps, read: As
     fd: usesFD ? farmersDelightFor(target.loader, target.mc) : null,
     gecko: usesGeo && p.geckoArmor && !!deps.geckolib,
     geoNames: geoNames(ir),
-    files: []
+    files: [],
+    hooks: new HookSites()
   }
   genBuild(ctx)
   genJava(ctx)

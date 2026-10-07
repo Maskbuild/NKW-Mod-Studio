@@ -459,7 +459,11 @@ ${wornEffectsMethod()}
   if (usesRegen(ir)) genRegen(ctx, out)
   if (ir.mobs.length) genMobs(ctx, out)
   if (usesHarvest(ir)) genHarvest(ctx, out)
-  if (usesHud(ir)) genHarvestHud(ctx, out)
+  if (usesHud(ir)) {
+    genHarvestHud(ctx, out)
+    ctx.hooks.add('forgeClientInit', 'NkwHarvestHud.init(bus);', 10)
+    ctx.hooks.add('fabricClientInit', 'NkwHarvestHud.init();', 10)
+  }
   if (usesBreakRules(ir)) genBreakRules(ctx, out)
   if (usesConfig(ir)) genConfig(ctx, out)
 
@@ -723,13 +727,29 @@ ${accept(tb, '            ')}
 
   // ───────── main class ─────────
   const endDiscs = ir.items.filter((i) => i.disc && i.disc.onEnd !== 'stay')
-  if (endDiscs.length) genJukebox(ctx, endDiscs, get, out)
+  if (endDiscs.length) {
+    genJukebox(ctx, endDiscs, get, out)
+    ctx.hooks.add('commonInit', 'NkwJukebox.init();', 10)
+  }
   const headItems = p.propertiesId ? [] : ir.items.filter((i) => i.headwear && i.headwearRightClick !== false)
-  if (headItems.length) genHeadwear(ctx, headItems, get, out)
-  const thirstMod = genThirst(ctx, get, out)
+  if (headItems.length) {
+    genHeadwear(ctx, headItems, get, out)
+    ctx.hooks.add('commonInit', 'NkwHeadwear.init();', 20)
+  }
+  if (genThirst(ctx, get, out)) ctx.hooks.add('commonInit', 'NkwThirst.init();', 30)
+  if (usesHarvest(ir)) ctx.hooks.add('commonInit', 'NkwHarvest.init();', 40)
+  if (usesBreakRules(ir)) ctx.hooks.add('commonInit', 'NkwBreakRules.init();', 50)
   if (ir.items.some((i) => (i.tool?.durability ?? 0) > 0) && p.toolApi !== 'tierLevel') genTiers(ctx, out)
   const attrItems = ir.items.filter((i) => i.attributes?.length)
-  if (attrItems.length) genAttributes(ctx, attrItems, get, out)
+  if (attrItems.length) {
+    genAttributes(ctx, attrItems, get, out)
+    ctx.hooks.add('commonInit', 'NkwAttributes.init();', 60)
+  }
+  const hookLines = (site: Parameters<typeof ctx.hooks.add>[0]) =>
+    ctx.hooks
+      .get(site)
+      .map((l) => `        ${l}\n`)
+      .join('')
   // Script nodes: the user's own Java files, in the mod's package (Forge/NeoForge find @EventBusSubscriber
   // classes themselves; Fabric/Quilt entrypoints are added to the mod metadata)
 
@@ -756,7 +776,7 @@ public class NkwMod implements ModInitializer {
         ModBlocks.init();
         ModItems.init();
         ModTabs.init();
-${ir.mobs.length ? '        ModEntities.init();\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}${thirstMod ? '        NkwThirst.init();\n' : ''}${usesHarvest(ir) ? '        NkwHarvest.init();\n' : ''}${usesBreakRules(ir) ? '        NkwBreakRules.init();\n' : ''}${attrItems.length ? '        NkwAttributes.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${ir.mobs.length ? '        ModEntities.init();\n' : ''}${hookLines('commonInit')}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 }`
     } else {
@@ -769,7 +789,7 @@ ${ir.mobs.length ? '        ModEntities.init();\n' : ''}${endDiscs.length ? '   
         ...(p.tabRegistry ? ['ModTabs.TABS'] : [])
       ]
       const clientSetup = needsRenderLayer && !p.modelRenderType
-      if (ir.mobs.length || usesHud(ir))
+      if (ir.mobs.length || ctx.hooks.has('forgeClientInit'))
         j.use(
           neo ? 'net.neoforged.fml.loading.FMLEnvironment' : 'net.minecraftforge.fml.loading.FMLEnvironment',
           neo ? 'net.neoforged.api.distmarker.Dist' : 'net.minecraftforge.api.distmarker.Dist'
@@ -787,8 +807,11 @@ public class NkwMod {
     ${ctor}
         NkwTags.init();
 ${regs.map((r) => `        ${r}.register(bus);`).join('\n')}
-${ir.mobs.length ? `        ModEntities.init(bus);\n        if (FMLEnvironment.dist == Dist.CLIENT) NkwMobsClient.init(bus);\n` : ''}${usesHud(ir) ? '        if (FMLEnvironment.dist == Dist.CLIENT) NkwHarvestHud.init(bus);\n' : ''}
-${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}${thirstMod ? '        NkwThirst.init();\n' : ''}${usesHarvest(ir) ? '        NkwHarvest.init();\n' : ''}${usesBreakRules(ir) ? '        NkwBreakRules.init();\n' : ''}${attrItems.length ? '        NkwAttributes.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${ir.mobs.length ? `        ModEntities.init(bus);\n        if (FMLEnvironment.dist == Dist.CLIENT) NkwMobsClient.init(bus);\n` : ''}${ctx.hooks
+        .get('forgeClientInit')
+        .map((l) => `        if (FMLEnvironment.dist == Dist.CLIENT) ${l}\n`)
+        .join('')}
+${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${hookLines('commonInit')}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 
     ${idFn}
@@ -824,7 +847,7 @@ public class NkwClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
 ${cutoutBlocks.map((b) => `        BlockRenderLayerMap.INSTANCE.putBlock(ModBlocks.${C(b.id)}, RenderType.cutout());`).join('\n')}
-${usesHud(ir) ? '        NkwHarvestHud.init();\n' : ''}${ir.mobs.map((m) => (p.mc === '1.16.5' ? `        EntityRendererRegistry.INSTANCE.register(ModEntities.${C(m.id)}, (manager, context) -> ${mobRenderer(ctx, m, 'manager')});` : `        EntityRendererRegistry.register(ModEntities.${C(m.id)}, context -> ${mobRenderer(ctx, m, 'context')});`)).join('\n')}
+${hookLines('fabricClientInit')}${ir.mobs.map((m) => (p.mc === '1.16.5' ? `        EntityRendererRegistry.INSTANCE.register(ModEntities.${C(m.id)}, (manager, context) -> ${mobRenderer(ctx, m, 'manager')});` : `        EntityRendererRegistry.register(ModEntities.${C(m.id)}, context -> ${mobRenderer(ctx, m, 'context')});`)).join('\n')}
     }
 }`)
     )
