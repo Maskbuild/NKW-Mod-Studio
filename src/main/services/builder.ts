@@ -17,9 +17,8 @@ import { extTestSlugs } from '@core/gen/extgen'
 import { checkExtAssets } from './assetchecks'
 import { extModDeps, linkedModDeps, resolveDeps } from './versions'
 import { loadMod, modJarPath } from './vanilla'
-import { enableFirstParty } from '@core/ext/firstparty'
 
-enableFirstParty()
+if (import.meta.env.DEV) void import('../devExtensions')
 
 const SAFE_PATH = /^[A-Za-z0-9_.][A-Za-z0-9_./-]*$/
 

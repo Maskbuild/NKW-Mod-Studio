@@ -1,10 +1,9 @@
 /// <reference lib="webworker" />
 import { compile } from '@core/compile/compile'
 import { applyBundle, type ExtBundle } from '@core/ext/bundle'
-import { enableFirstParty } from '@core/ext/firstparty'
 import type { Project, Target } from '@core/project'
 
-enableFirstParty()
+if (import.meta.env.DEV) await import('./devExtensions')
 
 // Validation runs off the UI thread so typing and dragging stay smooth.
 self.onmessage = (e: MessageEvent<{ kind: 'ext'; bundle: ExtBundle } | { kind?: undefined; seq: number; project: Project; target?: Target }>) => {
