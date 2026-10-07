@@ -34,6 +34,7 @@ const INVOKE = new Set([
   'build:openFolder',
   'build:clean',
   'shell:openExternal',
+  'skins:exportFigura',
   'ext:list',
   'ext:bundle',
   'ext:inspect',

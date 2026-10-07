@@ -18,6 +18,7 @@ import { useIde } from '../ide/ideStore'
 import { ArmorFitField } from './ArmorFit'
 import { TabOrder } from './TabOrder'
 import { TimerUiEditor } from './TimerUiEditor'
+import { WardrobeEditor } from './WardrobeEditor'
 import { BlockListField } from './BlockList'
 import { TagGrid } from './TagPreview'
 
@@ -646,6 +647,8 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
       return <TabOrder node={node} />
     case 'timerUi':
       return <TimerUiEditor node={node} />
+    case 'wardrobe':
+      return <WardrobeEditor node={node} />
     default:
       return (
         <div className="field">

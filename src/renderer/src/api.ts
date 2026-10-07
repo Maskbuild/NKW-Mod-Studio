@@ -91,6 +91,8 @@ export const api = {
   openBuildFolder: (t: Target) => call<boolean>('build:openFolder', t),
   cleanBuild: (t: Target) => call<boolean>('build:clean', t),
   openExternal: (url: string) => call<boolean>('shell:openExternal', { url }),
+  skinsExportFigura: (skins: { id: string; name: string; file: string; openFile: string; slim: boolean; set: string }[]) =>
+    call<{ dir: string; avatars: number } | null>('skins:exportFigura', { skins }),
   extList: () => call<ExtList>('ext:list'),
   extBundle: () => call<{ id: string; files: Record<string, string> }[]>('ext:bundle'),
   extInspect: (source: string) => call<ExtInspected>('ext:inspect', { source }),

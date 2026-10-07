@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { compile } from '../src/core/compile/compile'
 import { enableFirstParty } from '../src/core/ext/firstparty'
 import { FALLBACK_DEPS, TOOL_VERSIONS, generate } from '../src/core/gen/index'
+import { figuraAvatars } from '../src/core/figura'
 import type { Project } from '../src/core/project'
 import { node, skinsProject } from './helpers/skinsProject'
 
@@ -136,5 +137,22 @@ describe('Skins extension', () => {
         return p
       })
     expect(list.length).toBeGreaterThan(10)
+  })
+
+  it('makes one Figura avatar per set with the pictures and a script', () => {
+    const skin = (id: string, set: string, openFile = '') => ({ id, name: `Skin "${id}"`, file: `textures/${id}.png`, openFile, slim: false, set })
+    const avatars = figuraAvatars(
+      [skin('a', 'Day'), skin('b', 'Day', 'textures/b_open.png'), skin('c', ''), skin('d', 'day'), { ...skin('e', 'x'), file: '' }, skin('Bad Id', 'x')],
+      { name: 'My Mod', authors: 'Ann, Bob' }
+    )
+    expect(avatars.map((a) => a.dir)).toEqual(['day', 'all', 'day_2'])
+    const day = avatars[0]
+    expect(day.files.map((f) => f.path)).toEqual(['avatar.json', 'skin_a.png', 'skin_b.png', 'skin_b_open.png', 'script.lua'])
+    expect(JSON.parse(day.files[0].text!)).toMatchObject({ name: 'My Mod - Day', authors: ['Ann', 'Bob'] })
+    expect(day.files.find((f) => f.path === 'skin_b_open.png')!.copy).toBe('textures/b_open.png')
+    const lua = day.files.find((f) => f.path === 'script.lua')!.text!
+    expect(lua).toContain('{ name = "Skin \\"a\\"", texture = "skin_a" }')
+    expect(lua).toContain('open = "skin_b_open"')
+    expect(lua).toContain('renderer:setPrimaryTexture("CUSTOM"')
   })
 })

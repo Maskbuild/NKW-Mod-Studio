@@ -43,6 +43,7 @@ import { assetPath, buildDir, findJar, previewFiles, startBuild, type RunningBui
 import { createProjectDir, readProject, saveProject, type SettingsStore } from './services/store'
 import { TEMPLATE_IDS, applyTemplate } from './templates'
 import { ExtensionStore } from './services/extensions'
+import { writeFiguraAvatars } from './services/figura'
 import { ExtensionRuntime } from './services/extruntime'
 import { getBuffer, getJson } from './services/net'
 import official from '@core/ext/official.json'
@@ -290,6 +291,36 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
   handle('ext:rollback', EXT_ID, ({ id }) => extRuntime.rollback(id))
   // looking for updates in the background only happens when downloads are allowed
   handle('ext:checkUpdates', z.undefined(), () => (settings.get().allowDownloads ? extRuntime.checkUpdates() : []))
+
+  // ───────── skins: Figura avatars ─────────
+  handle(
+    'skins:exportFigura',
+    z.object({
+      skins: z
+        .array(
+          z.object({
+            id: z.string().max(64),
+            name: z.string().max(100),
+            file: z.string().max(300),
+            openFile: z.string().max(300),
+            slim: z.boolean(),
+            set: z.string().max(40)
+          })
+        )
+        .max(200)
+    }),
+    async ({ skins }, w) => {
+      const dir = requireProject()
+      const th = settings.get().language === 'th'
+      const r = await dialog.showOpenDialog(w, {
+        title: th ? 'เลือกโฟลเดอร์ที่จะเขียนอวาตาร์ Figura' : 'Choose where to write the Figura avatars',
+        properties: ['openDirectory', 'createDirectory']
+      })
+      if (r.canceled || !r.filePaths[0]) return null
+      const project = await readProject(dir)
+      return writeFiguraAvatars(skins, { name: project.meta.name, authors: project.meta.authors }, (a) => assetPath(dir, a), r.filePaths[0])
+    }
+  )
 
   // ───────── asset tree: folders, rename, move, delete ─────────
   const PATH = z.string().min(3).max(300)
