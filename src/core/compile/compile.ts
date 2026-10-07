@@ -1,6 +1,7 @@
 import { ASSET_RE, ID_RE, NSID_RE, type GraphNode, type Project, type Target } from '../project'
 import { parseFit } from '../gen/geo'
 import { extHost } from '../ext/host'
+import { extensionOfType } from '../ext/used'
 import { runMappings } from '../ext/mapping'
 import { REMOVED_NODE_TYPES } from '../nodes/removed'
 import { ATTRIBUTES, BREAK_TOOLS, EFFECTS, NODE_DEF_MAP, TOOL_LEVELS, breakRuleEntries, canConnect, gameCropIds, pinOf, type L10n } from '../nodes/defs'
@@ -118,7 +119,20 @@ export function compile(project: Project, target?: Target): CompileResult {
     if (!NODE_DEF_MAP[n.type]) {
       const gone = REMOVED_NODE_TYPES[n.type]
       if (gone) warn(n.id, gone.en, gone.th)
-      else err(n.id, `Unknown node type "${n.type}"`, `ไม่รู้จักโหนดชนิด "${n.type}"`)
+      else {
+        const ext = extensionOfType(n.type)
+        diags.push({
+          severity: 'error',
+          nodeId: n.id,
+          message: ext
+            ? {
+                en: `Needs the "${ext}" extension (Settings → Extensions) for "${n.type}"`,
+                th: `ต้องติดตั้งส่วนเสริม "${ext}" (ตั้งค่า → ส่วนเสริม) สำหรับโหนด "${n.type}"`
+              }
+            : { en: `Unknown node type "${n.type}"`, th: `ไม่รู้จักโหนดชนิด "${n.type}"` },
+          ...(ext ? { needsExtension: ext } : {})
+        })
+      }
       continue
     }
     nodes.set(n.id, n)

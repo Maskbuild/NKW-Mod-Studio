@@ -123,6 +123,11 @@ export const ProjectSchema = z.object({
     .record(z.string().regex(OVERRIDE_KEY_RE), z.string().max(1_000_000))
     .refine((o) => Object.keys(o).length <= 300, 'Too many edited files')
     .optional(),
+  /** extensions the project's nodes come from (so a missing one can be named when the project is opened elsewhere) */
+  extensions: z
+    .array(z.object({ id: z.string().regex(/^[a-z][a-z0-9-]{2,40}$/), version: z.string().max(40).optional() }))
+    .max(50)
+    .optional(),
   /** other mods whose items, blocks and crops the editor lists (Modrinth slug, or file_<name> for a .jar on disk) */
   mods: z
     .array(

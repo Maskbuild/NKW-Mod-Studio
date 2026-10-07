@@ -6,6 +6,8 @@ import { compile } from '../src/core/compile/compile'
 import { enableFirstParty } from '../src/core/ext/firstparty'
 import { extHost } from '../src/core/ext/host'
 import { registry } from '../src/core/ext/registry'
+import { usedExtensions } from '../src/core/ext/used'
+import { ProjectSchema } from '../src/core/project'
 import { writeFixture } from '../scripts/fixture'
 
 enableFirstParty()
@@ -44,7 +46,40 @@ describe('Roleplay extension', () => {
       expect(ir.gameCrops).toEqual([])
       expect(ir.breakRules).toEqual([])
       for (const b of ir.blocks) if (b.crop) expect(b.crop).toMatchObject({ mode: 'replant', input: 'break', ui: null, adventure: true, sneak: false })
-      expect(diagnostics.some((d) => /Unknown node type "breakRule"/.test(d.message.en))).toBe(true)
+      expect(diagnostics.some((d) => d.needsExtension === 'roleplay')).toBe(true)
+    } finally {
+      enableFirstParty(['roleplay'])
+    }
+  })
+})
+
+describe('projects and missing extensions', () => {
+  it('names the extension a node needs when it is not installed', () => {
+    extHost.disable('thirst')
+    try {
+      const { diagnostics } = compile(project, target)
+      const d = diagnostics.find((x) => x.needsExtension === 'thirst')!
+      expect(d.severity).toBe('error')
+      expect(d.message.en).toContain('"thirst" extension')
+    } finally {
+      enableFirstParty(['thirst'])
+    }
+  })
+
+  it('a project remembers the extensions its nodes come from', () => {
+    const used = usedExtensions(project.graph.nodes)
+    expect(used.map((u) => u.id)).toEqual(['roleplay', 'thirst'])
+    expect(used[0].version).toBe('1.0.0')
+    expect(ProjectSchema.parse({ ...project, extensions: used }).extensions).toEqual(used)
+  })
+
+  it('a removed node of an old project keeps its data and its edges round-trip', () => {
+    extHost.disable('roleplay')
+    try {
+      const again = ProjectSchema.parse(JSON.parse(JSON.stringify(project)))
+      expect(again.graph.nodes.filter((n) => n.type === 'breakRule').length).toBeGreaterThan(0)
+      expect(again.graph.edges.length).toBe(project.graph.edges.length)
+      expect(usedExtensions(again.graph.nodes).map((u) => u.id)).toContain('roleplay')
     } finally {
       enableFirstParty(['roleplay'])
     }

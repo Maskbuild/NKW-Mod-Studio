@@ -2560,3 +2560,12 @@ img.frame0 {
   border: 1px solid var(--border);
   border-radius: 10px;
 }
+.missing-ext {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: rgba(217, 119, 6, 0.14);
+  border-bottom: 1px solid rgba(217, 119, 6, 0.4);
+  font-size: 12.5px;
+}

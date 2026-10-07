@@ -14,6 +14,7 @@ import { VanillaPanel } from '../graph/VanillaPanel'
 import { DEFAULT_LAYOUT, Resizer, useLayout } from '../components/Resizer'
 import { IDownload, IFolder, IHome, ILayout, IPlay, IRedo, ISettings, IStop, IUndo, Logo } from '../components/Icons'
 import { SettingsDialog, type SettingsSection } from './SettingsDialog'
+import { MissingExtensions } from '../components/MissingExtensions'
 import { currentBundle, onBundleChange } from '../ext/extensions'
 import { useIde, watchGeneratedFiles } from '../ide/ideStore'
 import { ActivityBar, EditorTabs, StatusBar } from '../ide/Chrome'
@@ -409,6 +410,7 @@ function WorkspaceInner() {
   return (
     <div className={`ws${ide ? ' ide' : ''}`}>
       <Toolbar onSettings={openSettings} />
+      <MissingExtensions onInstall={() => openSettings('extensions')} />
       <div className="ws-main">
         {ide && <ActivityBar onSettings={() => openSettings()} />}
         {showLeft && (

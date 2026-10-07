@@ -5,6 +5,7 @@ import type { Diagnostic } from '@core/ir'
 import { toId, type LinkedMod, type GraphEdge, type GraphNode, type Project, type Target } from '@core/project'
 import { api, type AssetEntry, type Settings } from './api'
 import type { VanillaData } from '@core/vanilla'
+import { usedExtensions } from '@core/ext/used'
 
 export type NodeData = Record<string, unknown>
 export type FlowNode = Node<NodeData>
@@ -109,6 +110,8 @@ interface State {
   dirty: boolean
   saving: boolean
   diagnostics: Diagnostic[]
+  /** extensions the open project was saved with */
+  projectExt: string[]
   issues: Record<string, 'error' | 'warning'>
   assets: AssetEntry[]
   clipboard: Snapshot | null
@@ -171,6 +174,7 @@ export const useStore = create<State>((set, get) => ({
   dirty: false,
   saving: false,
   diagnostics: [],
+  projectExt: [],
   issues: {},
   assets: [],
   clipboard: null,
@@ -202,6 +206,7 @@ export const useStore = create<State>((set, get) => ({
       future: [],
       dirty: false,
       diagnostics: [],
+      projectExt: (p.extensions ?? []).map((e) => e.id),
       issues: {},
       build: { running: false, task: null, progress: null, logs: [], lastCode: null }
     })
@@ -218,6 +223,7 @@ export const useStore = create<State>((set, get) => ({
   project() {
     const s = get()
     if (!s.meta) return null
+    const used = usedExtensions(s.nodes.map((n) => ({ type: n.type ?? '' })))
     return {
       schemaVersion: 1,
       meta: s.meta,
@@ -225,7 +231,8 @@ export const useStore = create<State>((set, get) => ({
       activeTarget: s.activeTarget,
       graph: fromFlow(s.nodes, s.edges),
       ...(Object.keys(s.overrides).length ? { overrides: s.overrides } : {}),
-      ...(s.mods.length ? { mods: s.mods } : {})
+      ...(s.mods.length ? { mods: s.mods } : {}),
+      ...(used.length ? { extensions: used } : {})
     }
   },
   setGraph(nodes, edges, record = false) {

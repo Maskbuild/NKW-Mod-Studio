@@ -382,4 +382,6 @@ export interface Diagnostic {
   severity: 'error' | 'warning'
   nodeId?: string
   message: L10n
+  /** the problem goes away when this extension is installed */
+  needsExtension?: string
 }
