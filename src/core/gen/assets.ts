@@ -1,4 +1,5 @@
 import type { BlockIR, ModelRef } from '../ir'
+import { extLangEntries } from './extgen'
 import { harvestUis, usesHud } from './harvest'
 import { breakRuleKey } from './breakRules'
 import { armorIconModel, fitAnimation, geoLoopName, javaModelToGeo, prepareArmorGeo, type GeoFile } from './geo'
@@ -286,6 +287,7 @@ export function genAssets(ctx: GenCtx): void {
     put(`itemGroup.${ns}_${t.id}`, t.title, t.titleTh)
     if (t.logo && !t.icon) put(`item.${ns}.${t.id}_tab_icon`, t.title, t.titleTh)
   }
+  for (const [k, e, t] of extLangEntries(ctx)) put(k, e, t)
   files.push({ path: `${A}/lang/en_us.json`, text: json(en) })
   files.push({ path: `${A}/lang/th_th.json`, text: json(th) })
 }

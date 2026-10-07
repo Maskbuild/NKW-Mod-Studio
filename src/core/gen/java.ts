@@ -1186,6 +1186,7 @@ function blocksClass(ctx: GenCtx): string {
   const ctorFor = (b: BlockIR): string => {
     if (b.crop) return cropCtor(b)
     const props = propsFor(b)
+    if (b.javaClass) return `new ${b.javaClass}(${props})`
     if (b.regen || b.depleted) return regenCtor(ctx, b, props)
     if (b.kind === 'model' && b.model) {
       let boxes: Box[]

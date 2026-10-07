@@ -1,0 +1,304 @@
+{
+  "schema": 1,
+  "id": "skins",
+  "name": {
+    "en": "Skins",
+    "th": "สกิน"
+  },
+  "description": {
+    "en": "Player skins of any size (64 to 2048 pixels) for your mod: a wardrobe window opened by a key or a block, skins everyone on the server can see, a mouth-open picture for talking, and Figura avatar export.",
+    "th": "สกินผู้เล่นทุกขนาด (64 ถึง 2048 พิกเซล) ให้ม็อดของคุณ: หน้าต่างตู้เสื้อผ้าเปิดด้วยปุ่มหรือบล็อก ทุกคนในเซิร์ฟเวอร์เห็นสกิน รูปปากเปิดตอนพูด และส่งออกอวาตาร์ Figura"
+  },
+  "version": "1.0.0",
+  "minApp": "0.2.1",
+  "targets": {
+    "loaders": ["fabric", "quilt", "neoforge"],
+    "mc": "1.20.1-1.21.1"
+  },
+  "categories": {
+    "skins": {
+      "label": {
+        "en": "Skins",
+        "th": "สกิน"
+      },
+      "color": "#ec4899",
+      "order": 11
+    }
+  },
+  "nodes": ["nodes/skin.json", "nodes/skinWardrobe.json"],
+  "derive": [
+    {
+      "slot": "stations",
+      "from": "skins.wardrobes",
+      "where": "item.stationEnabled",
+      "value": {
+        "id": {
+          "item": "stationId"
+        },
+        "name": {
+          "item": "stationName"
+        },
+        "nameTh": {
+          "item": "stationNameTh"
+        },
+        "texture": {
+          "item": "stationTexture"
+        }
+      }
+    },
+    {
+      "slot": "openSkins",
+      "from": "skins.skins",
+      "where": "item.openFile != ''",
+      "value": {
+        "id": {
+          "item": "id"
+        },
+        "openFile": {
+          "item": "openFile"
+        }
+      }
+    }
+  ],
+  "contribute": {
+    "blocks": [
+      {
+        "from": "skins.stations",
+        "value": {
+          "id": {
+            "item": "id"
+          },
+          "name": {
+            "item": "name"
+          },
+          "nameTh": {
+            "item": "nameTh"
+          },
+          "side": {
+            "item": "texture"
+          },
+          "javaClass": {
+            "const": "NkwSkinStationBlock"
+          },
+          "hardness": {
+            "const": 2.5
+          },
+          "resistance": {
+            "const": 6
+          },
+          "sound": {
+            "const": "wood"
+          },
+          "tool": {
+            "const": "axe"
+          }
+        }
+      }
+    ]
+  },
+  "assetChecks": [
+    {
+      "slot": "skins",
+      "field": "file",
+      "png": {
+        "sizes": [64, 128, 256, 512, 1024, 2048],
+        "square": true
+      }
+    },
+    {
+      "slot": "skins",
+      "field": "openFile",
+      "optional": true,
+      "png": {
+        "sizes": [64, 128, 256, 512, 1024, 2048],
+        "square": true
+      }
+    }
+  ],
+  "mixins": [
+    {
+      "name": "skins",
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0",
+      "common": ["PlayerMixin"],
+      "client": ["AbstractClientPlayerMixin"]
+    }
+  ],
+  "generate": [
+    {
+      "id": "core",
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0",
+      "emit": [
+        {
+          "kind": "java",
+          "class": "NkwSkins",
+          "template": "templates/NkwSkins.tpl"
+        },
+        {
+          "kind": "java",
+          "class": "NkwSkinCommands",
+          "template": "templates/NkwSkinCommands.tpl"
+        },
+        {
+          "kind": "java",
+          "class": "NkwSkinsClient",
+          "template": "templates/NkwSkinsClient.tpl"
+        },
+        {
+          "kind": "java",
+          "class": "NkwWardrobeScreen",
+          "template": "templates/NkwWardrobeScreen.tpl"
+        },
+        {
+          "kind": "java",
+          "class": "PlayerMixin",
+          "template": "templates/PlayerMixin.tpl",
+          "package": "mixin"
+        },
+        {
+          "kind": "java",
+          "class": "AbstractClientPlayerMixin",
+          "template": "templates/AbstractClientPlayerMixin.tpl",
+          "package": "mixin"
+        }
+      ]
+    },
+    {
+      "id": "station",
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0 && ext.wardrobes[0].stationEnabled",
+      "emit": [
+        {
+          "kind": "java",
+          "class": "NkwSkinStationBlock",
+          "template": "templates/NkwSkinStationBlock.tpl"
+        }
+      ]
+    },
+    {
+      "id": "fabric",
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0 && (loader == 'fabric' || loader == 'quilt')",
+      "emit": [
+        {
+          "kind": "java",
+          "class": "NkwSkinsFabric",
+          "template": "templates/NkwSkinsFabric.tpl"
+        },
+        {
+          "kind": "java",
+          "class": "NkwSkinsFabricClient",
+          "template": "templates/NkwSkinsFabricClient.tpl"
+        }
+      ]
+    },
+    {
+      "id": "neoforge",
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0 && loader == 'neoforge'",
+      "emit": [
+        {
+          "kind": "java",
+          "class": "NkwSkinsNeo",
+          "template": "templates/NkwSkinsNeo.tpl"
+        },
+        {
+          "kind": "java",
+          "class": "NkwSkinsNeoClient",
+          "template": "templates/NkwSkinsNeoClient.tpl"
+        }
+      ]
+    },
+    {
+      "id": "textures",
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0",
+      "each": "ext.skins",
+      "emit": [
+        {
+          "kind": "copy",
+          "from": "{{ item.file }}",
+          "path": "resources/assets/{{ modId }}/textures/skins/{{ item.id }}.png"
+        }
+      ]
+    },
+    {
+      "id": "textures-open",
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0",
+      "each": "ext.openSkins",
+      "emit": [
+        {
+          "kind": "copy",
+          "from": "{{ item.openFile }}",
+          "path": "resources/assets/{{ modId }}/textures/skins/{{ item.id }}_open.png"
+        }
+      ]
+    }
+  ],
+  "hooks": [
+    {
+      "site": "commonInit",
+      "order": 70,
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0 && (loader == 'fabric' || loader == 'quilt')",
+      "line": "NkwSkinsFabric.init();"
+    },
+    {
+      "site": "commonInit",
+      "order": 70,
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0 && loader == 'neoforge'",
+      "line": "NkwSkinsNeo.init();"
+    },
+    {
+      "site": "fabricClientInit",
+      "order": 70,
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0 && (loader == 'fabric' || loader == 'quilt')",
+      "line": "NkwSkinsFabricClient.init();"
+    },
+    {
+      "site": "forgeClientInit",
+      "order": 70,
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0 && loader == 'neoforge'",
+      "line": "NkwSkinsNeoClient.init(bus);"
+    }
+  ],
+  "lang": [
+    {
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0",
+      "each": "ext.skins",
+      "key": "skin.{{ modId }}.{{ item.id }}",
+      "en": "{{ item.name }}",
+      "th": "{{ item.nameTh }}"
+    },
+    {
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0",
+      "key": "gui.{{ modId }}.wardrobe",
+      "en": "{{ ext.wardrobes[0].title }}",
+      "th": "{{ ext.wardrobes[0].titleTh }}"
+    },
+    {
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0",
+      "key": "gui.{{ modId }}.wardrobe.reset",
+      "en": "My own skin",
+      "th": "สกินของฉัน"
+    },
+    {
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0",
+      "key": "gui.{{ modId }}.wardrobe.close",
+      "en": "Close",
+      "th": "ปิด"
+    },
+    {
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0",
+      "key": "gui.{{ modId }}.wardrobe.prev",
+      "en": "< Previous",
+      "th": "< ก่อนหน้า"
+    },
+    {
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0",
+      "key": "gui.{{ modId }}.wardrobe.next",
+      "en": "Next >",
+      "th": "ถัดไป >"
+    },
+    {
+      "when": "len(ext.skins) > 0 && len(ext.wardrobes) > 0 && ext.wardrobes[0].keyEnabled",
+      "key": "key.{{ modId }}.wardrobe",
+      "en": "Open the wardrobe",
+      "th": "เปิดตู้เสื้อผ้า"
+    }
+  ]
+}

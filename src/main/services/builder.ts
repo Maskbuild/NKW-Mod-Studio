@@ -14,6 +14,7 @@ import type { GenFile, ResolvedDeps } from '@core/gen/types'
 import { ASSET_RE, javaPackage, type Project, type Target } from '@core/project'
 import { ensureGradle, ensureJdk, findJdks, gradleLaunch, type Progress } from './toolchain'
 import { extTestSlugs } from '@core/gen/extgen'
+import { checkExtAssets } from './assetchecks'
 import { extModDeps, linkedModDeps, resolveDeps } from './versions'
 import { loadMod, modJarPath } from './vanilla'
 import { enableFirstParty } from '@core/ext/firstparty'
@@ -157,6 +158,8 @@ export async function startBuild(o: BuildOptions): Promise<RunningBuild> {
       deps.localMods.push(m.id)
     }
   }
+  const assetProblems = await checkExtAssets(ir, o.target, (a) => assetPath(o.projectDir, a))
+  if (assetProblems.length) throw new Error(`Fix the files first:\n${assetProblems.slice(0, 8).join('\n')}`)
   const generated = generate(ir, o.target, deps, { readText: (a) => readFileSyncUtf8(assetPath(o.projectDir, a)) })
   const { files, edited } = applyOverrides(generated, o.project, o.target)
   const changed = await writeGenerated(o.projectDir, outDir, files)

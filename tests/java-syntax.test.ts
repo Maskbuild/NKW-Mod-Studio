@@ -10,6 +10,7 @@ import { extTestSlugs } from '../src/core/gen/extgen'
 import { FALLBACK_DEPS, TOOL_VERSIONS, generate } from '../src/core/gen/index'
 import { PROFILES, getProfile } from '../src/core/gen/profiles'
 import { javaPackage } from '../src/core/project'
+import { skinsProject } from './helpers/skinsProject'
 import { writeFixture } from '../scripts/fixture'
 
 enableFirstParty()
@@ -44,6 +45,34 @@ describe.skipIf(!hasJdk)('generated Java parses', () => {
         const r = spawnSync('java', ['tests/helpers/JavaSyntax.java', join(root, 'list.txt')], { encoding: 'utf8' })
         expect(r.stdout, r.stderr).toMatch(/^OK \d+/m)
       }, 60_000)
+
+  for (const [loader, mc] of [
+    ['fabric', '1.20.1'],
+    ['fabric', '1.20.4'],
+    ['fabric', '1.21.1'],
+    ['quilt', '1.21.1'],
+    ['neoforge', '1.20.4'],
+    ['neoforge', '1.21.1']
+  ] as const)
+    it(`skins on ${loader} ${mc}`, () => {
+      const target = { loader, mc }
+      const { ir } = compile(skinsProject(), target)
+      const files = generate(ir, target, { ...TOOL_VERSIONS, ...FALLBACK_DEPS[mc], gradle: '8.14.3' }, { readText: () => '' }).filter(
+        (f) => f.path.endsWith('.java') && f.text !== undefined
+      )
+      expect(files.some((f) => f.path.endsWith('/NkwWardrobeScreen.java'))).toBe(true)
+      const root = join(dir, `skins-${loader}-${mc}`)
+      const list: string[] = []
+      for (const f of files) {
+        const path = join(root, f.path)
+        mkdirSync(dirname(path), { recursive: true })
+        writeFileSync(path, f.text!)
+        list.push(path)
+      }
+      writeFileSync(join(root, 'list.txt'), list.join('\n'))
+      const r = spawnSync('java', ['tests/helpers/JavaSyntax.java', join(root, 'list.txt')], { encoding: 'utf8' })
+      expect(r.stdout, r.stderr).toMatch(/^OK \d+/m)
+    }, 60_000)
 
   it('is not skipped while extensions are loaded', () => {
     expect(extHost.list().length).toBeGreaterThan(0)

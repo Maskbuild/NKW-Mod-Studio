@@ -32,6 +32,7 @@ export type Source =
     }
   | { input: string; required?: boolean }
   | { ingredient: string; required?: boolean }
+  | { texture: string; required?: boolean }
   | { rows: { count: number; required: string; fields: Record<string, Source> } }
   | { const: string | number | boolean | null }
   | { nodeId: true }
@@ -57,6 +58,8 @@ export const SourceSchema: z.ZodType<Source> = z.union([
   }),
   /** what is wired into an input pin: the value another extension node made, or the id of a game object */
   z.strictObject({ input: z.string().regex(PINREF), required: z.boolean().optional() }),
+  /** the project texture wired into a pin (its asset path) */
+  z.strictObject({ texture: z.string().regex(PINREF), required: z.boolean().optional() }),
   /** what is wired into an ingredient pin: {item} or {tag} */
   z.strictObject({ ingredient: z.string().regex(PINREF), required: z.boolean().optional() }),
   /**
@@ -131,6 +134,8 @@ export interface MappingHost {
   target: { loader: string; mc: string } | null
   /** what is wired into an ingredient pin ({item} or {tag}), or null */
   ingredient(nodeId: string, handle: string): { item: string } | { tag: string } | null
+  /** the project texture (asset path) wired into a pin, or null */
+  texture(nodeId: string, handle: string): string | null
   diag(severity: 'error' | 'warning', nodeId: string | undefined, msg: L10n): void
 }
 
@@ -276,6 +281,11 @@ export function runMappings(exts: MappedExtension[], host: MappingHost, bag: Ext
           host.diag('error', nodeId, { en: `Connect an ingredient to "${nm(s.ingredient)}"`, th: `ต่อวัตถุดิบเข้าช่อง "${nm(s.ingredient)}"` })
         return x
       }
+      if ('texture' in s) {
+        const x = host.texture(nodeId, nm(s.texture))
+        if (!x && s.required) host.diag('error', nodeId, { en: `Connect a texture to "${nm(s.texture)}"`, th: `ต่อเท็กซ์เจอร์เข้าช่อง "${nm(s.texture)}"` })
+        return x
+      }
       if ('rows' in s) {
         const rows: Record<string, unknown>[] = []
         for (let k = 1; k <= s.rows.count; k++) {
@@ -405,6 +415,8 @@ export function sourceProblems(values: Record<string, Source> | undefined, props
       if (!s.optional && !props.has(nm(s.prop))) out.push(`reads unknown property "${nm(s.prop)}"`)
     } else if ('input' in s) {
       if (!pins.has(nm(s.input))) out.push(`reads unknown input "${nm(s.input)}"`)
+    } else if ('texture' in s) {
+      if (!pins.has(nm(s.texture))) out.push(`reads unknown input "${nm(s.texture)}"`)
     } else if ('ingredient' in s) {
       if (!pins.has(nm(s.ingredient))) out.push(`reads unknown input "${nm(s.ingredient)}"`)
     } else if ('rows' in s) {
@@ -414,4 +426,27 @@ export function sourceProblems(values: Record<string, Source> | undefined, props
   }
   for (const s of Object.values(values ?? {})) visit(s)
   return [...new Set(out)]
+}
+
+/** Values made from one record (derive / contribute): item, const and computed sources only. */
+export function recordValues(values: Record<string, Source>, item: Record<string, unknown>): Record<string, unknown> {
+  const read = (o: unknown, path: string) =>
+    path.split('.').reduce<unknown>((x, k) => (x && typeof x === 'object' ? (x as Record<string, unknown>)[k] : undefined), o)
+  const v: Record<string, unknown> = {}
+  for (const [field, src] of Object.entries(values)) {
+    v[field] =
+      'item' in src
+        ? read(item, src.item)
+        : 'const' in src
+          ? src.const
+          : 'computed' in src
+            ? evalExpr(parseExpr(src.computed), { scope: { item, v }, fns: FNS })
+            : undefined
+  }
+  return v
+}
+
+/** Whether a record passes a `where` expression (item, v). */
+export function recordMatches(where: string | undefined, item: Record<string, unknown>): boolean {
+  return !where || truthy(evalExpr(parseExpr(where), { scope: { item, v: {} }, fns: FNS }))
 }

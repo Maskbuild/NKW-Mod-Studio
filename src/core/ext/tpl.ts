@@ -293,7 +293,15 @@ export function javaFloat(n: number): string {
   return `${/[.e]/i.test(s) ? s : `${s}.0`}F`
 }
 
-const javaEscape = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '').replace(/\t/g, '\\t')
+const javaEscape = (s: string) =>
+  s
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '')
+    .replace(/\t/g, '\\t')
+    // non-ASCII text as \uXXXX escapes, so the source reads the same whatever encoding the compiler assumes
+    .replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
 
 export const FILTERS: Record<string, (v: unknown, ...args: unknown[]) => unknown> = {
   upper: (v) => String(v).toUpperCase(),

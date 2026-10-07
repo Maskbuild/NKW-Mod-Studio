@@ -3,7 +3,7 @@ import { parseFit } from '../gen/geo'
 import { extHost } from '../ext/host'
 import { extensionOfType } from '../ext/used'
 import { docAssets, docOfNode } from '../timerUi'
-import { runMappings } from '../ext/mapping'
+import { recordMatches, recordValues, runMappings } from '../ext/mapping'
 import { REMOVED_NODE_TYPES } from '../nodes/removed'
 import { ATTRIBUTES, BREAK_TOOLS, EFFECTS, NODE_DEF_MAP, TOOL_LEVELS, breakRuleEntries, canConnect, gameCropIds, pinOf, type L10n } from '../nodes/defs'
 import type {
@@ -26,7 +26,7 @@ import type {
 } from '../ir'
 import type { BreakDrops, BreakRuleIR, GameCropIR, HarvestUiIR } from '../ir'
 import { getProfile, isSupported, mcAtLeast } from '../gen/profiles'
-import { targetConfigFor } from '../ext/support'
+import { extensionSupports, targetConfigFor } from '../ext/support'
 import { separateIconMode } from '../gen/assets'
 
 const ARMOR_SLOTS: ArmorSlot[] = ['helmet', 'chestplate', 'leggings', 'boots']
@@ -444,6 +444,57 @@ export function compile(project: Project, target?: Target): CompileResult {
     dependsOn: [],
     textureAnims: {},
     ext: {}
+  }
+
+  /** Blocks extensions add through `contribute.blocks`: one block for every record of a slot. */
+  const contributeBlocks = () => {
+    const TOOLS = ['none', 'pickaxe', 'axe', 'shovel', 'hoe']
+    const LEVELS = ['wood', 'stone', 'iron', 'diamond']
+    for (const ext of extHost.list())
+      for (const c of ext.manifest.contribute.blocks) {
+        const [fromExt, fromSlot] = c.from.split('.')
+        for (const rec of ir.ext[fromExt]?.[fromSlot] ?? []) {
+          if (!recordMatches(c.where, rec)) continue
+          const v = recordValues(c.value, rec)
+          const id = String(v.id ?? '')
+          const nodeId = typeof rec.nodeId === 'string' ? rec.nodeId : undefined
+          if (!ID_RE.test(id)) {
+            err(nodeId, `Invalid block ID "${id}" (use a-z, 0-9, _)`, `ID บล็อก "${id}" ไม่ถูกต้อง (ใช้ a-z, 0-9, _)`)
+            continue
+          }
+          const text = (k: string) => (typeof v[k] === 'string' && v[k] ? (v[k] as string) : null)
+          const number = (k: string, d: number, lo: number, hi: number) => clamp(typeof v[k] === 'number' ? (v[k] as number) : d, lo, hi)
+          const shape = text('shape')
+          const tool = text('tool')
+          const level = text('toolLevel')
+          const b: BlockIR = {
+            id,
+            name: text('name') ?? id,
+            nameTh: text('nameTh') ?? '',
+            nodeId: nodeId ?? '',
+            kind: 'cube',
+            ...(text('javaClass') ? { javaClass: text('javaClass')! } : {}),
+            shape: shape === 'cube_bottom_top' || shape === 'pillar' ? shape : 'cube_all',
+            textures: { side: text('side'), top: text('top'), bottom: text('bottom') },
+            model: null,
+            rotatable: false,
+            hasItem: v.hasItem !== false,
+            solid: v.solid !== false,
+            hardness: number('hardness', 3, 0, 100),
+            resistance: number('resistance', 6, 0, 3600000),
+            sound: text('sound') ?? 'stone',
+            tool: (TOOLS.includes(tool ?? '') ? tool : 'pickaxe') as BlockIR['tool'],
+            toolLevel: (LEVELS.includes(level ?? '') ? level : 'wood') as BlockIR['toolLevel'],
+            requiresTool: v.requiresTool === true,
+            light: Math.round(number('light', 0, 0, 15)),
+            drop: text('drop'),
+            dropMin: Math.round(number('dropMin', 1, 0, 64)),
+            dropMax: Math.round(number('dropMax', 1, 0, 64))
+          }
+          if (!b.textures.side) err(nodeId, `Block "${id}" has no texture`, `บล็อก "${id}" ไม่มีเท็กซ์เจอร์`)
+          else ir.blocks.push(b)
+        }
+      }
   }
 
   const names = (n: GraphNode) => ({
@@ -1221,6 +1272,33 @@ export function compile(project: Project, target?: Target): CompileResult {
     }
   }
 
+  runMappings(
+    extHost.mapped(),
+    {
+      nodes,
+      source,
+      idOf: itemIdOf,
+      target: target ? { loader: target.loader, mc: target.mc } : null,
+      ingredient: (nodeId, handle) => ingredient(nodeId, handle, false),
+      texture: (nodeId, handle) => texture(nodeId, handle, false),
+      diag: (severity, nodeId, message) => diags.push({ severity, nodeId, message })
+    },
+    ir.ext
+  )
+
+  contributeBlocks()
+  // extensions that made something but do not work for this target yet
+  if (target)
+    for (const ext of extHost.list()) {
+      const made = Object.values(ir.ext[ext.manifest.id] ?? {}).some((records) => records.length > 0)
+      if (made && !extensionSupports(ext.manifest, target.loader, target.mc))
+        warn(
+          undefined,
+          `${ext.manifest.name.en} does not support ${target.loader} ${target.mc} yet: what it adds is left out`,
+          `${ext.manifest.name.th || ext.manifest.name.en} ยังไม่รองรับ ${target.loader} ${target.mc}: สิ่งที่ส่วนเสริมนี้เพิ่มจะไม่ถูกใส่`
+        )
+    }
+
   ir.tabs.push(...regenTabs)
 
   // linked mods set as required / optional: dependencies in the mod's metadata (by their id in game)
@@ -1369,18 +1447,5 @@ export function compile(project: Project, target?: Target): CompileResult {
   }
 
   if (!ir.items.length && !ir.blocks.length) warn(undefined, 'The mod has no items or blocks yet', 'ม็อดยังไม่มีไอเทมหรือบล็อกเลย')
-  runMappings(
-    extHost.mapped(),
-    {
-      nodes,
-      source,
-      idOf: itemIdOf,
-      target: target ? { loader: target.loader, mc: target.mc } : null,
-      ingredient: (nodeId, handle) => ingredient(nodeId, handle, false),
-      diag: (severity, nodeId, message) => diags.push({ severity, nodeId, message })
-    },
-    ir.ext
-  )
-
   return { ir, diagnostics: diags }
 }

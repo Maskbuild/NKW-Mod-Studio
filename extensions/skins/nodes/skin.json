@@ -1,0 +1,189 @@
+{
+  "type": "skin",
+  "category": "skins",
+  "icon": "🧍",
+  "title": {
+    "en": "Skin",
+    "th": "สกิน"
+  },
+  "description": {
+    "en": "One skin players can wear. Pick a PNG (64, 128, 256, 512, 1024 or 2048 pixels, square). Add a Skin wardrobe node to let players choose.",
+    "th": "สกินหนึ่งชุดที่ผู้เล่นใส่ได้ เลือกไฟล์ PNG (64, 128, 256, 512, 1024 หรือ 2048 พิกเซล เป็นจัตุรัส) แล้วเพิ่มโหนดตู้เสื้อผ้าสกินเพื่อให้ผู้เล่นเลือก"
+  },
+  "registers": false,
+  "props": [
+    {
+      "key": "name",
+      "label": {
+        "en": "Display name (EN)",
+        "th": "ชื่อที่แสดง (EN)"
+      },
+      "kind": "text",
+      "default": "My Skin"
+    },
+    {
+      "key": "nameTh",
+      "label": {
+        "en": "Display name (TH)",
+        "th": "ชื่อที่แสดง (ไทย)"
+      },
+      "kind": "text",
+      "default": ""
+    },
+    {
+      "key": "id",
+      "label": {
+        "en": "Skin ID",
+        "th": "ID สกิน"
+      },
+      "kind": "id",
+      "default": "my_skin",
+      "hint": {
+        "en": "lowercase a-z, 0-9, _",
+        "th": "ตัวพิมพ์เล็ก a-z, 0-9, _ เท่านั้น"
+      }
+    },
+    {
+      "key": "file",
+      "label": {
+        "en": "Skin file",
+        "th": "ไฟล์สกิน"
+      },
+      "kind": "asset",
+      "assetKind": "texture",
+      "default": "",
+      "hint": {
+        "en": "A square PNG: 64, 128, 256, 512, 1024 or 2048 pixels.",
+        "th": "ไฟล์ PNG จัตุรัส: 64, 128, 256, 512, 1024 หรือ 2048 พิกเซล"
+      }
+    },
+    {
+      "key": "openFile",
+      "label": {
+        "en": "Mouth-open skin (optional)",
+        "th": "สกินปากเปิด (ไม่บังคับ)"
+      },
+      "kind": "asset",
+      "assetKind": "texture",
+      "default": "",
+      "hint": {
+        "en": "Same size as the skin. Shown while the player is speaking.",
+        "th": "ขนาดเท่าสกินหลัก แสดงตอนผู้เล่นกำลังพูด"
+      }
+    },
+    {
+      "key": "model",
+      "label": {
+        "en": "Arms",
+        "th": "แขน"
+      },
+      "kind": "select",
+      "default": "wide",
+      "options": [
+        {
+          "value": "wide",
+          "label": {
+            "en": "Wide (Steve)",
+            "th": "กว้าง (Steve)"
+          }
+        },
+        {
+          "value": "slim",
+          "label": {
+            "en": "Slim (Alex)",
+            "th": "เรียว (Alex)"
+          }
+        }
+      ],
+      "hint": {
+        "en": "Used by the editor preview and the Figura avatar. In game the arms follow the player's own model.",
+        "th": "ใช้กับตัวอย่างในแอปและอวาตาร์ Figura ในเกมแขนเป็นไปตามโมเดลของผู้เล่นเอง"
+      }
+    },
+    {
+      "key": "set",
+      "label": {
+        "en": "Figura set",
+        "th": "ชุด Figura"
+      },
+      "kind": "text",
+      "default": "",
+      "hint": {
+        "en": "Skins with the same set name go into one Figura avatar folder.",
+        "th": "สกินที่ใช้ชื่อชุดเดียวกันจะอยู่ในโฟลเดอร์อวาตาร์ Figura เดียวกัน"
+      }
+    }
+  ],
+  "compile": {
+    "emit": {
+      "slot": "skins",
+      "value": {
+        "id": {
+          "prop": "id",
+          "as": "string",
+          "default": "my_skin",
+          "trim": true
+        },
+        "name": {
+          "prop": "name",
+          "as": "string",
+          "default": "My Skin",
+          "trim": true
+        },
+        "nameTh": {
+          "prop": "nameTh",
+          "as": "string",
+          "default": "",
+          "trim": true
+        },
+        "file": {
+          "prop": "file",
+          "as": "string",
+          "default": "",
+          "trim": true
+        },
+        "openFile": {
+          "prop": "openFile",
+          "as": "string",
+          "default": "",
+          "trim": true
+        },
+        "slim": {
+          "computed": "prop.model == 'slim'"
+        },
+        "set": {
+          "prop": "set",
+          "as": "string",
+          "default": "",
+          "trim": true
+        }
+      }
+    },
+    "validate": [
+      {
+        "if": "!isId(v.id)",
+        "diag": "error",
+        "msg": {
+          "en": "Invalid skin ID \"{v.id}\" (use a-z, 0-9, _)",
+          "th": "ID สกิน \"{v.id}\" ไม่ถูกต้อง (ใช้ a-z, 0-9, _)"
+        }
+      },
+      {
+        "unique": "id",
+        "diag": "error",
+        "msg": {
+          "en": "Duplicate skin ID \"{v.id}\"",
+          "th": "ID สกิน \"{v.id}\" ซ้ำกัน"
+        }
+      },
+      {
+        "if": "v.file == ''",
+        "diag": "error",
+        "msg": {
+          "en": "Choose the skin file",
+          "th": "ยังไม่ได้เลือกไฟล์สกิน"
+        }
+      }
+    ]
+  }
+}

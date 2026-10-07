@@ -55,6 +55,8 @@ export type PropKind =
   | 'blockList'
   /** the timer window editor (extensions choose it for their own timer node) */
   | 'timerUi'
+  /** the skin wardrobe editor (the skins extension's hub node) */
+  | 'wardrobe'
 
 export interface PropDef {
   key: string

@@ -212,6 +212,8 @@ export interface BlockIR extends Named {
   depleted?: { look: string; restore: string; ticks: number }
   /** regen / depleted: the block it looks like is see-through (glass, leaves …), so it must not hide its neighbours */
   seeThrough?: boolean
+  /** a class an extension generates (extends Block, constructed with the block properties) instead of Block */
+  javaClass?: string
   /** registers a BlockItem for the block */
   hasItem: boolean
   shape: 'cube_all' | 'cube_bottom_top' | 'pillar'

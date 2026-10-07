@@ -4,7 +4,17 @@ import type { NodeDef, PinDef, PropDef } from '../nodes/defs'
 import type { CategoryInfo, Contribution } from './registry'
 import { compileExpr } from './expr'
 import { isRange, isVersion } from './semver'
-import { CompileSchema, DeriveSchema, MAPPING_FNS, checkExpr, sourceProblems, mappingExprs, type MappedExtension, type NodeCompile } from './mapping'
+import {
+  CompileSchema,
+  DeriveSchema,
+  SourceSchema,
+  MAPPING_FNS,
+  checkExpr,
+  sourceProblems,
+  mappingExprs,
+  type MappedExtension,
+  type NodeCompile
+} from './mapping'
 import { parseEra, parseTemplate, templateInfo, TemplateError, type Template } from './tpl'
 import { registry } from './registry'
 import '../nodes/defs'
@@ -43,7 +53,7 @@ const PinSpec = z.strictObject({
   count: z.number().int().min(1).max(32).optional()
 })
 
-const PROP_KINDS = ['id', 'text', 'int', 'float', 'bool', 'select', 'multi', 'asset', 'nsid', 'textarea', 'color', 'blockList', 'timerUi'] as const
+const PROP_KINDS = ['id', 'text', 'int', 'float', 'bool', 'select', 'multi', 'asset', 'nsid', 'textarea', 'color', 'blockList', 'timerUi', 'wardrobe'] as const
 const PropSpec = z.strictObject({
   key: KEY,
   label: L10nSchema,
@@ -81,7 +91,18 @@ export type NodeFile = z.infer<typeof NodeFileSchema>
 const Emit = z.union([
   /** a JSON file: the template writes JSON (any spacing), it is checked and written in the app's usual layout */
   z.strictObject({ kind: z.literal('json'), path: z.string().max(200), template: PATH }),
-  z.strictObject({ kind: z.literal('java'), class: z.string().max(200), template: PATH }),
+  z.strictObject({
+    kind: z.literal('java'),
+    class: z.string().max(200),
+    template: PATH,
+    /** a sub-package of the mod's package (e.g. "mixin") */
+    package: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{0,30}$/)
+      .optional()
+  }),
+  /** copies a file of the project (the path comes from a template) */
+  z.strictObject({ kind: z.literal('copy'), from: z.string().max(300), path: z.string().max(200) }),
   z.strictObject({ kind: z.literal('file'), path: z.string().max(200), template: PATH })
 ])
 const GenerateSchema = z.strictObject({
@@ -112,6 +133,83 @@ const TargetConfigSchema = z.strictObject({
   mc: z.string().max(100).optional(),
   /** values templates and rules read as `cfg` for targets this entry fits (the first entry that fits wins) */
   values: z.record(KEY, z.union([z.string().max(300), z.number(), z.boolean()]))
+})
+
+const BLOCK_FIELDS = [
+  'id',
+  'name',
+  'nameTh',
+  'side',
+  'top',
+  'bottom',
+  'javaClass',
+  'hasItem',
+  'hardness',
+  'resistance',
+  'light',
+  'sound',
+  'tool',
+  'toolLevel',
+  'requiresTool',
+  'solid',
+  'shape',
+  'drop',
+  'dropMin',
+  'dropMax'
+] as const
+const ContributeBlock = z.strictObject({
+  /** "<extension id>.<slot>": one block for every record */
+  from: z.string().regex(/^[a-z][a-z0-9-]{2,40}\.[A-Za-z_][A-Za-z0-9_]{0,40}$/),
+  where: z.string().max(1000).optional(),
+  /** the block's settings (see BLOCK_FIELDS): item, const and computed sources */
+  value: z
+    .record(z.string(), SourceSchema)
+    .refine((o) => Object.keys(o).every((k) => (BLOCK_FIELDS as readonly string[]).includes(k)), `Only these block settings exist: ${BLOCK_FIELDS.join(', ')}`)
+})
+
+const MixinSchema = z.strictObject({
+  /** only when this expression (generation scope) is true */
+  when: z.string().max(500).optional(),
+  /** config file: <modid>.<name>.mixins.json */
+  name: z.string().regex(/^[a-z][a-z0-9_]{0,30}$/),
+  /** class names (the `generate` entries write them into the mod's "mixin" package) loaded on both sides / the client / the server */
+  common: z
+    .array(z.string().regex(/^[A-Z][A-Za-z0-9_]{0,60}$/))
+    .max(40)
+    .default([]),
+  client: z
+    .array(z.string().regex(/^[A-Z][A-Za-z0-9_]{0,60}$/))
+    .max(40)
+    .default([]),
+  server: z
+    .array(z.string().regex(/^[A-Z][A-Za-z0-9_]{0,60}$/))
+    .max(40)
+    .default([])
+})
+
+const LangSchema = z.strictObject({
+  when: z.string().max(500).optional(),
+  each: z.string().max(200).optional(),
+  /** templates: the language key, and its English and Thai text */
+  key: z.string().max(200),
+  en: z.string().max(1000),
+  th: z.string().max(1000).optional()
+})
+
+const AssetCheckSchema = z.strictObject({
+  /** records of this slot (this extension's `ext` data) … */
+  slot: KEY,
+  /** … whose field names a project file */
+  field: KEY,
+  /** the file may be empty */
+  optional: z.boolean().default(false),
+  png: z
+    .strictObject({
+      /** allowed widths and heights in pixels */
+      sizes: z.array(z.number().int().min(1).max(8192)).max(16).optional(),
+      square: z.boolean().default(false)
+    })
+    .optional()
 })
 
 const TestModSchema = z.strictObject({
@@ -164,7 +262,15 @@ export const ManifestSchema = z.strictObject({
   generate: z.array(GenerateSchema).max(200).default([]),
   hooks: z.array(HookSchema).max(100).default([]),
   /** mods from Modrinth the extension's features need in test runs (not dependencies of the mod) */
-  testMods: z.array(TestModSchema).max(20).default([])
+  testMods: z.array(TestModSchema).max(20).default([]),
+  /** Mixin configs the mod loads (Fabric / Quilt / NeoForge) */
+  mixins: z.array(MixinSchema).max(4).default([]),
+  /** language entries of the mod's own lang files */
+  lang: z.array(LangSchema).max(100).default([]),
+  /** checks of the project files the records name (run before a build) */
+  assetChecks: z.array(AssetCheckSchema).max(20).default([]),
+  /** things this extension adds to the mod through the app's own generators */
+  contribute: z.strictObject({ blocks: z.array(ContributeBlock).max(20).default([]) }).default({ blocks: [] })
 })
 export type Manifest = z.infer<typeof ManifestSchema>
 
@@ -390,7 +496,19 @@ export function loadExtension(files: FileMap): LoadResult {
         const bad = checkExpr(v, SCOPE_ROOTS, ['any'])
         if (bad) errors.push(`generate "${g.id}" ${k}: ${bad}`)
       }
-    for (const e of g.emit) loadTpl(e.template, `generate "${g.id}"`)
+    for (const e of g.emit) if (e.kind !== 'copy') loadTpl(e.template, `generate "${g.id}"`)
+    for (const e of g.emit)
+      if (e.kind === 'copy') {
+        const tpl = (() => {
+          try {
+            return parseTemplate(e.from, 'copy.from')
+          } catch (err) {
+            errors.push(`generate "${g.id}": ${(err as Error).message}`)
+            return null
+          }
+        })()
+        if (tpl) for (const n of templateInfo(tpl).names) if (!SCOPE_ROOTS.includes(n)) errors.push(`generate "${g.id}": copy.from uses unknown name "${n}"`)
+      }
   }
   manifest.hooks.forEach((h, i) => {
     for (const [k, v] of [
@@ -407,6 +525,50 @@ export function loadExtension(files: FileMap): LoadResult {
       for (const n of templateInfo(tpl).names) if (!SCOPE_ROOTS.includes(n)) errors.push(`hooks[${i}]: unknown name "${n}"`)
     } catch (e) {
       errors.push(e instanceof TemplateError ? e.message : `hooks[${i}]: ${(e as Error).message}`)
+    }
+  })
+  manifest.contribute.blocks.forEach((b, i) => {
+    if (!('id' in b.value)) errors.push(`contribute.blocks[${i}]: "id" is required`)
+    for (const [k, src] of Object.entries(b.value)) {
+      if ('prop' in src || 'input' in src || 'ingredient' in src || 'texture' in src || 'rows' in src || 'nodeId' in src || 'collect' in src)
+        errors.push(`contribute.blocks[${i}].${k}: only item, const and computed sources work here`)
+    }
+    for (const x of [
+      b.where ? { src: b.where, roots: ['item', 'v'] } : null,
+      ...Object.values(b.value).flatMap((s) => ('computed' in s ? [{ src: s.computed, roots: ['item', 'v'] }] : []))
+    ]) {
+      if (!x) continue
+      const bad = checkExpr(x.src, x.roots)
+      if (bad) errors.push(`contribute.blocks[${i}]: ${bad}`)
+    }
+  })
+  manifest.lang.forEach((l, i) => {
+    for (const [k, v] of [
+      ['when', l.when],
+      ['each', l.each]
+    ] as const)
+      if (v) {
+        const bad = checkExpr(v, SCOPE_ROOTS, ['any'])
+        if (bad) errors.push(`lang[${i}] ${k}: ${bad}`)
+      }
+    for (const [k, v] of [
+      ['key', l.key],
+      ['en', l.en],
+      ['th', l.th]
+    ] as const) {
+      if (v === undefined) continue
+      try {
+        const tpl = parseTemplate(v, `lang[${i}].${k}`)
+        for (const n of templateInfo(tpl).names) if (!SCOPE_ROOTS.includes(n)) errors.push(`lang[${i}].${k}: unknown name "${n}"`)
+      } catch (e) {
+        errors.push(e instanceof TemplateError ? e.message : `lang[${i}].${k}: ${(e as Error).message}`)
+      }
+    }
+  })
+  manifest.mixins.forEach((m, i) => {
+    if (m.when) {
+      const bad = checkExpr(m.when, SCOPE_ROOTS, ['any'])
+      if (bad) errors.push(`mixins[${i}] when: ${bad}`)
     }
   })
   manifest.testMods.forEach((m, i) => {

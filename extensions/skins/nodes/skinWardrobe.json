@@ -1,0 +1,248 @@
+{
+  "type": "skinWardrobe",
+  "category": "skins",
+  "icon": "👕",
+  "title": {
+    "en": "Skin wardrobe",
+    "th": "ตู้เสื้อผ้าสกิน"
+  },
+  "description": {
+    "en": "The skin system of the mod: a key and/or a block opens a window where players pick one of your Skin nodes. Everyone on the server sees the chosen skin. Works on Fabric, Quilt and NeoForge, Minecraft 1.20.1 – 1.21.1.",
+    "th": "ระบบสกินของม็อด: กดปุ่มและ/หรือคลิกบล็อกเพื่อเปิดหน้าต่างเลือกสกินจากโหนดสกินของคุณ ทุกคนในเซิร์ฟเวอร์เห็นสกินที่เลือก ใช้ได้กับ Fabric, Quilt และ NeoForge, Minecraft 1.20.1 – 1.21.1"
+  },
+  "inputs": [
+    {
+      "id": "stationTexture",
+      "label": {
+        "en": "Block texture",
+        "th": "เท็กซ์เจอร์บล็อก"
+      },
+      "type": "texture",
+      "optional": true
+    }
+  ],
+  "props": [
+    {
+      "key": "view",
+      "label": {
+        "en": "Wardrobe",
+        "th": "ตู้เสื้อผ้า"
+      },
+      "kind": "wardrobe",
+      "default": null
+    },
+    {
+      "key": "title",
+      "label": {
+        "en": "Window title (EN)",
+        "th": "ชื่อหน้าต่าง (EN)"
+      },
+      "kind": "text",
+      "default": "Wardrobe"
+    },
+    {
+      "key": "titleTh",
+      "label": {
+        "en": "Window title (TH)",
+        "th": "ชื่อหน้าต่าง (ไทย)"
+      },
+      "kind": "text",
+      "default": "ตู้เสื้อผ้า"
+    },
+    {
+      "key": "keyEnabled",
+      "label": {
+        "en": "Open with a key",
+        "th": "เปิดด้วยปุ่ม"
+      },
+      "kind": "bool",
+      "default": true
+    },
+    {
+      "key": "key",
+      "label": {
+        "en": "Key",
+        "th": "ปุ่ม"
+      },
+      "kind": "text",
+      "default": "K",
+      "hint": {
+        "en": "One letter or digit. Players can change it in Controls.",
+        "th": "ตัวอักษรหรือตัวเลขหนึ่งตัว ผู้เล่นเปลี่ยนได้ในหน้า Controls"
+      }
+    },
+    {
+      "key": "stationEnabled",
+      "label": {
+        "en": "Wardrobe block (opens on right-click)",
+        "th": "บล็อกตู้เสื้อผ้า (คลิกขวาเพื่อเปิด)"
+      },
+      "kind": "bool",
+      "default": false
+    },
+    {
+      "key": "stationId",
+      "label": {
+        "en": "Block ID",
+        "th": "ID บล็อก"
+      },
+      "kind": "id",
+      "default": "wardrobe",
+      "showIf": "data.stationEnabled == true"
+    },
+    {
+      "key": "stationName",
+      "label": {
+        "en": "Block name (EN)",
+        "th": "ชื่อบล็อก (EN)"
+      },
+      "kind": "text",
+      "default": "Wardrobe",
+      "showIf": "data.stationEnabled == true"
+    },
+    {
+      "key": "stationNameTh",
+      "label": {
+        "en": "Block name (TH)",
+        "th": "ชื่อบล็อก (ไทย)"
+      },
+      "kind": "text",
+      "default": "ตู้เสื้อผ้า",
+      "showIf": "data.stationEnabled == true"
+    },
+    {
+      "key": "yieldFigura",
+      "label": {
+        "en": "Let Figura avatars win",
+        "th": "ให้อวาตาร์ Figura มาก่อน"
+      },
+      "kind": "bool",
+      "default": true,
+      "hint": {
+        "en": "When a player has a Figura avatar, their Figura look is shown instead of the skin.",
+        "th": "ถ้าผู้เล่นมีอวาตาร์ Figura จะแสดงของ Figura แทนสกิน"
+      }
+    },
+    {
+      "key": "speaking",
+      "label": {
+        "en": "Mouth moves while talking",
+        "th": "ปากขยับตอนพูด"
+      },
+      "kind": "bool",
+      "default": true,
+      "hint": {
+        "en": "Needs a mouth-open skin. Moves while a player writes in chat, and by voice-chat mods that call NkwSkins.setSpeaking.",
+        "th": "ต้องมีสกินปากเปิด ขยับตอนพิมพ์แชต และโดยม็อดเสียงที่เรียก NkwSkins.setSpeaking"
+      }
+    }
+  ],
+  "compile": {
+    "emit": {
+      "slot": "wardrobes",
+      "value": {
+        "single": {
+          "const": 1
+        },
+        "title": {
+          "prop": "title",
+          "as": "string",
+          "default": "Wardrobe",
+          "trim": true
+        },
+        "titleTh": {
+          "prop": "titleTh",
+          "as": "string",
+          "default": "",
+          "trim": true
+        },
+        "keyEnabled": {
+          "prop": "keyEnabled",
+          "as": "bool",
+          "default": true
+        },
+        "key": {
+          "computed": "upper(trim(prop.key))"
+        },
+        "stationEnabled": {
+          "prop": "stationEnabled",
+          "as": "bool",
+          "default": false
+        },
+        "stationId": {
+          "prop": "stationId",
+          "as": "string",
+          "default": "wardrobe",
+          "trim": true
+        },
+        "stationName": {
+          "prop": "stationName",
+          "as": "string",
+          "default": "Wardrobe",
+          "trim": true
+        },
+        "stationNameTh": {
+          "prop": "stationNameTh",
+          "as": "string",
+          "default": "",
+          "trim": true
+        },
+        "stationTexture": {
+          "texture": "stationTexture"
+        },
+        "yieldFigura": {
+          "prop": "yieldFigura",
+          "as": "bool",
+          "default": true
+        },
+        "speaking": {
+          "prop": "speaking",
+          "as": "bool",
+          "default": true
+        }
+      }
+    },
+    "validate": [
+      {
+        "unique": "single",
+        "diag": "error",
+        "msg": {
+          "en": "Only one Skin wardrobe is allowed",
+          "th": "ใช้ตู้เสื้อผ้าสกินได้เพียงตัวเดียว"
+        }
+      },
+      {
+        "if": "v.keyEnabled && !(len(v.key) == 1 && contains('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', v.key))",
+        "diag": "error",
+        "msg": {
+          "en": "The key must be one letter or digit",
+          "th": "ปุ่มต้องเป็นตัวอักษร A-Z หรือตัวเลข 0-9 หนึ่งตัว"
+        }
+      },
+      {
+        "if": "v.stationEnabled && !isId(v.stationId)",
+        "diag": "error",
+        "msg": {
+          "en": "Invalid wardrobe block ID",
+          "th": "ID บล็อกตู้เสื้อผ้าไม่ถูกต้อง"
+        }
+      },
+      {
+        "if": "v.stationEnabled && v.stationTexture == null",
+        "diag": "error",
+        "msg": {
+          "en": "Connect a texture for the wardrobe block",
+          "th": "ต่อเท็กซ์เจอร์ให้บล็อกตู้เสื้อผ้า"
+        }
+      },
+      {
+        "if": "!v.keyEnabled && !v.stationEnabled",
+        "diag": "warning",
+        "msg": {
+          "en": "Players have no way to open the wardrobe: turn on the key or the block",
+          "th": "ผู้เล่นยังเปิดตู้เสื้อผ้าไม่ได้: เปิดปุ่มหรือบล็อกอย่างใดอย่างหนึ่ง"
+        }
+      }
+    ]
+  }
+}

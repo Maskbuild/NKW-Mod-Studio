@@ -1,5 +1,6 @@
 import { NKW_ICON_PNG_BASE64 } from './icon'
 import { LINK_RE, shippedCredits, type ProjectMeta } from '../project'
+import { mixinConfigs } from './extgen'
 import { RES, json, type GenCtx, type ResolvedDeps } from './types'
 
 const FORGE_LOADER_RANGE: Record<string, string> = {
@@ -170,6 +171,7 @@ ${
     }`
       : ''
   const extDeps = deps.extMods ?? []
+  const mixins = mixinConfigs(ctx)
   const geckoDep = ctx.gecko && deps.geckolib ? deps.geckolib : null
 
   if (loader === 'fabric' || loader === 'quilt') {
@@ -261,6 +263,7 @@ ${toolchain}
           environment: '*',
           icon: `assets/${ns}/icon.png`,
           entrypoints: { main: [`${pkg}.NkwMod`], client: [`${pkg}.NkwClient`] },
+          ...(mixins.length ? { mixins } : {}),
           depends: {
             fabricloader: '>=0.14.0',
             minecraft: mcRange,
@@ -300,6 +303,7 @@ ${toolchain}
             },
             intermediate_mappings: 'net.fabricmc:intermediary',
             entrypoints: { main: [`${pkg}.NkwMod`], client: [`${pkg}.NkwClient`] },
+            ...(mixins.length ? { mixin: mixins } : {}),
             depends: [
               { id: 'quilt_loader', versions: '>=0.17.0' },
               { id: 'minecraft', versions: mcRange },
@@ -336,7 +340,7 @@ ordering="NONE"
 side="BOTH"
 `
     )
-    .join('')}`
+    .join('')}${mixins.map((m) => `\n[[mixins]]\nconfig=${q(m)}\n`).join('')}`
   const tomlName = loader === 'neoforge' && p.mc !== '1.20.4' ? 'neoforge.mods.toml' : 'mods.toml'
   files.push({ path: `${RES}/META-INF/${tomlName}`, text: toml })
   const pack: Record<string, unknown> = { description: `${meta.name} resources`, pack_format: p.dataPack }
