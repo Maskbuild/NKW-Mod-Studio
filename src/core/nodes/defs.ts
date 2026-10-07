@@ -53,6 +53,8 @@ export type PropKind =
   | 'armorFit'
   | 'tabOrder'
   | 'blockList'
+  /** the timer window editor (extensions choose it for their own timer node) */
+  | 'timerUi'
 
 export interface PropDef {
   key: string

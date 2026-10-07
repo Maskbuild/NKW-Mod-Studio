@@ -6,8 +6,8 @@
     "th": "หน้าต่างเวลา"
   },
   "description": {
-    "en": "How a timer windows on screen (picking crops by hand, breaking blocks). Wire it into Crop, Harvest a game crop, Regenerating Blocks or Break Rule nodes (one window can be used by many).",
-    "th": "หน้าต่างเวลาบนจอ (ตอนเก็บพืชด้วยมือ ตอนทุบบล็อก) ต่อเข้าโหนดพืช เก็บเกี่ยวพืชในเกม บล็อกเกิดใหม่ หรือกฎการทุบบล็อก (ใช้ร่วมกันได้หลายโหนด)"
+    "en": "How the timer window looks on screen (picking crops by hand, breaking blocks): elements, colours, gradients, images and animations. Wire it into Crop, Harvest a game crop, Regenerating Blocks or Break Rule nodes (one window can be used by many).",
+    "th": "หน้าต่างเวลาบนจอ (ตอนเก็บพืชด้วยมือ ตอนทุบบล็อก): ชิ้นส่วน สี ไล่สี รูปภาพ และแอนิเมชัน ต่อเข้าโหนดพืช เก็บเกี่ยวพืชในเกม บล็อกเกิดใหม่ หรือกฎการทุบบล็อก (ใช้ร่วมกันได้หลายโหนด)"
   },
   "icon": "⏳",
   "inputs": [],
@@ -23,173 +23,13 @@
   ],
   "props": [
     {
-      "key": "style",
+      "key": "doc",
       "label": {
-        "en": "Template",
-        "th": "แบบ"
+        "en": "Timer window",
+        "th": "หน้าต่างเวลา"
       },
-      "kind": "select",
-      "default": "bar",
-      "options": [
-        {
-          "value": "text",
-          "label": {
-            "en": "Text: ■■■□□ and the seconds",
-            "th": "ข้อความ: ■■■□□ และวินาที"
-          }
-        },
-        {
-          "value": "bar",
-          "label": {
-            "en": "Bar that fills up",
-            "th": "หลอดที่เพิ่มขึ้น"
-          }
-        },
-        {
-          "value": "ring",
-          "label": {
-            "en": "Circle that fills around the crosshair",
-            "th": "วงกลมที่เต็มขึ้นรอบเป้ากลางจอ"
-          }
-        }
-      ]
-    },
-    {
-      "key": "color",
-      "label": {
-        "en": "Colour",
-        "th": "สี"
-      },
-      "kind": "color",
-      "default": "#4ade80"
-    },
-    {
-      "key": "back",
-      "label": {
-        "en": "Background colour",
-        "th": "สีพื้นหลัง"
-      },
-      "kind": "color",
-      "default": "#000000",
-      "showIf": "data.style!='text'"
-    },
-    {
-      "key": "backOpacity",
-      "label": {
-        "en": "Background opacity (%)",
-        "th": "ความทึบพื้นหลัง (%)"
-      },
-      "kind": "int",
-      "default": 50,
-      "min": 0,
-      "max": 100,
-      "showIf": "data.style!='text'"
-    },
-    {
-      "key": "place",
-      "label": {
-        "en": "Position",
-        "th": "ตำแหน่ง"
-      },
-      "kind": "select",
-      "default": "crosshair",
-      "options": [
-        {
-          "value": "crosshair",
-          "label": {
-            "en": "Under the crosshair",
-            "th": "ใต้เป้ากลางจอ"
-          }
-        },
-        {
-          "value": "hotbar",
-          "label": {
-            "en": "Above the hotbar",
-            "th": "เหนือแถบไอเทม"
-          }
-        },
-        {
-          "value": "top",
-          "label": {
-            "en": "Top of the screen",
-            "th": "ด้านบนของจอ"
-          }
-        }
-      ],
-      "showIf": "data.style!='ring'"
-    },
-    {
-      "key": "offset",
-      "label": {
-        "en": "Move down (pixels, negative = up)",
-        "th": "เลื่อนลง (พิกเซล, ติดลบ = ขึ้น)"
-      },
-      "kind": "int",
-      "default": 0,
-      "min": -200,
-      "max": 200,
-      "showIf": "data.style!='ring'"
-    },
-    {
-      "key": "width",
-      "label": {
-        "en": "Bar width",
-        "th": "ความยาวหลอด"
-      },
-      "kind": "int",
-      "default": 60,
-      "min": 10,
-      "max": 300,
-      "showIf": "data.style=='bar'"
-    },
-    {
-      "key": "height",
-      "label": {
-        "en": "Bar height",
-        "th": "ความสูงหลอด"
-      },
-      "kind": "int",
-      "default": 4,
-      "min": 1,
-      "max": 20,
-      "showIf": "data.style=='bar'"
-    },
-    {
-      "key": "radius",
-      "label": {
-        "en": "Circle size (radius)",
-        "th": "ขนาดวงกลม (รัศมี)"
-      },
-      "kind": "int",
-      "default": 9,
-      "min": 3,
-      "max": 40,
-      "showIf": "data.style=='ring'"
-    },
-    {
-      "key": "thickness",
-      "label": {
-        "en": "Line thickness",
-        "th": "ความหนาเส้น"
-      },
-      "kind": "int",
-      "default": 3,
-      "min": 1,
-      "max": 40,
-      "hint": {
-        "en": "As large as the size = a filled circle.",
-        "th": "เท่ากับขนาด = วงกลมทึบ"
-      },
-      "showIf": "data.style=='ring'"
-    },
-    {
-      "key": "time",
-      "label": {
-        "en": "Show the seconds left",
-        "th": "แสดงวินาทีที่เหลือ"
-      },
-      "kind": "bool",
-      "default": true
+      "kind": "timerUi",
+      "default": null
     }
   ]
 }

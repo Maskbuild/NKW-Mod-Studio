@@ -2569,3 +2569,71 @@ img.frame0 {
   border-bottom: 1px solid rgba(217, 119, 6, 0.4);
   font-size: 12.5px;
 }
+
+/* timer window editor */
+.timer-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.timer-sub {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+.timer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.timer-label {
+  flex: 0 0 120px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+.timer-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+.timer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.timer-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.timer-item.on {
+  border-color: var(--accent);
+  background: rgba(128, 128, 128, 0.12);
+}
+.timer-form {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.timer-anim {
+  padding: 6px;
+  margin-bottom: 6px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}

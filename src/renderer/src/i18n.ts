@@ -297,12 +297,6 @@ const en = {
     tool: { pencil: 'Pencil', eraser: 'Eraser', fill: 'Fill', picker: 'Pick colour' },
     face: { north: 'North', south: 'South', east: 'East', west: 'West', up: 'Top', down: 'Bottom' }
   },
-  harvestUi: {
-    seconds: '{{s}} s',
-    text: 'Harvesting {{bar}} {{s}} s',
-    textNoTime: 'Harvesting {{bar}}',
-    hint: 'Preview on a game screen (GUI scale 2) — the timer loops'
-  },
   controls: {
     hint: 'Mouse and keys of the model editor. Pick a preset, then change anything you like.',
     preset: 'Preset',
@@ -666,7 +660,6 @@ const th: Dict = {
     tool: { pencil: 'ดินสอ', eraser: 'ยางลบ', fill: 'เทสี', picker: 'ดูดสี' },
     face: { north: 'เหนือ', south: 'ใต้', east: 'ตะวันออก', west: 'ตะวันตก', up: 'บน', down: 'ล่าง' }
   },
-  harvestUi: { seconds: '{{s}} วิ', text: 'กำลังเก็บ {{bar}} {{s}} วิ', textNoTime: 'กำลังเก็บ {{bar}}', hint: 'ตัวอย่างบนจอเกม (ขนาด GUI 2) — เวลาวนซ้ำ' },
   controls: {
     hint: 'เมาส์และปุ่มของโปรแกรมทำโมเดล เลือกค่าพื้นฐานก่อน แล้วปรับแต่งได้ทุกอย่าง',
     preset: 'ค่าพื้นฐาน',

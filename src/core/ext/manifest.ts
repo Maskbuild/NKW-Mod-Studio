@@ -43,7 +43,7 @@ const PinSpec = z.strictObject({
   count: z.number().int().min(1).max(32).optional()
 })
 
-const PROP_KINDS = ['id', 'text', 'int', 'float', 'bool', 'select', 'multi', 'asset', 'nsid', 'textarea', 'color', 'blockList'] as const
+const PROP_KINDS = ['id', 'text', 'int', 'float', 'bool', 'select', 'multi', 'asset', 'nsid', 'textarea', 'color', 'blockList', 'timerUi'] as const
 const PropSpec = z.strictObject({
   key: KEY,
   label: L10nSchema,

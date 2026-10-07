@@ -17,7 +17,7 @@ import { CraftGrid } from './CraftGrid'
 import { useIde } from '../ide/ideStore'
 import { ArmorFitField } from './ArmorFit'
 import { TabOrder } from './TabOrder'
-import { HarvestUiPreview } from './HarvestUiPreview'
+import { TimerUiEditor } from './TimerUiEditor'
 import { BlockListField } from './BlockList'
 import { TagGrid } from './TagPreview'
 
@@ -354,7 +354,7 @@ function Preview({ node }: { node: FlowNode }) {
     shallow
   )
   if (node.type === 'soundEvent') return <SoundEventPreview node={node} />
-  if (node.type === 'harvestUi') return <HarvestUiPreview data={node.data} />
+  if (node.type === 'harvestUi') return null
   if (!asset) return null
   if (node.type === 'texture')
     return (
@@ -644,6 +644,8 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
       return <ArmorFitField node={node} />
     case 'tabOrder':
       return <TabOrder node={node} />
+    case 'timerUi':
+      return <TimerUiEditor node={node} />
     default:
       return (
         <div className="field">
