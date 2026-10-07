@@ -31,8 +31,8 @@ export interface NodeExtension {
 
 /** What one source adds. */
 export interface Contribution {
-  /** node type → what to add to it */
-  extend?: Record<string, NodeExtension>
+  /** what to add to node types of other sources (in this order) */
+  extend?: ({ type: string } & NodeExtension)[]
   nodes?: NodeDef[]
   categories?: Record<string, CategoryInfo>
   /** pin type id → wire colour */
@@ -68,8 +68,8 @@ class Registry {
         throw new Error(`Node type "${d.type}" is already defined${this.owner.has(`node:${d.type}`) ? ` by "${this.owner.get(`node:${d.type}`)}"` : ''}`)
       seen.add(d.type)
     }
-    const ext = c.extend ?? {}
-    for (const [type, x] of Object.entries(ext)) {
+    const ext = c.extend ?? []
+    for (const { type, ...x } of ext) {
       const def = this.map[type] ?? nodes.find((d) => d.type === type)
       if (!def) throw new Error(`Cannot extend "${type}": no such node type`)
       for (const p of x.props ?? []) if (def.props.some((q) => q.key === p.key)) throw new Error(`"${type}" already has a property "${p.key}"`)
@@ -99,7 +99,7 @@ class Registry {
       this.map[d.type] = d
       this.owner.set(`node:${d.type}`, source)
     }
-    for (const [type, x] of Object.entries(ext)) {
+    for (const { type, ...x } of ext) {
       const def = this.map[type]
       const at = <T>(list: T[], add: T[], after: string | undefined, id: (v: T) => string) => {
         const i = after === undefined ? -1 : list.findIndex((v) => id(v) === after)
@@ -117,7 +117,7 @@ class Registry {
   unregister(source: string): void {
     const c = this.owned.get(source)
     if (!c) return
-    for (const [type, x] of Object.entries(c.extend ?? {})) {
+    for (const { type, ...x } of c.extend ?? []) {
       const def = this.map[type]
       if (!def) continue
       const keys = new Set((x.props ?? []).map((p) => p.key))

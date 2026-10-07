@@ -12,7 +12,7 @@ import { exprCalls, exprNames, evalExpr, MATH_FNS, parseExpr, truthy, type Expr,
  */
 
 const FIELD = /^[A-Za-z_][A-Za-z0-9_]{0,40}$/
-const L10nSchema = z.strictObject({ en: z.string().max(400), th: z.string().max(400) })
+const L10nSchema = z.strictObject({ en: z.string().max(2000), th: z.string().max(2000) })
 
 export const SourceSchema = z.union([
   /** a property of the node (or one the extension added to a core node), cleaned up by `as` */

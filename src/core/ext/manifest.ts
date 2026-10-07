@@ -20,7 +20,7 @@ export const FILE_LIMITS = { files: 2000, total: 100_000_000, file: 20_000_000, 
 /** file types an extension may never contain (it cannot run code in the app or in the user's build) */
 export const FORBIDDEN_EXT = /\.(js|mjs|cjs|jar|class|exe|dll|so|dylib|bat|cmd|sh|ps1|msi|node|wasm|lnk|scr|vbs|jsx|ts)$/i
 
-const L10nSchema = z.strictObject({ en: z.string().max(400), th: z.string().max(400) })
+const L10nSchema = z.strictObject({ en: z.string().max(2000), th: z.string().max(2000) })
 const ID = z.string().regex(/^[a-z][a-z0-9-]{2,40}$/)
 const TYPE = z.string().regex(/^[a-zA-Z0-9]{1,40}$/)
 const KEY = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,40}$/)
@@ -305,21 +305,21 @@ export function loadExtension(files: FileMap): LoadResult {
       if (!ownPins.has(p.type) && !registry.pinColors[p.type]) errors.push(`node "${n.type}": pin "${p.id}" has unknown type "${p.type}"`)
   }
 
-  const extend: NonNullable<Contribution['extend']> = {}
+  const extend: NonNullable<Contribution['extend']> = []
   const extendCompile = new Map<string, NodeCompile>()
   for (const x of manifest.extendNodes) {
-    if (extend[x.type]) errors.push(`extendNodes: "${x.type}" listed twice`)
     const own: Record<string, unknown> = {}
     const props = buildProps(x.props, `extendNodes ${x.type}`, own, errors)
     const inputs = expandPins(x.inputs)
     const outputs = expandPins(x.outputs)
     for (const p of [...inputs, ...outputs])
       if (!ownPins.has(p.type) && !registry.pinColors[p.type]) errors.push(`extendNodes ${x.type}: pin "${p.id}" has unknown type "${p.type}"`)
-    extend[x.type] = { props, inputs, outputs, afterProp: x.afterProp, afterInput: x.afterInput }
+    extend.push({ type: x.type, props, inputs, outputs, afterProp: x.afterProp, afterInput: x.afterInput })
     // what the mapping may read: the node's own properties, plus what this extension adds
     const d = mapDefaultsFor(x.type)
     for (const [k, v] of Object.entries(own)) d[k] = v
     if (x.compile) {
+      if (extendCompile.has(x.type)) errors.push(`extendNodes: more than one "compile" for "${x.type}"`)
       extendCompile.set(x.type, x.compile)
       const known = new Set([...Object.keys(own), ...(registry.map[x.type]?.props ?? []).map((p) => p.key)])
       for (const e of mappingExprs(x.compile)) {

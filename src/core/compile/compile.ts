@@ -98,6 +98,9 @@ function breakRuleMessage(r: Pick<BreakRuleIR, 'tool' | 'level' | 'onFail'>): L1
     : { en: `Needs ${what} to drop anything`, th: `ต้องใช้${th}ถึงจะได้ของ` }
 }
 
+/** Crop properties the Roleplay extension adds (ignored while it is off). */
+const ROLEPLAY_CROP_KEYS = new Set(['mode', 'regrowSeconds', 'regrowStage', 'input', 'harvestSeconds', 'give', 'breakDrops', 'adventure', 'sneak'])
+
 /**
  * Graph → IR. Pure function: no filesystem access, safe to run in a Web Worker.
  * Pass `target` to also check loader/version specific compatibility.
@@ -581,6 +584,8 @@ export function compile(project: Project, target?: Target): CompileResult {
         break
       }
       case 'crop': {
+        // the hand-harvest settings belong to the Roleplay extension: without it a crop is a plain growing plant
+        const d = extHost.has('roleplay') ? n.data : Object.fromEntries(Object.entries(n.data).filter(([k]) => !ROLEPLAY_CROP_KEYS.has(k)))
         const stages: string[] = []
         for (let i = 1; i <= 8; i++) {
           const s = texture(n.id, `stage${i}`, false)

@@ -104,43 +104,6 @@ export function gameCropIds(d: Record<string, unknown>): string[] {
   return [...new Set([...picked, ...typed.split(/[\s,]+/).filter(Boolean)])]
 }
 
-/** "When a player breaks it" setting of the plant nodes (Crop, Harvest a game crop). */
-const breakDropsProp = (hint: L10n): PropDef => ({
-  key: 'breakDrops',
-  label: t('When a player breaks it', 'เมื่อผู้เล่นทุบพืช'),
-  kind: 'select',
-  default: 'normal',
-  options: [
-    opt('normal', 'Drops like normal', 'ได้ของตามปกติ'),
-    opt('grown', 'Drops only when fully grown (young plants give nothing)', 'ได้ของเฉพาะตอนโตเต็มที่ (ต้นอ่อนทุบแล้วไม่ได้อะไร)'),
-    opt('none', 'Gives nothing (harvest by hand only)', 'ไม่ได้อะไรเลย (ต้องเก็บด้วยมือเท่านั้น)')
-  ],
-  hint
-})
-
-/** "Works in adventure mode" for picking crops by hand. */
-const harvestAdventureProp = (showIf?: PropDef['showIf']): PropDef => ({
-  key: 'adventure',
-  label: t('Can be picked in adventure mode', 'เก็บได้ในโหมดผจญภัย (Adventure)'),
-  kind: 'bool',
-  default: true,
-  hint: t('Off: players in adventure mode cannot pick it by hand.', 'ปิด: ผู้เล่นโหมดผจญภัยเก็บด้วยมือไม่ได้'),
-  showIf
-})
-
-/** Picking by hand only while sneaking (crouching): right-clicking otherwise does what it does in the game. */
-const harvestSneakProp = (showIf?: PropDef['showIf']): PropDef => ({
-  key: 'sneak',
-  label: t('Only while sneaking (Shift)', 'ต้องย่อตัว (Shift) ถึงจะเก็บได้'),
-  kind: 'bool',
-  default: false,
-  hint: t(
-    'On: crouch and right-click to pick it; standing up stops a running harvest. A normal right-click does what it does in the game.',
-    'เปิด: ต้องย่อตัวแล้วคลิกขวาถึงจะเก็บได้ ลุกขึ้นระหว่างเก็บจะหยุด · คลิกขวาปกติจะทำงานแบบเดิมของเกม'
-  ),
-  showIf
-})
-
 /** Tools a Break Rule can ask for. */
 export const BREAK_TOOLS = ['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'shears', 'any'] as const
 export const TOOL_LEVELS = ['wood', 'stone', 'iron', 'diamond', 'netherite'] as const
@@ -252,31 +215,6 @@ const blockCommon: PropDef[] = [
   { key: 'dropMin', label: t('Drop count min', 'จำนวนดรอปต่ำสุด'), kind: 'int', default: 1, min: 0, max: 64 },
   { key: 'dropMax', label: t('Drop count max', 'จำนวนดรอปสูงสุด'), kind: 'int', default: 1, min: 0, max: 64 }
 ]
-
-/** Hand harvest time (crops, game crops, Regenerating Blocks). */
-const harvestSecondsProp = (showIf: PropDef['showIf']): PropDef => ({
-  key: 'harvestSeconds',
-  label: t('Harvest time (seconds)', 'เวลาเก็บ (วินาที)'),
-  kind: 'float',
-  default: 2,
-  min: 0.1,
-  max: 120,
-  step: 0.1,
-  showIf
-})
-
-/** The harvest goes straight into the inventory. */
-const giveProp = (showIf?: PropDef['showIf']): PropDef => ({
-  key: 'give',
-  label: t('Harvest goes into the inventory', 'ผลผลิตเข้าตัวทันที'),
-  kind: 'bool',
-  default: false,
-  hint: t(
-    'Off: drops on the ground like normal. On: straight into the inventory (what does not fit drops at your feet).',
-    'ปิด: ดรอปบนพื้นแบบปกติ · เปิด: เข้าช่องเก็บของเลย (ถ้าเต็มจะดรอปที่เท้า)'
-  ),
-  ...(showIf ? { showIf } : {})
-})
 
 const countProp = (label = t('Result count', 'จำนวนที่ได้')): PropDef => ({
   key: 'count',
@@ -686,232 +624,6 @@ const CORE_NODE_DEFS: NodeDef[] = [
   },
 
   {
-    type: 'breakRule',
-    category: 'block',
-    title: t('Break Rule (tool & level)', 'กฎการทุบบล็อก (อุปกรณ์และระดับแร่)'),
-    description: t(
-      "Blocks that need a certain tool and mining level. Pick any number of Minecraft blocks, blocks of other mods (type the id) or #tags, and wire in this mod's blocks. With the wrong tool the block drops nothing, or cannot be broken at all. Creative mode is not affected.",
-      'กำหนดว่าบล็อกไหนต้องใช้อุปกรณ์และระดับแร่อะไรถึงจะทุบได้ — เลือกบล็อกของ Minecraft บล็อกของม็อดอื่น (พิมพ์ ID) หรือ #แท็ก ได้หลายอันพร้อมกัน และต่อสายบล็อกของม็อดเราเข้ามาได้ ถ้าใช้อุปกรณ์ไม่ถูกจะไม่ได้ของ หรือทุบไม่ได้เลย (โหมดสร้างสรรค์ไม่มีผล)'
-    ),
-    icon: '⛏',
-    inputs: [
-      { id: 'ui', label: t('Timer window', 'หน้าต่างเวลา'), type: 'harvestUi', optional: true },
-      ...slots(32, 'block', 'Mod block', 'บล็อกของม็อด', 'block', { group: 'blocks' })
-    ],
-    outputs: [],
-    props: [
-      {
-        key: 'blocks',
-        label: t('Blocks (pick any number)', 'บล็อก (เลือกได้หลายอัน)'),
-        kind: 'blockList',
-        default: [],
-        hint: t(
-          'Tick blocks in the list (type to search), add an id like othermod:ruby_ore or a tag like #minecraft:logs, or drag blocks here from the "Game items" tab. Blocks of this mod: wire their Block pin in, or pick them in the list.',
-          'ติ๊กเลือกบล็อกในรายการ (พิมพ์เพื่อค้นหา) เพิ่ม ID เช่น othermod:ruby_ore หรือแท็กเช่น #minecraft:logs หรือลากบล็อกจากแท็บ "ไอเทมเกม" มาวาง · บล็อกของม็อดเรา: ต่อสายจากขา "บล็อก" หรือเลือกในรายการก็ได้'
-        )
-      },
-      {
-        key: 'tool',
-        label: t('Required tool', 'อุปกรณ์ที่ต้องใช้'),
-        kind: 'select',
-        default: 'pickaxe',
-        options: [
-          opt('pickaxe', 'Pickaxe', 'อีเต้อ'),
-          opt('axe', 'Axe', 'ขวาน'),
-          opt('shovel', 'Shovel', 'พลั่ว'),
-          opt('hoe', 'Hoe', 'จอบ'),
-          opt('sword', 'Sword', 'ดาบ'),
-          opt('shears', 'Shears', 'กรรไกร'),
-          opt('any', 'Any tool (only the level counts)', 'เครื่องมืออะไรก็ได้ (ดูแค่ระดับ)')
-        ]
-      },
-      {
-        key: 'level',
-        label: t('Minimum level (ore level)', 'ระดับขั้นต่ำ (ระดับแร่)'),
-        kind: 'select',
-        default: 'stone',
-        options: [
-          opt('wood', 'Wood / Gold (any level)', 'ไม้ / ทอง (ระดับไหนก็ได้)'),
-          opt('stone', 'Stone or better', 'หินขึ้นไป'),
-          opt('iron', 'Iron or better', 'เหล็กขึ้นไป'),
-          opt('diamond', 'Diamond or better', 'เพชรขึ้นไป'),
-          opt('netherite', 'Netherite', 'เนเธอไรต์')
-        ],
-        hint: t("Tools of this mod count with their Tool Material's mining level.", 'เครื่องมือของม็อดเรานับตามระดับการขุดของวัสดุเครื่องมือ'),
-        showIf: (d) => d.tool !== 'shears'
-      },
-      {
-        key: 'onFail',
-        label: t('With the wrong tool', 'ถ้าใช้อุปกรณ์ไม่ถูก'),
-        kind: 'select',
-        default: 'noDrop',
-        options: [opt('noDrop', 'It breaks but drops nothing', 'ทุบแตกแต่ไม่ได้ของ'), opt('cantBreak', 'It cannot be broken', 'ทุบไม่ได้เลย')]
-      },
-      { key: 'message', label: t('Tell the player which tool is needed', 'แจ้งผู้เล่นว่าต้องใช้อุปกรณ์อะไร'), kind: 'bool', default: true },
-      {
-        key: 'messageEn',
-        label: t('Own message (EN)', 'ข้อความเอง (EN)'),
-        kind: 'text',
-        default: '',
-        hint: t('Empty = written for you', 'เว้นว่าง = สร้างข้อความให้อัตโนมัติ'),
-        showIf: (d) => d.message !== false
-      },
-      { key: 'messageTh', label: t('Own message (TH)', 'ข้อความเอง (ไทย)'), kind: 'text', default: '', showIf: (d) => d.message !== false },
-      {
-        key: 'timer',
-        label: t('Show a timer while breaking', 'แสดงเวลาตอนทุบ'),
-        kind: 'bool',
-        default: false,
-        hint: t(
-          'Like picking crops by hand: the time left shows on screen while you mine (the mining swing and cracks stay). Wire a Timer window node (Utility) into "Timer window" to choose how it looks.',
-          'แบบเดียวกับตอนเก็บพืชด้วยมือ: ขณะทุบจะมีเวลาที่เหลือแสดงบนจอ (ยังมีท่าทุบและรอยแตกตามปกติ) ต่อโหนดหน้าต่างเวลา (หมวดเครื่องมือ) เข้าขา "หน้าต่างเวลา" เพื่อเลือกหน้าตา'
-        )
-      },
-      {
-        key: 'adventure',
-        label: t('Can be broken in adventure mode (right tool)', 'ทุบได้ในโหมดผจญภัย (Adventure) ถ้าใช้อุปกรณ์ถูก'),
-        kind: 'bool',
-        default: false,
-        hint: t(
-          'Normally nothing can be broken in adventure mode. On: these blocks can, with a tool that passes this rule (the tool gets a hidden "can break" list).',
-          'ปกติโหมดผจญภัยทุบอะไรไม่ได้เลย · เปิด: บล็อกเหล่านี้ทุบได้ ถ้าถืออุปกรณ์ที่ผ่านกฎนี้ (อุปกรณ์จะได้รายการ "ทุบได้" ที่ซ่อนไว้)'
-        )
-      }
-    ]
-  },
-
-  {
-    type: 'regenBlock',
-    category: 'block',
-    title: t('Regenerating Blocks', 'บล็อกเกิดใหม่ (ทรัพยากร)'),
-    description: t(
-      'Blocks of Minecraft, other mods or this mod that are harvested like crops (mined, or with the left mouse button) and grow back. Each picked block gets its own copy: it looks like the original and gives the original\'s drops (or the item wired into "Drops instead"), then turns into a block that cannot be broken (bedrock by default) and grows back after a while. Only operators (OP) can place them; they are in their own creative tab.',
-      'บล็อกของ Minecraft ม็อดอื่น หรือม็อดเรา ที่เก็บได้แบบพืช (ขุด หรือใช้คลิกซ้าย) และเกิดใหม่ได้ แต่ละบล็อกที่เลือกจะได้บล็อกของตัวเอง: หน้าตาเหมือนต้นฉบับและได้ของเหมือนต้นฉบับ (หรือไอเทมที่ต่อเข้าขา "ดรอปแทน") เก็บแล้วกลายเป็นบล็อกที่ทุบไม่ได้ (ค่าเริ่มต้นคือ bedrock) แล้วเกิดใหม่ตามเวลา · วางได้เฉพาะ OP และอยู่ในแท็บครีเอทีฟของตัวเอง'
-    ),
-    icon: '♻',
-    inputs: [
-      { id: 'ui', label: t('Timer window', 'หน้าต่างเวลา'), type: 'harvestUi', optional: true },
-      { id: 'drop', label: t('Drops instead (item)', 'ดรอปแทน (ไอเทม)'), type: 'item', optional: true },
-      ...slots(32, 'block', 'Mod block', 'บล็อกของม็อด', 'block', { group: 'blocks' })
-    ],
-    outputs: [],
-    props: [
-      {
-        key: 'blocks',
-        label: t('Blocks (pick any number)', 'บล็อก (เลือกได้หลายอัน)'),
-        kind: 'blockList',
-        noTags: true,
-        default: ['minecraft:iron_ore'],
-        hint: t(
-          'Full blocks (ores, stone, logs, wood …) look best: the copy uses the original block model. Blocks of this mod: tick them here or wire their Block pin into the Mod block pins.',
-          'บล็อกเต็มก้อน (แร่ หิน ท่อนไม้ ไม้ …) จะสวยที่สุด เพราะบล็อกที่สร้างใช้โมเดลของบล็อกต้นฉบับ · บล็อกของม็อดเรา: ติ๊กในรายการ หรือต่อขา "บล็อก" เข้าขา "บล็อกของม็อด"'
-        )
-      },
-      {
-        key: 'prefix',
-        label: t('ID prefix', 'คำนำหน้า ID'),
-        kind: 'id',
-        default: 'regen',
-        hint: t(
-          'regen → regen_iron_ore, regen_iron_ore_depleted. Nodes with the same prefix share one creative tab.',
-          'regen → regen_iron_ore, regen_iron_ore_depleted · โหนดที่ใช้คำนำหน้าเดียวกันจะอยู่แท็บครีเอทีฟเดียวกัน'
-        )
-      },
-      {
-        key: 'input',
-        label: t('How to harvest', 'วิธีเก็บเกี่ยว'),
-        kind: 'select',
-        default: 'break',
-        options: [
-          opt('break', 'Break it (mine)', 'ทุบ (ขุด)'),
-          opt('hold', 'Hold left-click for a while', 'กดคลิกซ้ายค้างตามเวลา'),
-          opt('stand', 'Left-click once, then stand still', 'คลิกซ้ายครั้งเดียวแล้วยืนนิ่งตามเวลา')
-        ],
-        hint: t(
-          'Break: mined like a block. Hold: counts only while the button is held, stops as soon as it is let go and starts over on another block. Either way the tool must be good enough for the original block (a wooden pickaxe cannot take iron ore).',
-          'ทุบ: ขุดเหมือนบล็อกทั่วไป · กดค้าง: นับเวลาเฉพาะตอนกดค้าง ปล่อยปุ่มแล้วหยุดทันที หันไปบล็อกอื่นเริ่มนับใหม่ · ทุกแบบต้องใช้อุปกรณ์ที่ขุดบล็อกต้นฉบับได้ (อีเต้อไม้ขุดแร่เหล็กไม่ได้)'
-        )
-      },
-      harvestSecondsProp((d) => d.input === 'hold' || d.input === 'stand'),
-      {
-        key: 'timer',
-        label: t('Show a timer while breaking', 'แสดงเวลาตอนทุบ'),
-        kind: 'bool',
-        default: true,
-        showIf: (d) => (d.input ?? 'break') === 'break'
-      },
-      {
-        key: 'hardness',
-        label: t('Hardness (mining time)', 'ความแข็ง (เวลาขุด)'),
-        kind: 'float',
-        default: 3,
-        min: 0,
-        max: 100,
-        step: 0.5,
-        hint: t('Iron ore: 3, stone: 1.5, logs: 2, obsidian: 50', 'แร่เหล็ก: 3, หิน: 1.5, ท่อนไม้: 2, ออบซิเดียน: 50'),
-        showIf: (d) => (d.input ?? 'break') === 'break'
-      },
-      {
-        key: 'tool',
-        label: t('Mined fast with', 'ขุดเร็วด้วย'),
-        kind: 'select',
-        default: 'pickaxe',
-        options: MINE_TOOL_OPTIONS,
-        showIf: (d) => (d.input ?? 'break') === 'break'
-      },
-      {
-        key: 'sound',
-        label: t('Sound type', 'เสียงบล็อก'),
-        kind: 'select',
-        default: 'stone',
-        options: SOUND_OPTIONS
-      },
-      {
-        key: 'regenSeconds',
-        label: t('Grows back after (seconds)', 'เกิดใหม่หลังจาก (วินาที)'),
-        kind: 'int',
-        default: 60,
-        min: 1,
-        max: 86400
-      },
-      {
-        key: 'depleted',
-        label: t('Block while growing back (cannot be broken)', 'บล็อกระหว่างรอเกิดใหม่ (ทุบไม่ได้)'),
-        kind: 'nsid',
-        default: 'minecraft:bedrock',
-        hint: t('Its look, e.g. minecraft:bedrock, minecraft:cobblestone', 'ใช้หน้าตาของบล็อกนี้ เช่น minecraft:bedrock, minecraft:cobblestone')
-      },
-      {
-        key: 'dropMin',
-        label: t('"Drops instead" count min', 'จำนวน "ดรอปแทน" ต่ำสุด'),
-        kind: 'int',
-        default: 1,
-        min: 1,
-        max: 64,
-        hint: t('Only used when an item is wired into "Drops instead".', 'ใช้เมื่อต่อไอเทมเข้าขา "ดรอปแทน" เท่านั้น')
-      },
-      { key: 'dropMax', label: t('"Drops instead" count max', 'จำนวน "ดรอปแทน" สูงสุด'), kind: 'int', default: 1, min: 1, max: 64 },
-      giveProp(),
-      {
-        key: 'toolWear',
-        label: t('Tool durability used per harvest', 'ค่าคงทนเครื่องมือที่เสียต่อครั้ง'),
-        kind: 'int',
-        default: 1,
-        min: 0,
-        max: 64,
-        hint: t(
-          'The item in the main hand loses this much durability each time a block is picked with the left button (0 = none). Mining ("Break") wears tools like the game does. Creative mode is not affected.',
-          'ไอเทมในมือหลักเสียค่าคงทนเท่านี้ทุกครั้งที่เก็บด้วยคลิกซ้าย (0 = ไม่เสีย) · แบบ "ทุบ" เสียค่าคงทนตามปกติของเกม · โหมดสร้างสรรค์ไม่เสีย'
-        ),
-        showIf: (d) => d.input !== undefined && d.input !== 'break'
-      },
-      harvestAdventureProp((d) => d.input !== undefined && d.input !== 'break'),
-      { key: 'tabTitle', label: t('Creative tab title (EN)', 'ชื่อแท็บครีเอทีฟ (EN)'), kind: 'text', default: 'Regenerating Blocks' },
-      { key: 'tabTitleTh', label: t('Creative tab title (TH)', 'ชื่อแท็บครีเอทีฟ (ไทย)'), kind: 'text', default: 'บล็อกเกิดใหม่' }
-    ]
-  },
-
-  {
     type: 'crop',
     category: 'farm',
     title: t('Crop (plant)', 'พืช (ปลูกได้)'),
@@ -923,8 +635,7 @@ const CORE_NODE_DEFS: NodeDef[] = [
     registers: true,
     inputs: [
       ...slots(8, 'stage', 'Growth stage', 'ระยะการโต', 'texture', { group: 'stage' }),
-      { id: 'produce', label: t('Harvest (item)', 'ผลผลิต (ไอเทม)'), type: 'item' },
-      { id: 'ui', label: t('Timer window', 'หน้าต่างเวลา'), type: 'harvestUi', optional: true }
+      { id: 'produce', label: t('Harvest (item)', 'ผลผลิต (ไอเทม)'), type: 'item' }
     ],
     outputs: [{ id: 'block', label: t('Block (for the seeds)', 'บล็อก (ต่อเข้าเมล็ด)'), type: 'block' }],
     props: [
@@ -952,54 +663,6 @@ const CORE_NODE_DEFS: NodeDef[] = [
         max: 36000,
         hint: t('0: grows at random like vanilla crops (faster on wet farmland).', '0: โตแบบสุ่มเหมือนพืชในเกม (ดินไถเปียกโตเร็วกว่า)')
       },
-      {
-        key: 'mode',
-        label: t('After harvest', 'หลังเก็บเกี่ยว'),
-        kind: 'select',
-        default: 'replant',
-        options: [
-          opt('replant', 'Gone: plant the seeds again (like wheat)', 'หายไป ต้องปลูกเมล็ดใหม่ (แบบข้าวสาลี)'),
-          opt('auto', 'Replants itself (one seed is used, it grows again from the start)', 'ปลูกใหม่เอง (ใช้เมล็ด 1 เมล็ด แล้วโตใหม่ตั้งแต่ต้น)'),
-          opt('regrow', 'Stays and grows back after a cooldown', 'ต้นยังอยู่ โตใหม่ตามเวลาคูลดาวน์')
-        ]
-      },
-      {
-        key: 'regrowSeconds',
-        label: t('Cooldown before the next harvest (seconds)', 'คูลดาวน์ก่อนเก็บรอบถัดไป (วินาที)'),
-        kind: 'int',
-        default: 60,
-        min: 1,
-        max: 36000,
-        showIf: (d) => d.mode === 'regrow'
-      },
-      {
-        key: 'regrowStage',
-        label: t('Goes back to stage', 'ย้อนกลับไประยะที่'),
-        kind: 'int',
-        default: 0,
-        min: 0,
-        max: 7,
-        hint: t('0 = the start. The cooldown is the time back to fully grown.', '0 = เริ่มต้น เวลาคูลดาวน์คือเวลาจนโตเต็มที่อีกครั้ง'),
-        showIf: (d) => d.mode === 'regrow'
-      },
-      {
-        key: 'input',
-        label: t('How to harvest', 'วิธีเก็บเกี่ยว'),
-        kind: 'select',
-        default: 'break',
-        options: [
-          opt('break', 'Break it (vanilla)', 'ทุบ (แบบปกติ)'),
-          opt('click', 'Right-click', 'คลิกขวา'),
-          opt('hold', 'Hold right-click for a while', 'กดคลิกขวาค้างตามเวลา'),
-          opt('stand', 'Right-click once, then stand still', 'คลิกขวาครั้งเดียวแล้วยืนนิ่งตามเวลา')
-        ],
-        hint: t(
-          'Hold: releasing the button stops it. Stand still: moving stops it and you have to click again. A timer shows above the hotbar.',
-          'กดค้าง: ปล่อยปุ่มแล้วหยุด · ยืนนิ่ง: ขยับแล้วหยุด ต้องคลิกใหม่ · มีเวลาแสดงเหนือแถบไอเทม'
-        )
-      },
-      harvestSecondsProp((d) => d.input === 'hold' || d.input === 'stand'),
-      giveProp((d) => d.input === 'click' || d.input === 'hold' || d.input === 'stand' || d.mode === 'regrow' || d.mode === 'auto'),
       { key: 'produceMin', label: t('Harvest count min', 'จำนวนผลผลิตต่ำสุด'), kind: 'int', default: 1, min: 1, max: 64 },
       { key: 'produceMax', label: t('Harvest count max', 'จำนวนผลผลิตสูงสุด'), kind: 'int', default: 2, min: 1, max: 64 },
       {
@@ -1011,104 +674,7 @@ const CORE_NODE_DEFS: NodeDef[] = [
         max: 64,
         showIf: (d) => d.mode !== 'regrow'
       },
-      { key: 'seedMax', label: t('Seeds back max', 'ได้เมล็ดคืนสูงสุด'), kind: 'int', default: 3, min: 0, max: 64, showIf: (d) => d.mode !== 'regrow' },
-      breakDropsProp(
-        t(
-          'Only breaking by a player counts: picking by hand still gives the harvest. "Nothing" with "Break it" as the harvest gives nothing at all.',
-          'มีผลเฉพาะตอนผู้เล่นทุบ: การเก็บด้วยมือยังได้ผลผลิตตามปกติ · ถ้าเลือก "ไม่ได้อะไรเลย" แต่ตั้งวิธีเก็บเป็น "ทุบ" จะไม่ได้อะไรเลย'
-        )
-      ),
-      harvestAdventureProp((d) => (d.input !== undefined && d.input !== 'break') || d.mode === 'regrow' || d.mode === 'auto'),
-      harvestSneakProp((d) => (d.input !== undefined && d.input !== 'break') || d.mode === 'regrow' || d.mode === 'auto')
-    ]
-  },
-
-  {
-    type: 'gameCrop',
-    category: 'farm',
-    title: t('Harvest a game crop', 'เก็บเกี่ยวพืชในเกม'),
-    description: t(
-      "Gives a crop of Minecraft, Farmer's Delight or another mod the hand-harvest system: right-click, hold right-click or right-click and stand still, with a timer on screen. It grows like in the game; when grown it can break like normal, replant itself or go back to a younger stage.",
-      "ให้พืชของ Minecraft, Farmer's Delight หรือม็อดอื่นใช้ระบบเก็บเกี่ยวด้วยมือ: คลิกขวา กดค้าง หรือคลิกแล้วยืนนิ่ง มีเวลาแสดงบนจอ พืชโตตามปกติของเกม เมื่อโตแล้วเก็บแบบปกติ ปลูกใหม่เอง หรือย้อนกลับไประยะที่เลือกได้"
-    ),
-    icon: '🌾',
-    inputs: [{ id: 'ui', label: t('Timer window', 'หน้าต่างเวลา'), type: 'harvestUi', optional: true }],
-    outputs: [],
-    props: [
-      {
-        key: 'crops',
-        label: t('Crops (pick any number)', 'พืช (เลือกได้หลายอย่าง)'),
-        kind: 'multi',
-        default: ['minecraft:wheat'],
-        hint: t('All of them use the settings below.', 'ทุกพืชที่เลือกใช้ค่าด้านล่างเหมือนกัน'),
-        options: [
-          opt('minecraft:wheat', 'Wheat', 'ข้าวสาลี'),
-          opt('minecraft:carrots', 'Carrots', 'แครอท'),
-          opt('minecraft:potatoes', 'Potatoes', 'มันฝรั่ง'),
-          opt('minecraft:beetroots', 'Beetroots', 'บีทรูท'),
-          opt('minecraft:nether_wart', 'Nether wart', 'หูดเนเธอร์'),
-          opt('minecraft:sweet_berry_bush', 'Sweet berry bush', 'พุ่มสวีทเบอร์รี'),
-          opt('minecraft:cocoa', 'Cocoa', 'โกโก้'),
-          opt('farmersdelight:cabbages', "Cabbages (Farmer's Delight)", "กะหล่ำปลี (Farmer's Delight)"),
-          opt('farmersdelight:onions', "Onions (Farmer's Delight)", "หัวหอม (Farmer's Delight)"),
-          opt('farmersdelight:tomatoes', "Tomatoes (Farmer's Delight)", "มะเขือเทศ (Farmer's Delight)"),
-          opt('farmersdelight:rice_panicles', "Rice (Farmer's Delight)", "ข้าว (Farmer's Delight)")
-        ]
-      },
-      {
-        key: 'others',
-        label: t('Other crops (block IDs, comma separated)', 'พืชอื่น (ID บล็อก คั่นด้วยจุลภาค)'),
-        kind: 'text',
-        default: '',
-        hint: t('Blocks with an "age" property that grow, e.g. mymod:corn, othermod:chili', 'บล็อกที่มีค่า "age" และโตได้ เช่น mymod:corn, othermod:chili')
-      },
-      {
-        key: 'input',
-        label: t('How to harvest', 'วิธีเก็บเกี่ยว'),
-        kind: 'select',
-        default: 'hold',
-        options: [
-          opt('click', 'Right-click', 'คลิกขวา'),
-          opt('hold', 'Hold right-click for a while', 'กดคลิกขวาค้างตามเวลา'),
-          opt('stand', 'Right-click once, then stand still', 'คลิกขวาครั้งเดียวแล้วยืนนิ่งตามเวลา')
-        ],
-        hint: t('Breaking the crop still works like in the game.', 'ทุบพืชยังได้เหมือนในเกม')
-      },
-      harvestSecondsProp((d) => d.input !== 'click'),
-      {
-        key: 'after',
-        label: t('After harvest', 'หลังเก็บเกี่ยว'),
-        kind: 'select',
-        default: 'normal',
-        options: [
-          opt(
-            'normal',
-            'Like the game / the mod (berries and tomatoes are picked, the rest breaks)',
-            'แบบปกติของเกม / ม็อด (เบอร์รีและมะเขือเทศเด็ดผล อย่างอื่นแตก)'
-          ),
-          opt('replant', 'Replants itself (one seed is used)', 'ปลูกใหม่เอง (ใช้เมล็ด 1 เมล็ด)'),
-          opt('regrow', 'Stays and goes back to a stage', 'ต้นยังอยู่ ย้อนกลับไประยะที่เลือก')
-        ]
-      },
-      {
-        key: 'backStage',
-        label: t('Goes back to stage', 'ย้อนกลับไประยะที่'),
-        kind: 'int',
-        default: 1,
-        min: 0,
-        max: 15,
-        hint: t('0 = the start. It then grows again like in the game.', '0 = เริ่มต้น จากนั้นโตใหม่ตามปกติของเกม'),
-        showIf: (d) => d.after === 'regrow'
-      },
-      giveProp(),
-      breakDropsProp(
-        t(
-          'Only breaking by a player counts: picking by hand still gives the harvest. Creative mode is not affected.',
-          'มีผลเฉพาะตอนผู้เล่นทุบ: การเก็บด้วยมือยังได้ผลผลิตตามปกติ (โหมดสร้างสรรค์ไม่มีผล)'
-        )
-      ),
-      harvestAdventureProp(),
-      harvestSneakProp()
+      { key: 'seedMax', label: t('Seeds back max', 'ได้เมล็ดคืนสูงสุด'), kind: 'int', default: 3, min: 0, max: 64, showIf: (d) => d.mode !== 'regrow' }
     ]
   },
 
@@ -1784,77 +1350,6 @@ const CORE_NODE_DEFS: NodeDef[] = [
     ]
   },
   {
-    type: 'harvestUi',
-    category: 'util',
-    title: t('Timer window', 'หน้าต่างเวลา'),
-    description: t(
-      'How a timer windows on screen (picking crops by hand, breaking blocks). Wire it into Crop, Harvest a game crop, Regenerating Blocks or Break Rule nodes (one window can be used by many).',
-      'หน้าต่างเวลาบนจอ (ตอนเก็บพืชด้วยมือ ตอนทุบบล็อก) ต่อเข้าโหนดพืช เก็บเกี่ยวพืชในเกม บล็อกเกิดใหม่ หรือกฎการทุบบล็อก (ใช้ร่วมกันได้หลายโหนด)'
-    ),
-    icon: '⏳',
-    inputs: [],
-    outputs: [{ id: 'out', label: t('Timer window', 'หน้าต่างเวลา'), type: 'harvestUi' }],
-    props: [
-      {
-        key: 'style',
-        label: t('Template', 'แบบ'),
-        kind: 'select',
-        default: 'bar',
-        options: [
-          opt('text', 'Text: ■■■□□ and the seconds', 'ข้อความ: ■■■□□ และวินาที'),
-          opt('bar', 'Bar that fills up', 'หลอดที่เพิ่มขึ้น'),
-          opt('ring', 'Circle that fills around the crosshair', 'วงกลมที่เต็มขึ้นรอบเป้ากลางจอ')
-        ]
-      },
-      { key: 'color', label: t('Colour', 'สี'), kind: 'color', default: '#4ade80' },
-      { key: 'back', label: t('Background colour', 'สีพื้นหลัง'), kind: 'color', default: '#000000', showIf: (d) => d.style !== 'text' },
-      {
-        key: 'backOpacity',
-        label: t('Background opacity (%)', 'ความทึบพื้นหลัง (%)'),
-        kind: 'int',
-        default: 50,
-        min: 0,
-        max: 100,
-        showIf: (d) => d.style !== 'text'
-      },
-      {
-        key: 'place',
-        label: t('Position', 'ตำแหน่ง'),
-        kind: 'select',
-        default: 'crosshair',
-        options: [
-          opt('crosshair', 'Under the crosshair', 'ใต้เป้ากลางจอ'),
-          opt('hotbar', 'Above the hotbar', 'เหนือแถบไอเทม'),
-          opt('top', 'Top of the screen', 'ด้านบนของจอ')
-        ],
-        showIf: (d) => d.style !== 'ring'
-      },
-      {
-        key: 'offset',
-        label: t('Move down (pixels, negative = up)', 'เลื่อนลง (พิกเซล, ติดลบ = ขึ้น)'),
-        kind: 'int',
-        default: 0,
-        min: -200,
-        max: 200,
-        showIf: (d) => d.style !== 'ring'
-      },
-      { key: 'width', label: t('Bar width', 'ความยาวหลอด'), kind: 'int', default: 60, min: 10, max: 300, showIf: (d) => d.style === 'bar' },
-      { key: 'height', label: t('Bar height', 'ความสูงหลอด'), kind: 'int', default: 4, min: 1, max: 20, showIf: (d) => d.style === 'bar' },
-      { key: 'radius', label: t('Circle size (radius)', 'ขนาดวงกลม (รัศมี)'), kind: 'int', default: 9, min: 3, max: 40, showIf: (d) => d.style === 'ring' },
-      {
-        key: 'thickness',
-        label: t('Line thickness', 'ความหนาเส้น'),
-        kind: 'int',
-        default: 3,
-        min: 1,
-        max: 40,
-        hint: t('As large as the size = a filled circle.', 'เท่ากับขนาด = วงกลมทึบ'),
-        showIf: (d) => d.style === 'ring'
-      },
-      { key: 'time', label: t('Show the seconds left', 'แสดงวินาทีที่เหลือ'), kind: 'bool', default: true }
-    ]
-  },
-  {
     type: 'reroute',
     category: 'util',
     title: t('Reroute', 'จุดพักสาย'),
@@ -1942,7 +1437,6 @@ registry.register('core', {
     block: '#7c3aed',
     attribute: '#14b8a6',
     hit: '#dc2626',
-    harvestUi: '#84cc16',
     any: '#9ca3af'
   }
 })

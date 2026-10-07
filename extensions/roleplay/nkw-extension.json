@@ -1,0 +1,243 @@
+{
+  "schema": 1,
+  "id": "roleplay",
+  "name": {
+    "en": "Roleplay",
+    "th": "โรลเพลย์"
+  },
+  "description": {
+    "en": "Hand harvesting, regrowing crops, regenerating blocks, break rules with tool wear, a timer window and the config file.",
+    "th": "เก็บเกี่ยวด้วยมือ พืชโตใหม่ บล็อกเกิดใหม่ กฎการทุบบล็อก (เสียค่าคงทน) หน้าต่างเวลา และไฟล์ config"
+  },
+  "version": "1.0.0",
+  "minApp": "0.2.1",
+  "pinTypes": {
+    "harvestUi": "#84cc16"
+  },
+  "nodes": [
+    "nodes/breakRule.json",
+    "nodes/regenBlock.json",
+    "nodes/gameCrop.json",
+    "nodes/harvestUi.json"
+  ],
+  "extendNodes": [
+    {
+      "type": "crop",
+      "afterProp": "growSeconds",
+      "afterInput": "produce",
+      "inputs": [
+        {
+          "id": "ui",
+          "label": {
+            "en": "Timer window",
+            "th": "หน้าต่างเวลา"
+          },
+          "type": "harvestUi",
+          "optional": true
+        }
+      ],
+      "props": [
+        {
+          "key": "mode",
+          "label": {
+            "en": "After harvest",
+            "th": "หลังเก็บเกี่ยว"
+          },
+          "kind": "select",
+          "default": "replant",
+          "options": [
+            {
+              "value": "replant",
+              "label": {
+                "en": "Gone: plant the seeds again (like wheat)",
+                "th": "หายไป ต้องปลูกเมล็ดใหม่ (แบบข้าวสาลี)"
+              }
+            },
+            {
+              "value": "auto",
+              "label": {
+                "en": "Replants itself (one seed is used, it grows again from the start)",
+                "th": "ปลูกใหม่เอง (ใช้เมล็ด 1 เมล็ด แล้วโตใหม่ตั้งแต่ต้น)"
+              }
+            },
+            {
+              "value": "regrow",
+              "label": {
+                "en": "Stays and grows back after a cooldown",
+                "th": "ต้นยังอยู่ โตใหม่ตามเวลาคูลดาวน์"
+              }
+            }
+          ]
+        },
+        {
+          "key": "regrowSeconds",
+          "label": {
+            "en": "Cooldown before the next harvest (seconds)",
+            "th": "คูลดาวน์ก่อนเก็บรอบถัดไป (วินาที)"
+          },
+          "kind": "int",
+          "default": 60,
+          "min": 1,
+          "max": 36000,
+          "showIf": "data.mode=='regrow'"
+        },
+        {
+          "key": "regrowStage",
+          "label": {
+            "en": "Goes back to stage",
+            "th": "ย้อนกลับไประยะที่"
+          },
+          "kind": "int",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "hint": {
+            "en": "0 = the start. The cooldown is the time back to fully grown.",
+            "th": "0 = เริ่มต้น เวลาคูลดาวน์คือเวลาจนโตเต็มที่อีกครั้ง"
+          },
+          "showIf": "data.mode=='regrow'"
+        },
+        {
+          "key": "input",
+          "label": {
+            "en": "How to harvest",
+            "th": "วิธีเก็บเกี่ยว"
+          },
+          "kind": "select",
+          "default": "break",
+          "options": [
+            {
+              "value": "break",
+              "label": {
+                "en": "Break it (vanilla)",
+                "th": "ทุบ (แบบปกติ)"
+              }
+            },
+            {
+              "value": "click",
+              "label": {
+                "en": "Right-click",
+                "th": "คลิกขวา"
+              }
+            },
+            {
+              "value": "hold",
+              "label": {
+                "en": "Hold right-click for a while",
+                "th": "กดคลิกขวาค้างตามเวลา"
+              }
+            },
+            {
+              "value": "stand",
+              "label": {
+                "en": "Right-click once, then stand still",
+                "th": "คลิกขวาครั้งเดียวแล้วยืนนิ่งตามเวลา"
+              }
+            }
+          ],
+          "hint": {
+            "en": "Hold: releasing the button stops it. Stand still: moving stops it and you have to click again. A timer shows above the hotbar.",
+            "th": "กดค้าง: ปล่อยปุ่มแล้วหยุด · ยืนนิ่ง: ขยับแล้วหยุด ต้องคลิกใหม่ · มีเวลาแสดงเหนือแถบไอเทม"
+          }
+        },
+        {
+          "key": "harvestSeconds",
+          "label": {
+            "en": "Harvest time (seconds)",
+            "th": "เวลาเก็บ (วินาที)"
+          },
+          "kind": "float",
+          "default": 2,
+          "min": 0.1,
+          "max": 120,
+          "step": 0.1,
+          "showIf": "data.input=='hold'||data.input=='stand'"
+        },
+        {
+          "key": "give",
+          "label": {
+            "en": "Harvest goes into the inventory",
+            "th": "ผลผลิตเข้าตัวทันที"
+          },
+          "kind": "bool",
+          "default": false,
+          "hint": {
+            "en": "Off: drops on the ground like normal. On: straight into the inventory (what does not fit drops at your feet).",
+            "th": "ปิด: ดรอปบนพื้นแบบปกติ · เปิด: เข้าช่องเก็บของเลย (ถ้าเต็มจะดรอปที่เท้า)"
+          },
+          "showIf": "data.input=='click'||data.input=='hold'||data.input=='stand'||data.mode=='regrow'||data.mode=='auto'"
+        }
+      ]
+    },
+    {
+      "type": "crop",
+      "afterProp": "seedMax",
+      "props": [
+        {
+          "key": "breakDrops",
+          "label": {
+            "en": "When a player breaks it",
+            "th": "เมื่อผู้เล่นทุบพืช"
+          },
+          "kind": "select",
+          "default": "normal",
+          "options": [
+            {
+              "value": "normal",
+              "label": {
+                "en": "Drops like normal",
+                "th": "ได้ของตามปกติ"
+              }
+            },
+            {
+              "value": "grown",
+              "label": {
+                "en": "Drops only when fully grown (young plants give nothing)",
+                "th": "ได้ของเฉพาะตอนโตเต็มที่ (ต้นอ่อนทุบแล้วไม่ได้อะไร)"
+              }
+            },
+            {
+              "value": "none",
+              "label": {
+                "en": "Gives nothing (harvest by hand only)",
+                "th": "ไม่ได้อะไรเลย (ต้องเก็บด้วยมือเท่านั้น)"
+              }
+            }
+          ],
+          "hint": {
+            "en": "Only breaking by a player counts: picking by hand still gives the harvest. \"Nothing\" with \"Break it\" as the harvest gives nothing at all.",
+            "th": "มีผลเฉพาะตอนผู้เล่นทุบ: การเก็บด้วยมือยังได้ผลผลิตตามปกติ · ถ้าเลือก \"ไม่ได้อะไรเลย\" แต่ตั้งวิธีเก็บเป็น \"ทุบ\" จะไม่ได้อะไรเลย"
+          }
+        },
+        {
+          "key": "adventure",
+          "label": {
+            "en": "Can be picked in adventure mode",
+            "th": "เก็บได้ในโหมดผจญภัย (Adventure)"
+          },
+          "kind": "bool",
+          "default": true,
+          "hint": {
+            "en": "Off: players in adventure mode cannot pick it by hand.",
+            "th": "ปิด: ผู้เล่นโหมดผจญภัยเก็บด้วยมือไม่ได้"
+          },
+          "showIf": "data.input!= null&&data.input!='break'||data.mode=='regrow'||data.mode=='auto'"
+        },
+        {
+          "key": "sneak",
+          "label": {
+            "en": "Only while sneaking (Shift)",
+            "th": "ต้องย่อตัว (Shift) ถึงจะเก็บได้"
+          },
+          "kind": "bool",
+          "default": false,
+          "hint": {
+            "en": "On: crouch and right-click to pick it; standing up stops a running harvest. A normal right-click does what it does in the game.",
+            "th": "เปิด: ต้องย่อตัวแล้วคลิกขวาถึงจะเก็บได้ ลุกขึ้นระหว่างเก็บจะหยุด · คลิกขวาปกติจะทำงานแบบเดิมของเกม"
+          },
+          "showIf": "data.input!= null&&data.input!='break'||data.mode=='regrow'||data.mode=='auto'"
+        }
+      ]
+    }
+  ]
+}

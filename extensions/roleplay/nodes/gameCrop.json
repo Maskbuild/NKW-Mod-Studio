@@ -1,0 +1,306 @@
+{
+  "type": "gameCrop",
+  "category": "farm",
+  "title": {
+    "en": "Harvest a game crop",
+    "th": "เก็บเกี่ยวพืชในเกม"
+  },
+  "description": {
+    "en": "Gives a crop of Minecraft, Farmer's Delight or another mod the hand-harvest system: right-click, hold right-click or right-click and stand still, with a timer on screen. It grows like in the game; when grown it can break like normal, replant itself or go back to a younger stage.",
+    "th": "ให้พืชของ Minecraft, Farmer's Delight หรือม็อดอื่นใช้ระบบเก็บเกี่ยวด้วยมือ: คลิกขวา กดค้าง หรือคลิกแล้วยืนนิ่ง มีเวลาแสดงบนจอ พืชโตตามปกติของเกม เมื่อโตแล้วเก็บแบบปกติ ปลูกใหม่เอง หรือย้อนกลับไประยะที่เลือกได้"
+  },
+  "icon": "🌾",
+  "inputs": [
+    {
+      "id": "ui",
+      "label": {
+        "en": "Timer window",
+        "th": "หน้าต่างเวลา"
+      },
+      "type": "harvestUi",
+      "optional": true
+    }
+  ],
+  "outputs": [],
+  "props": [
+    {
+      "key": "crops",
+      "label": {
+        "en": "Crops (pick any number)",
+        "th": "พืช (เลือกได้หลายอย่าง)"
+      },
+      "kind": "multi",
+      "default": [
+        "minecraft:wheat"
+      ],
+      "hint": {
+        "en": "All of them use the settings below.",
+        "th": "ทุกพืชที่เลือกใช้ค่าด้านล่างเหมือนกัน"
+      },
+      "options": [
+        {
+          "value": "minecraft:wheat",
+          "label": {
+            "en": "Wheat",
+            "th": "ข้าวสาลี"
+          }
+        },
+        {
+          "value": "minecraft:carrots",
+          "label": {
+            "en": "Carrots",
+            "th": "แครอท"
+          }
+        },
+        {
+          "value": "minecraft:potatoes",
+          "label": {
+            "en": "Potatoes",
+            "th": "มันฝรั่ง"
+          }
+        },
+        {
+          "value": "minecraft:beetroots",
+          "label": {
+            "en": "Beetroots",
+            "th": "บีทรูท"
+          }
+        },
+        {
+          "value": "minecraft:nether_wart",
+          "label": {
+            "en": "Nether wart",
+            "th": "หูดเนเธอร์"
+          }
+        },
+        {
+          "value": "minecraft:sweet_berry_bush",
+          "label": {
+            "en": "Sweet berry bush",
+            "th": "พุ่มสวีทเบอร์รี"
+          }
+        },
+        {
+          "value": "minecraft:cocoa",
+          "label": {
+            "en": "Cocoa",
+            "th": "โกโก้"
+          }
+        },
+        {
+          "value": "farmersdelight:cabbages",
+          "label": {
+            "en": "Cabbages (Farmer's Delight)",
+            "th": "กะหล่ำปลี (Farmer's Delight)"
+          }
+        },
+        {
+          "value": "farmersdelight:onions",
+          "label": {
+            "en": "Onions (Farmer's Delight)",
+            "th": "หัวหอม (Farmer's Delight)"
+          }
+        },
+        {
+          "value": "farmersdelight:tomatoes",
+          "label": {
+            "en": "Tomatoes (Farmer's Delight)",
+            "th": "มะเขือเทศ (Farmer's Delight)"
+          }
+        },
+        {
+          "value": "farmersdelight:rice_panicles",
+          "label": {
+            "en": "Rice (Farmer's Delight)",
+            "th": "ข้าว (Farmer's Delight)"
+          }
+        }
+      ]
+    },
+    {
+      "key": "others",
+      "label": {
+        "en": "Other crops (block IDs, comma separated)",
+        "th": "พืชอื่น (ID บล็อก คั่นด้วยจุลภาค)"
+      },
+      "kind": "text",
+      "default": "",
+      "hint": {
+        "en": "Blocks with an \"age\" property that grow, e.g. mymod:corn, othermod:chili",
+        "th": "บล็อกที่มีค่า \"age\" และโตได้ เช่น mymod:corn, othermod:chili"
+      }
+    },
+    {
+      "key": "input",
+      "label": {
+        "en": "How to harvest",
+        "th": "วิธีเก็บเกี่ยว"
+      },
+      "kind": "select",
+      "default": "hold",
+      "options": [
+        {
+          "value": "click",
+          "label": {
+            "en": "Right-click",
+            "th": "คลิกขวา"
+          }
+        },
+        {
+          "value": "hold",
+          "label": {
+            "en": "Hold right-click for a while",
+            "th": "กดคลิกขวาค้างตามเวลา"
+          }
+        },
+        {
+          "value": "stand",
+          "label": {
+            "en": "Right-click once, then stand still",
+            "th": "คลิกขวาครั้งเดียวแล้วยืนนิ่งตามเวลา"
+          }
+        }
+      ],
+      "hint": {
+        "en": "Breaking the crop still works like in the game.",
+        "th": "ทุบพืชยังได้เหมือนในเกม"
+      }
+    },
+    {
+      "key": "harvestSeconds",
+      "label": {
+        "en": "Harvest time (seconds)",
+        "th": "เวลาเก็บ (วินาที)"
+      },
+      "kind": "float",
+      "default": 2,
+      "min": 0.1,
+      "max": 120,
+      "step": 0.1,
+      "showIf": "data.input!='click'"
+    },
+    {
+      "key": "after",
+      "label": {
+        "en": "After harvest",
+        "th": "หลังเก็บเกี่ยว"
+      },
+      "kind": "select",
+      "default": "normal",
+      "options": [
+        {
+          "value": "normal",
+          "label": {
+            "en": "Like the game / the mod (berries and tomatoes are picked, the rest breaks)",
+            "th": "แบบปกติของเกม / ม็อด (เบอร์รีและมะเขือเทศเด็ดผล อย่างอื่นแตก)"
+          }
+        },
+        {
+          "value": "replant",
+          "label": {
+            "en": "Replants itself (one seed is used)",
+            "th": "ปลูกใหม่เอง (ใช้เมล็ด 1 เมล็ด)"
+          }
+        },
+        {
+          "value": "regrow",
+          "label": {
+            "en": "Stays and goes back to a stage",
+            "th": "ต้นยังอยู่ ย้อนกลับไประยะที่เลือก"
+          }
+        }
+      ]
+    },
+    {
+      "key": "backStage",
+      "label": {
+        "en": "Goes back to stage",
+        "th": "ย้อนกลับไประยะที่"
+      },
+      "kind": "int",
+      "default": 1,
+      "min": 0,
+      "max": 15,
+      "hint": {
+        "en": "0 = the start. It then grows again like in the game.",
+        "th": "0 = เริ่มต้น จากนั้นโตใหม่ตามปกติของเกม"
+      },
+      "showIf": "data.after=='regrow'"
+    },
+    {
+      "key": "give",
+      "label": {
+        "en": "Harvest goes into the inventory",
+        "th": "ผลผลิตเข้าตัวทันที"
+      },
+      "kind": "bool",
+      "default": false,
+      "hint": {
+        "en": "Off: drops on the ground like normal. On: straight into the inventory (what does not fit drops at your feet).",
+        "th": "ปิด: ดรอปบนพื้นแบบปกติ · เปิด: เข้าช่องเก็บของเลย (ถ้าเต็มจะดรอปที่เท้า)"
+      }
+    },
+    {
+      "key": "breakDrops",
+      "label": {
+        "en": "When a player breaks it",
+        "th": "เมื่อผู้เล่นทุบพืช"
+      },
+      "kind": "select",
+      "default": "normal",
+      "options": [
+        {
+          "value": "normal",
+          "label": {
+            "en": "Drops like normal",
+            "th": "ได้ของตามปกติ"
+          }
+        },
+        {
+          "value": "grown",
+          "label": {
+            "en": "Drops only when fully grown (young plants give nothing)",
+            "th": "ได้ของเฉพาะตอนโตเต็มที่ (ต้นอ่อนทุบแล้วไม่ได้อะไร)"
+          }
+        },
+        {
+          "value": "none",
+          "label": {
+            "en": "Gives nothing (harvest by hand only)",
+            "th": "ไม่ได้อะไรเลย (ต้องเก็บด้วยมือเท่านั้น)"
+          }
+        }
+      ],
+      "hint": {
+        "en": "Only breaking by a player counts: picking by hand still gives the harvest. Creative mode is not affected.",
+        "th": "มีผลเฉพาะตอนผู้เล่นทุบ: การเก็บด้วยมือยังได้ผลผลิตตามปกติ (โหมดสร้างสรรค์ไม่มีผล)"
+      }
+    },
+    {
+      "key": "adventure",
+      "label": {
+        "en": "Can be picked in adventure mode",
+        "th": "เก็บได้ในโหมดผจญภัย (Adventure)"
+      },
+      "kind": "bool",
+      "default": true,
+      "hint": {
+        "en": "Off: players in adventure mode cannot pick it by hand.",
+        "th": "ปิด: ผู้เล่นโหมดผจญภัยเก็บด้วยมือไม่ได้"
+      }
+    },
+    {
+      "key": "sneak",
+      "label": {
+        "en": "Only while sneaking (Shift)",
+        "th": "ต้องย่อตัว (Shift) ถึงจะเก็บได้"
+      },
+      "kind": "bool",
+      "default": false,
+      "hint": {
+        "en": "On: crouch and right-click to pick it; standing up stops a running harvest. A normal right-click does what it does in the game.",
+        "th": "เปิด: ต้องย่อตัวแล้วคลิกขวาถึงจะเก็บได้ ลุกขึ้นระหว่างเก็บจะหยุด · คลิกขวาปกติจะทำงานแบบเดิมของเกม"
+      }
+    }
+  ]
+}
