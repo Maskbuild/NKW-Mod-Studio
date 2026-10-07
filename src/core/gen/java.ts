@@ -3,6 +3,7 @@ import { geoLoopName } from './geo'
 import { geckoArmorSource } from './gecko'
 import { genHarvest, genHarvestHud, harvestUiIndex, usesHarvest, usesHud } from './harvest'
 import { genBreakRules, usesBreakRules } from './breakRules'
+import { genExtensions } from './extgen'
 import { genRegen, regenCtor, usesRegen } from './regen'
 import { genConfig, usesConfig } from './config'
 import { toMcp1165 } from './mcp'
@@ -745,6 +746,7 @@ ${accept(tb, '            ')}
     genAttributes(ctx, attrItems, get, out)
     ctx.hooks.add('commonInit', 'NkwAttributes.init();', 60)
   }
+  genExtensions(ctx, out)
   const hookLines = (site: Parameters<typeof ctx.hooks.add>[0]) =>
     ctx.hooks
       .get(site)

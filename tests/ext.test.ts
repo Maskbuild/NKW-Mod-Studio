@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { compile } from '../src/core/compile/compile'
+import { FALLBACK_DEPS, TOOL_VERSIONS, generate } from '../src/core/gen/index'
 import { extHost } from '../src/core/ext/host'
 import { loadExtension, type FileMap } from '../src/core/ext/manifest'
 import { registry } from '../src/core/ext/registry'
@@ -216,5 +217,56 @@ describe('mapping in compile()', () => {
     extHost.clear()
     const off = compile(project([nd('b', 'demoBox')]))
     expect(off.diagnostics.some((d) => d.severity === 'error' && /Unknown node type/.test(d.message.en))).toBe(true)
+  })
+})
+
+describe('extension code generation', () => {
+  const genFiles = (f: FileMap, mc = '1.21.1', loader: 'fabric' | 'neoforge' = 'fabric') => {
+    extHost.enable(load(f))
+    const target = { loader, mc }
+    const { ir } = compile(project([nd('a', 'demoBox', { id: 'a', size: 2 }), nd('b', 'demoBox', { id: 'b', size: 7 })]), target)
+    return generate(ir, target, { ...TOOL_VERSIONS, ...FALLBACK_DEPS[mc], gradle: '8.14.3' }, { readText: () => '' })
+  }
+  const withGen = (over: Record<string, unknown> = {}) =>
+    files(
+      manifest({
+        generate: [
+          { id: 'cls', emit: [{ kind: 'java', class: 'DemoBoxes', template: 't/boxes.tpl' }] },
+          { id: 'each', each: 'ext.boxes', emit: [{ kind: 'file', path: 'resources/data/{{ modId }}/demo/{{ item.id }}.txt', template: 't/one.tpl' }] }
+        ],
+        hooks: [{ site: 'commonInit', order: 5, line: 'DemoBoxes.init();' }],
+        ...over
+      }),
+      {
+        't/boxes.tpl':
+          '{{#import "java.util.List"}}\npublic final class DemoBoxes {\n    public static void init() {\n{{#each ext.boxes as item}}        // {{ item.id }} x{{ item.ticks }}\n{{/each}}    }\n}\n',
+        't/const.tpl': 'x',
+        't/one.tpl': 'box={{ item.id }} size={{ item.size }}\n'
+      }
+    )
+
+  it('renders Java classes, per-record files and init hooks into the mod', () => {
+    const out = genFiles(withGen())
+    const cls = out.find((f) => f.path.endsWith('/DemoBoxes.java'))!
+    expect(cls.text).toContain('import java.util.List;')
+    expect(cls.text).toContain('// a x40')
+    expect(cls.text).toContain('// b x140')
+    expect(out.find((f) => f.path.endsWith('/demo/b.txt'))!.text).toBe('box=b size=7\n')
+    const main = out.find((f) => f.path.endsWith('/NkwMod.java'))!.text!
+    expect(main.indexOf('DemoBoxes.init();')).toBeGreaterThan(main.indexOf('ModTabs.init();'))
+  })
+
+  it('works on Forge-like loaders and skips targets the extension does not support', () => {
+    expect(genFiles(withGen(), '1.21.1', 'neoforge').some((f) => f.path.endsWith('/DemoBoxes.java'))).toBe(true)
+    extHost.clear()
+    const only = withGen({ targets: { loaders: ['fabric'] } })
+    expect(genFiles(only, '1.21.1', 'neoforge').some((f) => f.path.endsWith('/DemoBoxes.java'))).toBe(false)
+    extHost.clear()
+    expect(genFiles(withGen({ targets: { mc: '1.21.4+' } }), '1.21.1').some((f) => f.path.endsWith('/DemoBoxes.java'))).toBe(false)
+  })
+
+  it('refuses to write outside the project', () => {
+    const f = withGen({ generate: [{ id: 'x', emit: [{ kind: 'file', path: '../evil.txt', template: 't/const.tpl' }] }], hooks: [] })
+    expect(() => genFiles(f)).toThrow(/tried to write/)
   })
 })

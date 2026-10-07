@@ -4,7 +4,7 @@ import type { NodeDef, PinDef, PropDef } from '../nodes/defs'
 import type { CategoryInfo, Contribution } from './registry'
 import { compileExpr } from './expr'
 import { isRange, isVersion } from './semver'
-import { CompileSchema, DeriveSchema, checkExpr, mappingExprs, type MappedExtension, type NodeCompile } from './mapping'
+import { CompileSchema, DeriveSchema, MAPPING_FNS, checkExpr, mappingExprs, type MappedExtension, type NodeCompile } from './mapping'
 import { parseEra, parseTemplate, templateInfo, TemplateError, type Template } from './tpl'
 import { registry } from './registry'
 import '../nodes/defs'
@@ -86,10 +86,18 @@ const GenerateSchema = z.strictObject({
   id: KEY,
   /** expression over the generation scope */
   when: z.string().max(500).optional(),
-  /** a list to repeat over, and the name of each item in the template */
+  /** a list to repeat over; each entry is `item` in the template */
   each: z.string().max(200).optional(),
-  as: KEY.optional(),
   emit: z.array(Emit).min(1).max(20)
+})
+
+const HookSchema = z.strictObject({
+  site: z.enum(['commonInit', 'forgeClientInit', 'fabricClientInit']),
+  order: z.number().int().min(0).max(1000).default(100),
+  when: z.string().max(500).optional(),
+  each: z.string().max(200).optional(),
+  /** one line of Java, a template */
+  line: z.string().max(500)
 })
 
 export const ManifestSchema = z.strictObject({
@@ -105,7 +113,7 @@ export const ManifestSchema = z.strictObject({
   homepage: z.string().max(300).optional(),
   targets: z
     .strictObject({
-      /** Minecraft versions it supports, e.g. ">=1.20.1" (empty: all) */
+      /** Minecraft versions it supports, e.g. "1.20.1+" or "1.16.5-1.18.2, 1.21+" (empty: all) */
       mc: z.string().max(100).optional(),
       loaders: z
         .array(z.enum(['fabric', 'quilt', 'forge', 'neoforge']))
@@ -119,7 +127,8 @@ export const ManifestSchema = z.strictObject({
   pinTypes: z.record(z.string().regex(/^[a-zA-Z0-9_-]{1,40}$/), COLOR).default({}),
   nodes: z.array(PATH).max(FILE_LIMITS.nodes).default([]),
   derive: z.array(DeriveSchema).max(40).default([]),
-  generate: z.array(GenerateSchema).max(200).default([])
+  generate: z.array(GenerateSchema).max(200).default([]),
+  hooks: z.array(HookSchema).max(100).default([])
 })
 export type Manifest = z.infer<typeof ManifestSchema>
 
@@ -137,6 +146,7 @@ export interface LoadedExtension {
 
 export type LoadResult = { ok: true; ext: LoadedExtension } | { ok: false; errors: string[] }
 
+const TEMPLATE_FNS = ['any', ...Object.keys(MAPPING_FNS)]
 const SCOPE_ROOTS = ['ir', 'ext', 'profile', 'loader', 'mc', 'meta', 'item', 'loop', 'modId', 'pkg']
 
 const text = (f: string | Uint8Array): string => (typeof f === 'string' ? f : new TextDecoder().decode(f))
@@ -292,6 +302,7 @@ export function loadExtension(files: FileMap): LoadResult {
       templates[path] = tpl
       const info = templateInfo(tpl)
       for (const n of info.names) if (!SCOPE_ROOTS.includes(n)) errors.push(`${path}: unknown name "${n}"`)
+      for (const c of info.calls) if (!TEMPLATE_FNS.includes(c)) errors.push(`${path}: unknown function "${c}"`)
       for (const p of info.partials) loadTpl(p, path)
     } catch (e) {
       errors.push(e instanceof TemplateError ? e.message : `${path}: ${(e as Error).message}`)
@@ -301,7 +312,6 @@ export function loadExtension(files: FileMap): LoadResult {
   for (const g of manifest.generate) {
     if (genIds.has(g.id)) errors.push(`generate "${g.id}" defined twice`)
     genIds.add(g.id)
-    if (g.as && !g.each) errors.push(`generate "${g.id}": "as" needs "each"`)
     for (const [k, v] of [
       ['when', g.when],
       ['each', g.each]
@@ -312,6 +322,23 @@ export function loadExtension(files: FileMap): LoadResult {
       }
     for (const e of g.emit) loadTpl(e.template, `generate "${g.id}"`)
   }
+  manifest.hooks.forEach((h, i) => {
+    for (const [k, v] of [
+      ['when', h.when],
+      ['each', h.each]
+    ] as const)
+      if (v) {
+        const bad = checkExpr(v, SCOPE_ROOTS, ['any'])
+        if (bad) errors.push(`hooks[${i}] ${k}: ${bad}`)
+      }
+    try {
+      const tpl = parseTemplate(h.line, `hooks[${i}]`)
+      templates[`hook:${i}`] = tpl
+      for (const n of templateInfo(tpl).names) if (!SCOPE_ROOTS.includes(n)) errors.push(`hooks[${i}]: unknown name "${n}"`)
+    } catch (e) {
+      errors.push(e instanceof TemplateError ? e.message : `hooks[${i}]: ${(e as Error).message}`)
+    }
+  })
   if (manifest.targets.mc && parseEra(manifest.targets.mc) === null) errors.push(`targets.mc: bad version range "${manifest.targets.mc}"`)
 
   if (errors.length) return { ok: false, errors }
