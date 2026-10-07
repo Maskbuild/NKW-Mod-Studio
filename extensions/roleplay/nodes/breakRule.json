@@ -1,0 +1,246 @@
+{
+  "type": "breakRule",
+  "category": "block",
+  "title": {
+    "en": "Break Rule (tool & level)",
+    "th": "กฎการทุบบล็อก (อุปกรณ์และระดับแร่)"
+  },
+  "description": {
+    "en": "Blocks that need a certain tool and mining level. Pick any number of Minecraft blocks, blocks of other mods (type the id) or #tags, and wire in this mod's blocks. With the wrong tool the block drops nothing, or cannot be broken at all. Creative mode is not affected.",
+    "th": "กำหนดว่าบล็อกไหนต้องใช้อุปกรณ์และระดับแร่อะไรถึงจะทุบได้ — เลือกบล็อกของ Minecraft บล็อกของม็อดอื่น (พิมพ์ ID) หรือ #แท็ก ได้หลายอันพร้อมกัน และต่อสายบล็อกของม็อดเราเข้ามาได้ ถ้าใช้อุปกรณ์ไม่ถูกจะไม่ได้ของ หรือทุบไม่ได้เลย (โหมดสร้างสรรค์ไม่มีผล)"
+  },
+  "icon": "⛏",
+  "inputs": [
+    {
+      "id": "ui",
+      "label": {
+        "en": "Timer window",
+        "th": "หน้าต่างเวลา"
+      },
+      "type": "harvestUi",
+      "optional": true
+    },
+    {
+      "id": "block",
+      "label": {
+        "en": "Mod block",
+        "th": "บล็อกของม็อด"
+      },
+      "type": "block",
+      "optional": true,
+      "group": "blocks",
+      "count": 32
+    }
+  ],
+  "outputs": [],
+  "props": [
+    {
+      "key": "blocks",
+      "label": {
+        "en": "Blocks (pick any number)",
+        "th": "บล็อก (เลือกได้หลายอัน)"
+      },
+      "kind": "blockList",
+      "default": [],
+      "hint": {
+        "en": "Tick blocks in the list (type to search), add an id like othermod:ruby_ore or a tag like #minecraft:logs, or drag blocks here from the \"Game items\" tab. Blocks of this mod: wire their Block pin in, or pick them in the list.",
+        "th": "ติ๊กเลือกบล็อกในรายการ (พิมพ์เพื่อค้นหา) เพิ่ม ID เช่น othermod:ruby_ore หรือแท็กเช่น #minecraft:logs หรือลากบล็อกจากแท็บ \"ไอเทมเกม\" มาวาง · บล็อกของม็อดเรา: ต่อสายจากขา \"บล็อก\" หรือเลือกในรายการก็ได้"
+      }
+    },
+    {
+      "key": "tool",
+      "label": {
+        "en": "Required tool",
+        "th": "อุปกรณ์ที่ต้องใช้"
+      },
+      "kind": "select",
+      "default": "pickaxe",
+      "options": [
+        {
+          "value": "pickaxe",
+          "label": {
+            "en": "Pickaxe",
+            "th": "อีเต้อ"
+          }
+        },
+        {
+          "value": "axe",
+          "label": {
+            "en": "Axe",
+            "th": "ขวาน"
+          }
+        },
+        {
+          "value": "shovel",
+          "label": {
+            "en": "Shovel",
+            "th": "พลั่ว"
+          }
+        },
+        {
+          "value": "hoe",
+          "label": {
+            "en": "Hoe",
+            "th": "จอบ"
+          }
+        },
+        {
+          "value": "sword",
+          "label": {
+            "en": "Sword",
+            "th": "ดาบ"
+          }
+        },
+        {
+          "value": "shears",
+          "label": {
+            "en": "Shears",
+            "th": "กรรไกร"
+          }
+        },
+        {
+          "value": "any",
+          "label": {
+            "en": "Any tool (only the level counts)",
+            "th": "เครื่องมืออะไรก็ได้ (ดูแค่ระดับ)"
+          }
+        }
+      ]
+    },
+    {
+      "key": "level",
+      "label": {
+        "en": "Minimum level (ore level)",
+        "th": "ระดับขั้นต่ำ (ระดับแร่)"
+      },
+      "kind": "select",
+      "default": "stone",
+      "options": [
+        {
+          "value": "wood",
+          "label": {
+            "en": "Wood / Gold (any level)",
+            "th": "ไม้ / ทอง (ระดับไหนก็ได้)"
+          }
+        },
+        {
+          "value": "stone",
+          "label": {
+            "en": "Stone or better",
+            "th": "หินขึ้นไป"
+          }
+        },
+        {
+          "value": "iron",
+          "label": {
+            "en": "Iron or better",
+            "th": "เหล็กขึ้นไป"
+          }
+        },
+        {
+          "value": "diamond",
+          "label": {
+            "en": "Diamond or better",
+            "th": "เพชรขึ้นไป"
+          }
+        },
+        {
+          "value": "netherite",
+          "label": {
+            "en": "Netherite",
+            "th": "เนเธอไรต์"
+          }
+        }
+      ],
+      "hint": {
+        "en": "Tools of this mod count with their Tool Material's mining level.",
+        "th": "เครื่องมือของม็อดเรานับตามระดับการขุดของวัสดุเครื่องมือ"
+      },
+      "showIf": "data.tool!='shears'"
+    },
+    {
+      "key": "onFail",
+      "label": {
+        "en": "With the wrong tool",
+        "th": "ถ้าใช้อุปกรณ์ไม่ถูก"
+      },
+      "kind": "select",
+      "default": "noDrop",
+      "options": [
+        {
+          "value": "noDrop",
+          "label": {
+            "en": "It breaks but drops nothing",
+            "th": "ทุบแตกแต่ไม่ได้ของ"
+          }
+        },
+        {
+          "value": "cantBreak",
+          "label": {
+            "en": "It cannot be broken",
+            "th": "ทุบไม่ได้เลย"
+          }
+        }
+      ]
+    },
+    {
+      "key": "message",
+      "label": {
+        "en": "Tell the player which tool is needed",
+        "th": "แจ้งผู้เล่นว่าต้องใช้อุปกรณ์อะไร"
+      },
+      "kind": "bool",
+      "default": true
+    },
+    {
+      "key": "messageEn",
+      "label": {
+        "en": "Own message (EN)",
+        "th": "ข้อความเอง (EN)"
+      },
+      "kind": "text",
+      "default": "",
+      "hint": {
+        "en": "Empty = written for you",
+        "th": "เว้นว่าง = สร้างข้อความให้อัตโนมัติ"
+      },
+      "showIf": "data.message!=false"
+    },
+    {
+      "key": "messageTh",
+      "label": {
+        "en": "Own message (TH)",
+        "th": "ข้อความเอง (ไทย)"
+      },
+      "kind": "text",
+      "default": "",
+      "showIf": "data.message!=false"
+    },
+    {
+      "key": "timer",
+      "label": {
+        "en": "Show a timer while breaking",
+        "th": "แสดงเวลาตอนทุบ"
+      },
+      "kind": "bool",
+      "default": false,
+      "hint": {
+        "en": "Like picking crops by hand: the time left shows on screen while you mine (the mining swing and cracks stay). Wire a Timer window node (Utility) into \"Timer window\" to choose how it looks.",
+        "th": "แบบเดียวกับตอนเก็บพืชด้วยมือ: ขณะทุบจะมีเวลาที่เหลือแสดงบนจอ (ยังมีท่าทุบและรอยแตกตามปกติ) ต่อโหนดหน้าต่างเวลา (หมวดเครื่องมือ) เข้าขา \"หน้าต่างเวลา\" เพื่อเลือกหน้าตา"
+      }
+    },
+    {
+      "key": "adventure",
+      "label": {
+        "en": "Can be broken in adventure mode (right tool)",
+        "th": "ทุบได้ในโหมดผจญภัย (Adventure) ถ้าใช้อุปกรณ์ถูก"
+      },
+      "kind": "bool",
+      "default": false,
+      "hint": {
+        "en": "Normally nothing can be broken in adventure mode. On: these blocks can, with a tool that passes this rule (the tool gets a hidden \"can break\" list).",
+        "th": "ปกติโหมดผจญภัยทุบอะไรไม่ได้เลย · เปิด: บล็อกเหล่านี้ทุบได้ ถ้าถืออุปกรณ์ที่ผ่านกฎนี้ (อุปกรณ์จะได้รายการ \"ทุบได้\" ที่ซ่อนไว้)"
+      }
+    }
+  ]
+}

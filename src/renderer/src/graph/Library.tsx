@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useReactFlow } from '@xyflow/react'
-import { CATEGORY_LABEL, NODE_DEFS, type Category } from '@core/nodes/defs'
+import { NODE_DEFS } from '@core/nodes/defs'
+import { registry } from '@core/ext/registry'
 import { L } from '../i18n'
 import { useStore } from '../store'
 import { ISearch } from '../components/Icons'
-
-const ORDER: Category[] = ['item', 'block', 'farm', 'armor', 'effect', 'sound', 'recipe', 'fd', 'mob', 'script', 'addon', 'asset', 'util']
+import { useRegistryVersion } from '../ext/useRegistry'
 
 export function useAddCentered() {
   const rf = useReactFlow()
@@ -21,13 +21,17 @@ export function Library() {
   const { t } = useTranslation()
   const [q, setQ] = useState('')
   const addCentered = useAddCentered()
+  const registryVersion = useRegistryVersion()
   const groups = useMemo(() => {
     const needle = q.trim().toLowerCase()
     const defs = NODE_DEFS.filter((d) => !d.hidden).filter(
       (d) => !needle || [d.title.en, d.title.th, d.description.en, d.description.th].some((s) => s.toLowerCase().includes(needle))
     )
-    return ORDER.map((c) => ({ c, defs: defs.filter((d) => d.category === c) })).filter((g) => g.defs.length)
-  }, [q])
+    return registry
+      .categoryOrder()
+      .map((c) => ({ c, defs: defs.filter((d) => d.category === c) }))
+      .filter((g) => g.defs.length)
+  }, [q, registryVersion])
 
   return (
     <>
@@ -37,7 +41,7 @@ export function Library() {
       </div>
       {groups.map(({ c, defs }) => (
         <div key={c}>
-          <div className="lib-cat">{L(CATEGORY_LABEL[c])}</div>
+          <div className="lib-cat">{L(registry.categories[c]?.label)}</div>
           {defs.map((d) => (
             <div
               key={d.type}

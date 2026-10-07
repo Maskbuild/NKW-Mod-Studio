@@ -1,52 +1,17 @@
-import { SCRIPT_STARTER } from '../scriptApi'
+import { t, type L10n } from '../l10n'
+import { registry } from '../ext/registry'
 /**
  * Node catalogue shared by the editor (rendering, inspector) and the compiler.
  * Every pin has a type; the editor refuses connections whose types don't match.
  */
 
-export type PinType =
-  | 'item'
-  | 'ingredient'
-  | 'texture'
-  | 'model'
-  | 'geo'
-  | 'sound'
-  | 'soundEvent'
-  | 'toolMat'
-  | 'armorMat'
-  | 'effect'
-  | 'animation'
-  | 'block'
-  | 'thirst'
-  | 'attribute'
-  | 'hit'
-  | 'harvestUi'
-  | 'any'
+/** A pin type id. The app's own are listed in CORE_PIN_TYPES; extensions add more through the registry. */
+export type PinType = string
 
-export interface L10n {
-  en: string
-  th: string
-}
+export type { L10n }
 
-export const PIN_COLORS: Record<PinType, string> = {
-  item: '#3b82f6',
-  ingredient: '#06b6d4',
-  texture: '#f59e0b',
-  model: '#a855f7',
-  geo: '#d946ef',
-  sound: '#22c55e',
-  soundEvent: '#10b981',
-  toolMat: '#ef4444',
-  armorMat: '#f97316',
-  effect: '#ec4899',
-  animation: '#8b5cf6',
-  block: '#7c3aed',
-  thirst: '#0ea5e9',
-  attribute: '#14b8a6',
-  hit: '#dc2626',
-  harvestUi: '#84cc16',
-  any: '#9ca3af'
-}
+/** Wire colour per pin type (shared with the registry: extension pin types show up here too). */
+export const PIN_COLORS = registry.pinColors
 
 export function canConnect(out: PinType, input: PinType): boolean {
   if (out === 'any' || input === 'any') return true
@@ -87,8 +52,11 @@ export type PropKind =
   | 'craftGrid'
   | 'armorFit'
   | 'tabOrder'
-  | 'code'
-  | 'scriptTargets'
+  | 'blockList'
+  /** the timer window editor (extensions choose it for their own timer node) */
+  | 'timerUi'
+  /** the skin wardrobe editor (the skins extension's hub node) */
+  | 'wardrobe'
 
 export interface PropDef {
   key: string
@@ -103,9 +71,12 @@ export interface PropDef {
   hint?: L10n
   /** only shown when predicate over current data is true */
   showIf?: (data: Record<string, unknown>) => boolean
+  /** blockList: block ids only (no #tags) */
+  noTags?: boolean
 }
 
-export type Category = 'asset' | 'item' | 'block' | 'farm' | 'armor' | 'effect' | 'sound' | 'recipe' | 'fd' | 'mob' | 'script' | 'addon' | 'util'
+/** A category id of the node library (the app's own are registered below; extensions add more). */
+export type Category = string
 
 export interface NodeDef {
   type: string
@@ -122,7 +93,6 @@ export interface NodeDef {
   hidden?: boolean
 }
 
-const t = (en: string, th: string): L10n => ({ en, th })
 const opt = (value: string, en: string, th: string) => ({ value, label: t(en, th) })
 
 /** Block ids a "Harvest a game crop" node covers (checked crops + typed ids; older nodes had one "crop"). */
@@ -138,20 +108,14 @@ export function gameCropIds(d: Record<string, unknown>): string[] {
   return [...new Set([...picked, ...typed.split(/[\s,]+/).filter(Boolean)])]
 }
 
-export const CATEGORY_LABEL: Record<Category, L10n> = {
-  asset: t('Assets', 'ไฟล์ทรัพยากร'),
-  item: t('Items', 'ไอเทม'),
-  block: t('Blocks', 'บล็อก'),
-  farm: t('Farming', 'การเกษตร'),
-  armor: t('Armor', 'ชุดเกราะ'),
-  effect: t('Effects & abilities', 'เอฟเฟกต์และความสามารถ'),
-  sound: t('Sound & Music', 'เสียงและเพลง'),
-  recipe: t('Recipes', 'สูตรคราฟ'),
-  fd: t("Farmer's Delight", "Farmer's Delight"),
-  mob: t('Mobs & monsters', 'ม็อบและมอนสเตอร์'),
-  script: t('Scripts', 'สคริปต์'),
-  addon: t('Add-ons (other mods)', 'ส่วนเสริม (ม็อดอื่น)'),
-  util: t('Utility', 'เครื่องมือ')
+/** Tools a Break Rule can ask for. */
+export const BREAK_TOOLS = ['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'shears', 'any'] as const
+export const TOOL_LEVELS = ['wood', 'stone', 'iron', 'diamond', 'netherite'] as const
+
+/** Entries of a Break Rule's block list: block ids and #tags (older or hand-edited data is cleaned up). */
+export function breakRuleEntries(d: Record<string, unknown>): string[] {
+  const list = Array.isArray(d.blocks) ? d.blocks.filter((c): c is string => typeof c === 'string') : []
+  return [...new Set(list.map((x) => x.trim().toLowerCase()).filter(Boolean))]
 }
 
 const nameProps = (idDefault: string, nameDefault: string): PropDef[] => [
@@ -197,6 +161,27 @@ const itemCommon: PropDef[] = [
   { key: 'glint', label: t('Enchant glint', 'มีประกายเอนชานต์'), kind: 'bool', default: false }
 ]
 
+/** Block sound types (SoundType fields). */
+const SOUND_OPTIONS = [
+  opt('stone', 'Stone', 'หิน'),
+  opt('wood', 'Wood', 'ไม้'),
+  opt('metal', 'Metal', 'โลหะ'),
+  opt('glass', 'Glass', 'แก้ว'),
+  opt('grass', 'Grass', 'หญ้า'),
+  opt('sand', 'Sand', 'ทราย'),
+  opt('gravel', 'Gravel', 'กรวด'),
+  opt('wool', 'Wool', 'ขนแกะ')
+]
+
+/** Tools a block is mined fast with (mineable tags). */
+const MINE_TOOL_OPTIONS = [
+  opt('none', 'Hand / any', 'มือเปล่า / อะไรก็ได้'),
+  opt('pickaxe', 'Pickaxe', 'อีเต้อ'),
+  opt('axe', 'Axe', 'ขวาน'),
+  opt('shovel', 'Shovel', 'พลั่ว'),
+  opt('hoe', 'Hoe', 'จอบ')
+]
+
 const blockCommon: PropDef[] = [
   {
     key: 'hasItem',
@@ -212,29 +197,14 @@ const blockCommon: PropDef[] = [
     label: t('Sound type', 'เสียงบล็อก'),
     kind: 'select',
     default: 'stone',
-    options: [
-      opt('stone', 'Stone', 'หิน'),
-      opt('wood', 'Wood', 'ไม้'),
-      opt('metal', 'Metal', 'โลหะ'),
-      opt('glass', 'Glass', 'แก้ว'),
-      opt('grass', 'Grass', 'หญ้า'),
-      opt('sand', 'Sand', 'ทราย'),
-      opt('gravel', 'Gravel', 'กรวด'),
-      opt('wool', 'Wool', 'ขนแกะ')
-    ]
+    options: SOUND_OPTIONS
   },
   {
     key: 'tool',
     label: t('Mined with', 'ขุดด้วย'),
     kind: 'select',
     default: 'pickaxe',
-    options: [
-      opt('none', 'Hand / any', 'มือเปล่า / อะไรก็ได้'),
-      opt('pickaxe', 'Pickaxe', 'อีเต้อ'),
-      opt('axe', 'Axe', 'ขวาน'),
-      opt('shovel', 'Shovel', 'พลั่ว'),
-      opt('hoe', 'Hoe', 'จอบ')
-    ]
+    options: MINE_TOOL_OPTIONS
   },
   {
     key: 'toolLevel',
@@ -354,7 +324,7 @@ export const ATTRIBUTES: { id: string; field: string; since: string; label: L10n
 const effectIns = (en: string, th: string): PinDef[] =>
   [1, 2, 3].map((i) => ({ id: `effect${i}`, label: t(`${en} ${i}`, `${th} ${i}`), type: 'effect' as PinType, optional: true }))
 
-export const NODE_DEFS: NodeDef[] = [
+const CORE_NODE_DEFS: NodeDef[] = [
   // ───────────── Assets ─────────────
   {
     type: 'texture',
@@ -477,7 +447,6 @@ export const NODE_DEFS: NodeDef[] = [
       { id: 'places', label: t('Places block', 'วางเป็นบล็อก'), type: 'block', optional: true },
       ...effectIns('Effect when eaten', 'เอฟเฟกต์ตอนกิน'),
       ...slots(3, 'hit', 'Ability when eaten', 'ความสามารถตอนกิน', 'hit', { group: 'hit' }),
-      { id: 'thirst', label: t('Thirst (add-on)', 'ค่าน้ำ (ส่วนเสริม)'), type: 'thirst', optional: true },
       ...slots(8, 'attr', 'Stat bonus', 'โบนัสค่าสถานะ', 'attribute', { group: 'attr' })
     ],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],
@@ -670,8 +639,7 @@ export const NODE_DEFS: NodeDef[] = [
     registers: true,
     inputs: [
       ...slots(8, 'stage', 'Growth stage', 'ระยะการโต', 'texture', { group: 'stage' }),
-      { id: 'produce', label: t('Harvest (item)', 'ผลผลิต (ไอเทม)'), type: 'item' },
-      { id: 'ui', label: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'), type: 'harvestUi', optional: true }
+      { id: 'produce', label: t('Harvest (item)', 'ผลผลิต (ไอเทม)'), type: 'item' }
     ],
     outputs: [{ id: 'block', label: t('Block (for the seeds)', 'บล็อก (ต่อเข้าเมล็ด)'), type: 'block' }],
     props: [
@@ -699,72 +667,6 @@ export const NODE_DEFS: NodeDef[] = [
         max: 36000,
         hint: t('0: grows at random like vanilla crops (faster on wet farmland).', '0: โตแบบสุ่มเหมือนพืชในเกม (ดินไถเปียกโตเร็วกว่า)')
       },
-      {
-        key: 'mode',
-        label: t('After harvest', 'หลังเก็บเกี่ยว'),
-        kind: 'select',
-        default: 'replant',
-        options: [
-          opt('replant', 'Gone: plant the seeds again (like wheat)', 'หายไป ต้องปลูกเมล็ดใหม่ (แบบข้าวสาลี)'),
-          opt('regrow', 'Stays and grows back after a cooldown', 'ต้นยังอยู่ โตใหม่ตามเวลาคูลดาวน์')
-        ]
-      },
-      {
-        key: 'regrowSeconds',
-        label: t('Cooldown before the next harvest (seconds)', 'คูลดาวน์ก่อนเก็บรอบถัดไป (วินาที)'),
-        kind: 'int',
-        default: 60,
-        min: 1,
-        max: 36000,
-        showIf: (d) => d.mode === 'regrow'
-      },
-      {
-        key: 'regrowStage',
-        label: t('Goes back to stage', 'ย้อนกลับไประยะที่'),
-        kind: 'int',
-        default: 0,
-        min: 0,
-        max: 7,
-        hint: t('0 = the start. The cooldown is the time back to fully grown.', '0 = เริ่มต้น เวลาคูลดาวน์คือเวลาจนโตเต็มที่อีกครั้ง'),
-        showIf: (d) => d.mode === 'regrow'
-      },
-      {
-        key: 'input',
-        label: t('How to harvest', 'วิธีเก็บเกี่ยว'),
-        kind: 'select',
-        default: 'break',
-        options: [
-          opt('break', 'Break it (vanilla)', 'ทุบ (แบบปกติ)'),
-          opt('click', 'Right-click', 'คลิกขวา'),
-          opt('hold', 'Hold right-click for a while', 'กดคลิกขวาค้างตามเวลา'),
-          opt('stand', 'Right-click once, then stand still', 'คลิกขวาครั้งเดียวแล้วยืนนิ่งตามเวลา')
-        ],
-        hint: t(
-          'Hold: releasing the button stops it. Stand still: moving stops it and you have to click again. A timer shows above the hotbar.',
-          'กดค้าง: ปล่อยปุ่มแล้วหยุด · ยืนนิ่ง: ขยับแล้วหยุด ต้องคลิกใหม่ · มีเวลาแสดงเหนือแถบไอเทม'
-        )
-      },
-      {
-        key: 'harvestSeconds',
-        label: t('Harvest time (seconds)', 'เวลาเก็บ (วินาที)'),
-        kind: 'float',
-        default: 2,
-        min: 0.5,
-        max: 120,
-        step: 0.5,
-        showIf: (d) => d.input === 'hold' || d.input === 'stand'
-      },
-      {
-        key: 'give',
-        label: t('Harvest goes into the inventory', 'ผลผลิตเข้าตัวทันที'),
-        kind: 'bool',
-        default: false,
-        hint: t(
-          'Off: drops on the ground like normal. On: straight into the inventory (what does not fit drops at your feet).',
-          'ปิด: ดรอปบนพื้นแบบปกติ · เปิด: เข้าช่องเก็บของเลย (ถ้าเต็มจะดรอปที่เท้า)'
-        ),
-        showIf: (d) => d.input === 'click' || d.input === 'hold' || d.input === 'stand' || d.mode === 'regrow'
-      },
       { key: 'produceMin', label: t('Harvest count min', 'จำนวนผลผลิตต่ำสุด'), kind: 'int', default: 1, min: 1, max: 64 },
       { key: 'produceMax', label: t('Harvest count max', 'จำนวนผลผลิตสูงสุด'), kind: 'int', default: 2, min: 1, max: 64 },
       {
@@ -777,176 +679,6 @@ export const NODE_DEFS: NodeDef[] = [
         showIf: (d) => d.mode !== 'regrow'
       },
       { key: 'seedMax', label: t('Seeds back max', 'ได้เมล็ดคืนสูงสุด'), kind: 'int', default: 3, min: 0, max: 64, showIf: (d) => d.mode !== 'regrow' }
-    ]
-  },
-
-  {
-    type: 'gameCrop',
-    category: 'farm',
-    title: t('Harvest a game crop', 'เก็บเกี่ยวพืชในเกม'),
-    description: t(
-      "Gives a crop of Minecraft, Farmer's Delight or another mod the hand-harvest system: right-click, hold right-click or right-click and stand still, with a timer on screen. It grows like in the game; when grown it can break like normal, replant itself or go back to a younger stage.",
-      "ให้พืชของ Minecraft, Farmer's Delight หรือม็อดอื่นใช้ระบบเก็บเกี่ยวด้วยมือ: คลิกขวา กดค้าง หรือคลิกแล้วยืนนิ่ง มีเวลาแสดงบนจอ พืชโตตามปกติของเกม เมื่อโตแล้วเก็บแบบปกติ ปลูกใหม่เอง หรือย้อนกลับไประยะที่เลือกได้"
-    ),
-    icon: '🌾',
-    inputs: [{ id: 'ui', label: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'), type: 'harvestUi', optional: true }],
-    outputs: [],
-    props: [
-      {
-        key: 'crops',
-        label: t('Crops (pick any number)', 'พืช (เลือกได้หลายอย่าง)'),
-        kind: 'multi',
-        default: ['minecraft:wheat'],
-        hint: t('All of them use the settings below.', 'ทุกพืชที่เลือกใช้ค่าด้านล่างเหมือนกัน'),
-        options: [
-          opt('minecraft:wheat', 'Wheat', 'ข้าวสาลี'),
-          opt('minecraft:carrots', 'Carrots', 'แครอท'),
-          opt('minecraft:potatoes', 'Potatoes', 'มันฝรั่ง'),
-          opt('minecraft:beetroots', 'Beetroots', 'บีทรูท'),
-          opt('minecraft:nether_wart', 'Nether wart', 'หูดเนเธอร์'),
-          opt('minecraft:sweet_berry_bush', 'Sweet berry bush', 'พุ่มสวีทเบอร์รี'),
-          opt('minecraft:cocoa', 'Cocoa', 'โกโก้'),
-          opt('farmersdelight:cabbages', "Cabbages (Farmer's Delight)", "กะหล่ำปลี (Farmer's Delight)"),
-          opt('farmersdelight:onions', "Onions (Farmer's Delight)", "หัวหอม (Farmer's Delight)"),
-          opt('farmersdelight:tomatoes', "Tomatoes (Farmer's Delight)", "มะเขือเทศ (Farmer's Delight)"),
-          opt('farmersdelight:rice_panicles', "Rice (Farmer's Delight)", "ข้าว (Farmer's Delight)")
-        ]
-      },
-      {
-        key: 'others',
-        label: t('Other crops (block IDs, comma separated)', 'พืชอื่น (ID บล็อก คั่นด้วยจุลภาค)'),
-        kind: 'text',
-        default: '',
-        hint: t('Blocks with an "age" property that grow, e.g. mymod:corn, othermod:chili', 'บล็อกที่มีค่า "age" และโตได้ เช่น mymod:corn, othermod:chili')
-      },
-      {
-        key: 'input',
-        label: t('How to harvest', 'วิธีเก็บเกี่ยว'),
-        kind: 'select',
-        default: 'hold',
-        options: [
-          opt('click', 'Right-click', 'คลิกขวา'),
-          opt('hold', 'Hold right-click for a while', 'กดคลิกขวาค้างตามเวลา'),
-          opt('stand', 'Right-click once, then stand still', 'คลิกขวาครั้งเดียวแล้วยืนนิ่งตามเวลา')
-        ],
-        hint: t('Breaking the crop still works like in the game.', 'ทุบพืชยังได้เหมือนในเกม')
-      },
-      {
-        key: 'harvestSeconds',
-        label: t('Harvest time (seconds)', 'เวลาเก็บ (วินาที)'),
-        kind: 'float',
-        default: 2,
-        min: 0.5,
-        max: 120,
-        step: 0.5,
-        showIf: (d) => d.input !== 'click'
-      },
-      {
-        key: 'after',
-        label: t('After harvest', 'หลังเก็บเกี่ยว'),
-        kind: 'select',
-        default: 'normal',
-        options: [
-          opt(
-            'normal',
-            'Like the game / the mod (berries and tomatoes are picked, the rest breaks)',
-            'แบบปกติของเกม / ม็อด (เบอร์รีและมะเขือเทศเด็ดผล อย่างอื่นแตก)'
-          ),
-          opt('replant', 'Replants itself (one seed is used)', 'ปลูกใหม่เอง (ใช้เมล็ด 1 เมล็ด)'),
-          opt('regrow', 'Stays and goes back to a stage', 'ต้นยังอยู่ ย้อนกลับไประยะที่เลือก')
-        ]
-      },
-      {
-        key: 'backStage',
-        label: t('Goes back to stage', 'ย้อนกลับไประยะที่'),
-        kind: 'int',
-        default: 1,
-        min: 0,
-        max: 15,
-        hint: t('0 = the start. It then grows again like in the game.', '0 = เริ่มต้น จากนั้นโตใหม่ตามปกติของเกม'),
-        showIf: (d) => d.after === 'regrow'
-      },
-      {
-        key: 'give',
-        label: t('Harvest goes into the inventory', 'ผลผลิตเข้าตัวทันที'),
-        kind: 'bool',
-        default: false,
-        hint: t(
-          'Off: drops on the ground like normal. On: straight into the inventory (what does not fit drops at your feet).',
-          'ปิด: ดรอปบนพื้นแบบปกติ · เปิด: เข้าช่องเก็บของเลย (ถ้าเต็มจะดรอปที่เท้า)'
-        )
-      }
-    ]
-  },
-  {
-    type: 'harvestUi',
-    category: 'farm',
-    title: t('Harvest timer look', 'หน้าตาเวลาเก็บเกี่ยว'),
-    description: t(
-      'How the harvest timer looks on screen. Wire it into Crop or Harvest a game crop nodes (one look can be used by many crops).',
-      'หน้าตาเวลาเก็บเกี่ยวบนจอ ต่อเข้าโหนดพืช หรือโหนดเก็บเกี่ยวพืชในเกม (ใช้กับหลายพืชได้)'
-    ),
-    icon: '⏳',
-    inputs: [],
-    outputs: [{ id: 'out', label: t('Timer look', 'หน้าตาเวลา'), type: 'harvestUi' }],
-    props: [
-      {
-        key: 'style',
-        label: t('Template', 'แบบ'),
-        kind: 'select',
-        default: 'bar',
-        options: [
-          opt('text', 'Text: ■■■□□ and the seconds', 'ข้อความ: ■■■□□ และวินาที'),
-          opt('bar', 'Bar that fills up', 'หลอดที่เพิ่มขึ้น'),
-          opt('ring', 'Circle that fills around the crosshair', 'วงกลมที่เต็มขึ้นรอบเป้ากลางจอ')
-        ]
-      },
-      { key: 'color', label: t('Colour', 'สี'), kind: 'color', default: '#4ade80' },
-      { key: 'back', label: t('Background colour', 'สีพื้นหลัง'), kind: 'color', default: '#000000', showIf: (d) => d.style !== 'text' },
-      {
-        key: 'backOpacity',
-        label: t('Background opacity (%)', 'ความทึบพื้นหลัง (%)'),
-        kind: 'int',
-        default: 50,
-        min: 0,
-        max: 100,
-        showIf: (d) => d.style !== 'text'
-      },
-      {
-        key: 'place',
-        label: t('Position', 'ตำแหน่ง'),
-        kind: 'select',
-        default: 'crosshair',
-        options: [
-          opt('crosshair', 'Under the crosshair', 'ใต้เป้ากลางจอ'),
-          opt('hotbar', 'Above the hotbar', 'เหนือแถบไอเทม'),
-          opt('top', 'Top of the screen', 'ด้านบนของจอ')
-        ],
-        showIf: (d) => d.style !== 'ring'
-      },
-      {
-        key: 'offset',
-        label: t('Move down (pixels, negative = up)', 'เลื่อนลง (พิกเซล, ติดลบ = ขึ้น)'),
-        kind: 'int',
-        default: 0,
-        min: -200,
-        max: 200,
-        showIf: (d) => d.style !== 'ring'
-      },
-      { key: 'width', label: t('Bar width', 'ความยาวหลอด'), kind: 'int', default: 60, min: 10, max: 300, showIf: (d) => d.style === 'bar' },
-      { key: 'height', label: t('Bar height', 'ความสูงหลอด'), kind: 'int', default: 4, min: 1, max: 20, showIf: (d) => d.style === 'bar' },
-      { key: 'radius', label: t('Circle size (radius)', 'ขนาดวงกลม (รัศมี)'), kind: 'int', default: 9, min: 3, max: 40, showIf: (d) => d.style === 'ring' },
-      {
-        key: 'thickness',
-        label: t('Line thickness', 'ความหนาเส้น'),
-        kind: 'int',
-        default: 3,
-        min: 1,
-        max: 40,
-        hint: t('As large as the size = a filled circle.', 'เท่ากับขนาด = วงกลมทึบ'),
-        showIf: (d) => d.style === 'ring'
-      },
-      { key: 'time', label: t('Show the seconds left', 'แสดงวินาทีที่เหลือ'), kind: 'bool', default: true }
     ]
   },
 
@@ -1389,69 +1121,6 @@ export const NODE_DEFS: NodeDef[] = [
   },
 
   // ───────────── Farmer's Delight ─────────────
-  {
-    type: 'fdCutting',
-    category: 'fd',
-    title: t('Cutting Board', 'เขียง'),
-    description: t("Farmer's Delight cutting board recipe", "สูตรเขียงของ Farmer's Delight"),
-    icon: '🔪',
-    inputs: [
-      { id: 'input', label: t('Input', 'วัตถุดิบ'), type: 'ingredient' },
-      { id: 'out1', label: t('Result 1', 'ผลลัพธ์ 1'), type: 'item', right: true, group: 'out' },
-      { id: 'out2', label: t('Result 2', 'ผลลัพธ์ 2'), type: 'item', optional: true, right: true, group: 'out' },
-      { id: 'out3', label: t('Result 3', 'ผลลัพธ์ 3'), type: 'item', optional: true, right: true, group: 'out' },
-      { id: 'out4', label: t('Result 4', 'ผลลัพธ์ 4'), type: 'item', optional: true, right: true, group: 'out' }
-    ],
-    outputs: [],
-    props: [
-      {
-        key: 'tool',
-        label: t('Tool', 'เครื่องมือ'),
-        kind: 'select',
-        default: 'knife',
-        options: [
-          opt('knife', 'Knife', 'มีด'),
-          opt('axe', 'Axe', 'ขวาน'),
-          opt('pickaxe', 'Pickaxe', 'อีเต้อ'),
-          opt('shovel', 'Shovel', 'พลั่ว'),
-          opt('shears', 'Shears', 'กรรไกร')
-        ]
-      },
-      { key: 'count1', label: t('Result 1 count', 'จำนวนผลลัพธ์ 1'), kind: 'int', default: 2, min: 1, max: 64 },
-      { key: 'count2', label: t('Result 2 count', 'จำนวนผลลัพธ์ 2'), kind: 'int', default: 1, min: 1, max: 64 },
-      { key: 'chance2', label: t('Result 2 chance', 'โอกาสผลลัพธ์ 2'), kind: 'float', default: 1, min: 0, max: 1, step: 0.05 },
-      { key: 'count3', label: t('Result 3 count', 'จำนวนผลลัพธ์ 3'), kind: 'int', default: 1, min: 1, max: 64 },
-      { key: 'chance3', label: t('Result 3 chance', 'โอกาสผลลัพธ์ 3'), kind: 'float', default: 1, min: 0, max: 1, step: 0.05 },
-      { key: 'count4', label: t('Result 4 count', 'จำนวนผลลัพธ์ 4'), kind: 'int', default: 1, min: 1, max: 64 },
-      { key: 'chance4', label: t('Result 4 chance', 'โอกาสผลลัพธ์ 4'), kind: 'float', default: 1, min: 0, max: 1, step: 0.05 }
-    ]
-  },
-  {
-    type: 'fdCooking',
-    category: 'fd',
-    title: t('Cooking Pot', 'หม้อต้ม'),
-    description: t("Farmer's Delight cooking pot recipe (up to 6 ingredients)", "สูตรหม้อต้มของ Farmer's Delight (วัตถุดิบสูงสุด 6 อย่าง)"),
-    icon: '🍲',
-    inputs: [
-      ...slots(6, 'i', 'Ingredient', 'วัตถุดิบ', 'ingredient', { group: 'ing' }),
-      { id: 'container', label: t('Container (e.g. bowl)', 'ภาชนะ (เช่น ชาม)'), type: 'item', optional: true },
-      resultPin()
-    ],
-    outputs: [],
-    props: [
-      countProp(),
-      { key: 'xp', label: t('Experience', 'ค่าประสบการณ์'), kind: 'float', default: 1, min: 0, max: 100, step: 0.1 },
-      { key: 'time', label: t('Cook time (ticks)', 'เวลา (tick)'), kind: 'int', default: 200, min: 1, max: 72000 },
-      {
-        key: 'tab',
-        label: t('Recipe book tab', 'หมวดในสมุดสูตร'),
-        kind: 'select',
-        default: 'meals',
-        options: [opt('meals', 'Meals', 'อาหารจานหลัก'), opt('drinks', 'Drinks', 'เครื่องดื่ม'), opt('misc', 'Misc', 'อื่น ๆ')]
-      }
-    ]
-  },
-
   // ───────────── Mobs ─────────────
   {
     type: 'mob',
@@ -1575,70 +1244,7 @@ export const NODE_DEFS: NodeDef[] = [
     ]
   },
 
-  // ───────────── Scripts ─────────────
-  {
-    type: 'script',
-    category: 'script',
-    title: t('Java Class (Script)', 'คลาส Java (สคริปต์)'),
-    description: t(
-      "A Java source file of your mod, written like in any Minecraft mod: imports, classes, events. Forge/NeoForge: annotate the class with @EventBusSubscriber. Fabric/Quilt: implement ModInitializer — it is registered as an entrypoint. Your mod's classes (NkwMod, ModItems, ModBlocks, ModSounds) can be used directly.",
-      'ไฟล์ Java ของม็อด เขียนแบบม็อด Minecraft ทั่วไป (import, class, event) — Forge/NeoForge: ใส่ @EventBusSubscriber ที่ class / Fabric/Quilt: implements ModInitializer แล้วแอปลงทะเบียน entrypoint ให้ ใช้ class ของม็อดเรา (NkwMod, ModItems, ModBlocks, ModSounds) ได้เลย'
-    ),
-    icon: '☕',
-    inputs: [],
-    outputs: [],
-    props: [
-      {
-        key: 'targets',
-        label: t('Use for', 'ใช้กับ'),
-        kind: 'scriptTargets',
-        default: [],
-        hint: t(
-          'Java APIs differ between loaders and versions: pick the targets this file is written for (none = all).',
-          'API ของ Java ต่างกันในแต่ละ loader/เวอร์ชัน เลือกเป้าหมายที่ไฟล์นี้เขียนไว้ (ไม่เลือก = ทั้งหมด)'
-        )
-      },
-      { key: 'code', label: t('Code', 'โค้ด'), kind: 'code', default: SCRIPT_STARTER }
-    ]
-  },
-
   // ───────────── Add-ons (other mods) ─────────────
-  {
-    type: 'thirst',
-    category: 'addon',
-    title: t('Thirst (add-on)', 'ค่าน้ำ (ส่วนเสริม)'),
-    description: t(
-      'Water value for thirst mods. Wire it into a Food node. The mod does not need any of them: when a player has Tough As Nails, Thirst Was Taken, Thirst Was Taken 2, Legendary Survival Overhaul or Thirsty installed, eating / drinking the food also restores thirst.',
-      'ค่าน้ำสำหรับม็อดความกระหายน้ำ ต่อเข้าโหนดอาหาร — ม็อดเราไม่ต้องพึ่งม็อดพวกนี้ ถ้าผู้เล่นลง Tough As Nails, Thirst Was Taken, Thirst Was Taken 2, Legendary Survival Overhaul หรือ Thirsty ไว้ กิน/ดื่มอาหารนี้แล้วจะได้ค่าน้ำด้วย'
-    ),
-    icon: '💧',
-    inputs: [],
-    outputs: [{ id: 'out', label: t('Thirst', 'ค่าน้ำ'), type: 'thirst' }],
-    props: [
-      {
-        key: 'thirst',
-        label: t('Thirst restored (½ drop each)', 'ฟื้นค่าน้ำ (ครึ่งหยดต่อ 1)'),
-        kind: 'int',
-        default: 6,
-        min: 1,
-        max: 20,
-        hint: t('20 = a full thirst bar, like hunger points. A water bottle is about 6.', '20 = เต็มหลอด เหมือนค่าความหิว — ขวดน้ำประมาณ 6')
-      },
-      {
-        key: 'hydration',
-        label: t('Hydration (stays quenched longer)', 'ความชุ่มชื้น (อิ่มน้ำนานขึ้น)'),
-        kind: 'int',
-        default: 4,
-        min: 0,
-        max: 20,
-        hint: t(
-          'Works like food saturation: hidden water that is used up before the bar drops. Called "quenched" in Thirst Was Taken.',
-          'คล้ายความอิ่มของอาหาร: ค่าน้ำสำรองที่ถูกใช้ก่อนหลอดลด (ใน Thirst Was Taken เรียกว่า quenched)'
-        )
-      }
-    ]
-  },
-
   // ───────────── Utility ─────────────
   {
     type: 'itemRef',
@@ -1709,7 +1315,9 @@ export const NODE_DEFS: NodeDef[] = [
   }
 ]
 
-export const NODE_DEF_MAP: Record<string, NodeDef> = Object.fromEntries(NODE_DEFS.map((d) => [d.type, d]))
+/** Every registered node definition and the same by type: shared with the registry, so they follow extensions. */
+export const NODE_DEFS = registry.defs
+export const NODE_DEF_MAP = registry.map
 
 export function defaultData(def: NodeDef): Record<string, unknown> {
   return Object.fromEntries(def.props.map((p) => [p.key, p.default]))
@@ -1738,3 +1346,37 @@ export function visibleInputs(def: NodeDef, wired: (id: string) => boolean): { l
   }
   return { left, right }
 }
+
+registry.register('core', {
+  nodes: CORE_NODE_DEFS,
+  categories: {
+    item: { label: t('Items', 'ไอเทม'), color: '#3b82f6', order: 0 },
+    block: { label: t('Blocks', 'บล็อก'), color: '#8b5cf6', order: 1 },
+    farm: { label: t('Farming', 'การเกษตร'), color: '#65a30d', order: 2 },
+    armor: { label: t('Armor', 'ชุดเกราะ'), color: '#f97316', order: 3 },
+    effect: { label: t('Effects & abilities', 'เอฟเฟกต์และความสามารถ'), color: '#ec4899', order: 4 },
+    sound: { label: t('Sound & Music', 'เสียงและเพลง'), color: '#10b981', order: 5 },
+    recipe: { label: t('Recipes', 'สูตรคราฟ'), color: '#e11d48', order: 6 },
+    mob: { label: t('Mobs & monsters', 'ม็อบและมอนสเตอร์'), color: '#b91c1c', order: 8 },
+    addon: { label: t('Add-ons (other mods)', 'ส่วนเสริม (ม็อดอื่น)'), color: '#0ea5e9', order: 9 },
+    asset: { label: t('Assets', 'ไฟล์ทรัพยากร'), color: '#f59e0b', order: 10 },
+    util: { label: t('Utility', 'เครื่องมือ'), color: '#71717a', order: 11 }
+  },
+  pinTypes: {
+    item: '#3b82f6',
+    ingredient: '#06b6d4',
+    texture: '#f59e0b',
+    model: '#a855f7',
+    geo: '#d946ef',
+    sound: '#22c55e',
+    soundEvent: '#10b981',
+    toolMat: '#ef4444',
+    armorMat: '#f97316',
+    effect: '#ec4899',
+    animation: '#8b5cf6',
+    block: '#7c3aed',
+    attribute: '#14b8a6',
+    hit: '#dc2626',
+    any: '#9ca3af'
+  }
+})

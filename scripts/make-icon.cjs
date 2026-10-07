@@ -12,7 +12,15 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" vi
 </svg>`
 
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width: 512, height: 512, show: false, frame: false, transparent: true, useContentSize: true, webPreferences: { offscreen: true } })
+  const win = new BrowserWindow({
+    width: 512,
+    height: 512,
+    show: false,
+    frame: false,
+    transparent: true,
+    useContentSize: true,
+    webPreferences: { offscreen: true }
+  })
   await win.loadURL('data:text/html,' + encodeURIComponent(`<html><body style="margin:0;background:transparent">${svg}</body></html>`))
   await new Promise((r) => setTimeout(r, 400))
   const img = await win.webContents.capturePage({ x: 0, y: 0, width: 512, height: 512 })

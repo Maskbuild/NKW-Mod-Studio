@@ -1,28 +1,13 @@
 import { memo, useCallback, useEffect, type CSSProperties } from 'react'
-import { JAVA_KEYWORDS } from '@core/scriptApi'
 import { Handle, NodeResizer, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
 import { useTranslation } from 'react-i18next'
-import { EFFECTS, NODE_DEF_MAP, gameCropIds, PIN_COLORS, visibleInputs, type Category, type PinDef } from '@core/nodes/defs'
+import { EFFECTS, NODE_DEF_MAP, breakRuleEntries, gameCropIds, PIN_COLORS, visibleInputs, type PinDef } from '@core/nodes/defs'
+import { registry } from '@core/ext/registry'
 import { L } from '../i18n'
 import { assetUrl, vanillaIconUrl } from '../api'
 import { useItemInfo } from './VanillaPanel'
+import { TagStrip } from './TagPreview'
 import { useStore, type FlowNode } from '../store'
-
-export const CATEGORY_COLOR: Record<Category, string> = {
-  asset: '#f59e0b',
-  item: '#3b82f6',
-  block: '#8b5cf6',
-  farm: '#65a30d',
-  armor: '#f97316',
-  sound: '#10b981',
-  recipe: '#e11d48',
-  fd: '#84cc16',
-  script: '#a855f7',
-  addon: '#0ea5e9',
-  mob: '#b91c1c',
-  effect: '#ec4899',
-  util: '#71717a'
-}
 
 /** Returns a stable string of this node's connected handles, so nodes only re-render when their wires change. */
 function useConnected(id: string): Set<string> {
@@ -109,7 +94,12 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
     case 'itemRef':
       return <VanillaRef id={String(data.item ?? '')} />
     case 'tagRef':
-      return <span className="mono">#{String(data.tag ?? '')}</span>
+      return (
+        <span className="tag-summary">
+          <span className="mono">#{String(data.tag ?? '')}</span>
+          <TagStrip tagId={String(data.tag ?? '')} />
+        </span>
+      )
     case 'recipeShaped': {
       const grid = Array.isArray(data.grid) ? (data.grid as unknown[]) : []
       return (
@@ -120,8 +110,6 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
         </div>
       )
     }
-    case 'script':
-      return <CodePreview code={String(data.code ?? '')} targets={Array.isArray(data.targets) ? (data.targets as string[]) : []} />
     case 'gameCrop': {
       const ids = gameCropIds(data)
       const opts = NODE_DEF_MAP.gameCrop.props.find((p) => p.key === 'crops')?.options ?? []
@@ -130,6 +118,26 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
         return o ? L(o.label).replace(/ \(Farmer's Delight\)$/, ' (FD)') : id
       })
       return <span title={names.join(', ')}>{names.length > 3 ? `${names.slice(0, 3).join(', ')} +${names.length - 3}` : names.join(', ') || '—'}</span>
+    }
+    case 'regenBlock': {
+      const input = NODE_DEF_MAP.regenBlock.props.find((p) => p.key === 'input')?.options?.find((o) => o.value === (data.input ?? 'break'))
+      return (
+        <span>
+          {breakRuleEntries(data).length} ⬛ · {input ? L(input.label) : ''} · ♻ {String(data.regenSeconds ?? 60)}s
+        </span>
+      )
+    }
+    case 'breakRule': {
+      const def = NODE_DEF_MAP.breakRule.props
+      const tool = def.find((p) => p.key === 'tool')?.options?.find((o) => o.value === (data.tool ?? 'pickaxe'))
+      const level = data.tool === 'shears' ? undefined : def.find((p) => p.key === 'level')?.options?.find((o) => o.value === (data.level ?? 'stone'))
+      const n = breakRuleEntries(data).length + [...connected].filter((c) => c.startsWith('i:block')).length
+      return (
+        <span>
+          {tool ? L(tool.label) : '?'}
+          {level ? ` · ${L(level.label)}` : ''} · {n} ⬛
+        </span>
+      )
     }
     case 'armorSet':
       return <span className="mono">{String(data.baseId ?? '')}_*</span>
@@ -142,76 +150,6 @@ function Summary({ type, data, connected }: { type: string; data: Record<string,
         )
       return null
   }
-}
-
-const KEYWORDS = new Set(JAVA_KEYWORDS)
-
-/** One line of Java with simple VS Code-like colours (keywords, types, strings, comments, annotations). */
-function JavaLine({ text }: { text: string }) {
-  const parts: { t: string; c?: string }[] = []
-  const re = /(\/\/.*$|\/\*.*?(?:\*\/|$)|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|@\w+|\b\d[\w.]*\b|\b[A-Za-z_$][\w$]*\b)/g
-  let last = 0
-  let m: RegExpExecArray | null
-  while ((m = re.exec(text))) {
-    if (m.index > last) parts.push({ t: text.slice(last, m.index) })
-    const tok = m[0]
-    const c =
-      tok.startsWith('//') || tok.startsWith('/*')
-        ? 'cm'
-        : tok[0] === '"' || tok[0] === "'"
-          ? 'st'
-          : tok[0] === '@'
-            ? 'an'
-            : /^\d/.test(tok)
-              ? 'nu'
-              : KEYWORDS.has(tok)
-                ? 'kw'
-                : /^[A-Z]/.test(tok)
-                  ? 'ty'
-                  : undefined
-    parts.push({ t: tok, c })
-    last = m.index + tok.length
-  }
-  if (last < text.length) parts.push({ t: text.slice(last) })
-  return (
-    <div className="code-line">
-      {parts.map((p, i) =>
-        p.c ? (
-          <span key={i} className={`ck-${p.c}`}>
-            {p.t}
-          </span>
-        ) : (
-          p.t
-        )
-      )}
-      {'\u200b'}
-    </div>
-  )
-}
-
-/** Canvas preview of a Script node: file name, targets and the start of the class (package/imports skipped). */
-function CodePreview({ code, targets }: { code: string; targets: string[] }) {
-  const { t } = useTranslation()
-  const all = code.replace(/\r\n?/g, '\n').split('\n')
-  const body = all.filter((l) => !/^\s*(package|import)\s[^;]*;\s*$/.test(l))
-  while (body.length && !body[0].trim()) body.shift()
-  const shown = body.slice(0, 12)
-  const indent = Math.min(...shown.filter((l) => l.trim()).map((l) => /^\s*/.exec(l)![0].replace(/\t/g, '    ').length), 99)
-  const cls = /(?:^|[\s;}])public\s+(?:(?:final|abstract|static)\s+)*(?:class|interface|enum|record)\s+([A-Za-z_$][\w$]*)/.exec(code)?.[1]
-  return (
-    <div className="code-preview">
-      <div className="code-head">
-        <span className="mono">{cls ? `${cls}.java` : '—'}</span>
-        <span className="code-targets">{targets.length ? targets.map((x) => x.replace('-', ' ')).join(', ') : t('script.allTargets')}</span>
-      </div>
-      <div className="code-body">
-        {shown.map((l, i) => (
-          <JavaLine key={i} text={l.replace(/\t/g, '    ').slice(indent === 99 ? 0 : indent)} />
-        ))}
-        {body.length > shown.length && <div className="code-more">{t('ws.moreLines', { count: body.length - shown.length })}</div>}
-      </div>
-    </div>
-  )
 }
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
@@ -253,7 +191,7 @@ export const NodeView = memo(function NodeView({ id, type, data, selected }: Nod
   return (
     <div className={`nk${selected ? ' sel' : ''}${data.disabled ? ' off' : issue ? ` ${issue}` : ''}`}>
       <div className="nk-head">
-        <span className="dot" style={{ background: CATEGORY_COLOR[def.category] }} />
+        <span className="dot" style={{ background: registry.categoryColor(def.category) }} />
         <span aria-hidden>{def.icon}</span>
         <span className="nk-title" title={title}>
           {title}
@@ -280,7 +218,7 @@ export const NodeView = memo(function NodeView({ id, type, data, selected }: Nod
   )
 })
 
-export const CommentView = memo(function CommentView({ data, selected }: NodeProps<FlowNode>) {
+const CommentView = memo(function CommentView({ data, selected }: NodeProps<FlowNode>) {
   return (
     <>
       <NodeResizer
@@ -297,7 +235,7 @@ export const CommentView = memo(function CommentView({ data, selected }: NodePro
   )
 })
 
-export const RerouteView = memo(function RerouteView() {
+const RerouteView = memo(function RerouteView() {
   return (
     <div className="nk-reroute">
       <Handle type="target" position={Position.Left} id="in" />
@@ -306,6 +244,31 @@ export const RerouteView = memo(function RerouteView() {
   )
 })
 
-export const NODE_TYPES = Object.fromEntries(
-  Object.keys(NODE_DEF_MAP).map((t) => [t, t === 'comment' ? CommentView : t === 'reroute' ? RerouteView : NodeView])
-)
+/**
+ * A node whose type does not exist (removed from the app, or from an extension that is not installed): a
+ * gray card. Its data stays in the project; React Flow uses the `default` type for every unknown type.
+ */
+const MissingView = memo(function MissingView({ type, selected }: NodeProps<FlowNode>) {
+  return (
+    <div className={`nk missing${selected ? ' sel' : ''}`}>
+      <div className="nk-head">
+        <span aria-hidden>⚠</span>
+        <span className="nk-title mono">{type}</span>
+      </div>
+      <div className="nk-sub">
+        {L({
+          en: 'This node type is not available (removed, or its extension is not installed). Its data is kept.',
+          th: 'ไม่มีโหนดชนิดนี้แล้ว (ถูกเอาออก หรือยังไม่ได้ติดตั้งส่วนเสริมของมัน) ข้อมูลยังเก็บไว้'
+        })}
+      </div>
+    </div>
+  )
+})
+
+/** React Flow node components for every registered node type (rebuilt when an extension adds or removes nodes). */
+export function buildNodeTypes() {
+  return {
+    ...Object.fromEntries(Object.keys(NODE_DEF_MAP).map((t) => [t, t === 'comment' ? CommentView : t === 'reroute' ? RerouteView : NodeView])),
+    default: MissingView
+  }
+}

@@ -5,6 +5,9 @@ import type { L10n } from '@core/nodes/defs'
 const en = {
   app: { name: 'NKW Mod Studio', by: 'by Nam Kueap Wan (NKW)', tagline: 'Build Minecraft mods with nodes — no code needed.' },
   home: {
+    extTitle: 'Add the extensions',
+    extText: 'Break rules, regenerating blocks, crops, Farmer’s Delight and more are extensions: installed once from GitHub, then used offline.',
+    extButton: 'Install extensions',
     newProject: 'New project',
     open: 'Open project',
     recent: 'Recent projects',
@@ -33,23 +36,6 @@ const en = {
     template: 'Template',
     create: 'Create project',
     cancel: 'Cancel'
-  },
-  script: {
-    code: 'Java code',
-    preset: 'Insert an example for {{target}}…',
-    presetHint: 'Replace the code with a ready-made class written for this loader and version',
-    replace: 'Replace your code with this example?',
-    check: 'Check code',
-    checkHint: 'Compile the mod for {{target}} with Gradle and show Java errors in the editor',
-    checking: 'Compiling Java…',
-    expand: 'Open the big editor',
-    shrink: 'Back to the panel',
-    close: 'Done',
-    targets: 'Written for',
-    allTargets: 'All targets',
-    targetsHint: 'Java APIs differ between loaders and versions — choose the targets this file is written for.',
-    notActive: 'This file is not used for the selected target (top bar), so it is left out of that build.',
-    hint: 'Like an IDE: suggestions while typing (classes are imported for you), hover a class for its package, Ctrl+Space suggests, Ctrl+F searches. "Check code" compiles with Gradle and marks Java errors on their lines.'
   },
   tabOrder: {
     title: 'Items in the tab (in order)',
@@ -115,8 +101,6 @@ const en = {
     paste: 'Paste here',
     disconnect: 'Disconnect all wires',
     disconnectOne: 'Disconnect this wire',
-    moreLines_one: '… 1 more line',
-    moreLines_other: '… {{count}} more lines',
     wires: 'Wires (click to disconnect)',
     disable: 'Disable node',
     enable: 'Enable node',
@@ -313,12 +297,6 @@ const en = {
     tool: { pencil: 'Pencil', eraser: 'Eraser', fill: 'Fill', picker: 'Pick colour' },
     face: { north: 'North', south: 'South', east: 'East', west: 'West', up: 'Top', down: 'Bottom' }
   },
-  harvestUi: {
-    seconds: '{{s}} s',
-    text: 'Harvesting {{bar}} {{s}} s',
-    textNoTime: 'Harvesting {{bar}}',
-    hint: 'Preview on a game screen (GUI scale 2) — the timer loops'
-  },
   controls: {
     hint: 'Mouse and keys of the model editor. Pick a preset, then change anything you like.',
     preset: 'Preset',
@@ -340,10 +318,38 @@ const en = {
     openJson: 'Model editor controls as JSON (model-controls.json)',
     jsonHint: 'Edit the controls as JSON — valid changes apply at once.'
   },
-  targets: { title: 'Loaders & versions', done: 'Done', atLeastOne: 'Select at least one target' },
+  targets: { atLeastOne: 'Select at least one target' },
+  ext: {
+    installed: 'Installed extensions',
+    none: 'No extensions yet. Extensions add nodes and features to the editor; install the official ones below or any GitHub repository.',
+    official: 'Official extensions',
+    officialNames: { roleplay: 'Roleplay', 'farmers-delight': "Farmer's Delight", thirst: 'Thirst', skins: 'Skins' },
+    fromGit: 'Install from GitHub',
+    gitHint:
+      'Write owner/repo or a full address. Add #tag, #branch or #commit to pick a version, and #branch:folder for an extension inside a bigger repository.',
+    look: 'Look',
+    fromFolder: 'Install from a folder on this computer (for extension developers)',
+    install: 'Install',
+    update: 'Update',
+    updateTo: 'Update to {{v}}',
+    rollback: 'Back to {{v}}',
+    remove: 'Remove',
+    cancel: 'Cancel',
+    enabled: 'On',
+    installedVersion: 'installed {{v}}',
+    installedOk: '{{name}} installed',
+    missingBanner: 'This project needs extensions that are not installed: {{list}}. Its nodes show as gray cards and their data is kept.',
+    facts: '{{nodes}} nodes · {{files}} files · {{size}}',
+    via: { release: 'release {{label}}', 'default-branch': 'branch {{label}}', ref: '{{label}}', commit: 'commit', local: 'local folder' },
+    noRelease: 'This repository has no release: the newest commit of its main branch is used.',
+    local: 'A folder on this computer: it is used as it is and is not updated.',
+    targets: 'Works with',
+    needs: 'Needs these extensions first: {{list}}',
+    safety: 'An extension adds nodes and generates code into your mod. It cannot run code inside this app. It is downloaded once and then works offline.'
+  },
   settings: {
     title: 'Settings',
-    tab: { app: 'App', game: 'Test game', model: 'Model editor' },
+    tab: { app: 'App', extensions: 'Extensions', game: 'Test game', model: 'Model editor' },
     theme: 'Theme',
     system: 'System',
     light: 'Light',
@@ -362,6 +368,9 @@ type Dict = typeof en
 const th: Dict = {
   app: { name: 'NKW Mod Studio', by: 'โดย Nam Kueap Wan (NKW)', tagline: 'สร้างม็อด Minecraft ด้วยโหนด — ไม่ต้องเขียนโค้ด' },
   home: {
+    extTitle: 'เพิ่มส่วนเสริม',
+    extText: 'กฎการทุบบล็อก บล็อกเกิดใหม่ พืช Farmer’s Delight และอื่น ๆ เป็นส่วนเสริม: ติดตั้งครั้งเดียวจาก GitHub แล้วใช้ออฟไลน์ได้',
+    extButton: 'ติดตั้งส่วนเสริม',
     newProject: 'โปรเจกต์ใหม่',
     open: 'เปิดโปรเจกต์',
     recent: 'โปรเจกต์ล่าสุด',
@@ -390,23 +399,6 @@ const th: Dict = {
     template: 'เทมเพลต',
     create: 'สร้างโปรเจกต์',
     cancel: 'ยกเลิก'
-  },
-  script: {
-    code: 'โค้ด Java',
-    preset: 'ใส่โค้ดตัวอย่างสำหรับ {{target}}…',
-    presetHint: 'แทนที่โค้ดด้วยคลาสสำเร็จรูปที่เขียนสำหรับ loader และเวอร์ชันนี้',
-    replace: 'แทนที่โค้ดของคุณด้วยตัวอย่างนี้?',
-    check: 'ตรวจโค้ด',
-    checkHint: 'คอมไพล์ม็อดสำหรับ {{target}} ด้วย Gradle แล้วแสดง error ของ Java ในตัวแก้ไข',
-    checking: 'กำลังคอมไพล์ Java…',
-    expand: 'เปิดหน้าต่างเขียนโค้ดขนาดใหญ่',
-    shrink: 'กลับไปที่แผง',
-    close: 'เสร็จ',
-    targets: 'เขียนสำหรับ',
-    allTargets: 'ทุกเป้าหมาย',
-    targetsHint: 'API ของ Java ต่างกันในแต่ละ loader/เวอร์ชัน เลือกเป้าหมายที่ไฟล์นี้เขียนไว้',
-    notActive: 'ไฟล์นี้ไม่ได้ใช้กับเป้าหมายที่เลือกอยู่ (แถบบน) จึงไม่ถูกใส่ใน build นั้น',
-    hint: 'แบบ IDE: มีคำแนะนำระหว่างพิมพ์ (import คลาสให้อัตโนมัติ) ชี้ที่คลาสเพื่อดู package, Ctrl+Space ขอคำแนะนำ, Ctrl+F ค้นหา — "ตรวจโค้ด" คอมไพล์ด้วย Gradle แล้วขีดเส้นใต้บรรทัดที่ Java error'
   },
   tabOrder: {
     title: 'ไอเทมในแท็บ (ตามลำดับ)',
@@ -472,8 +464,6 @@ const th: Dict = {
     paste: 'วางที่นี่',
     disconnect: 'ถอดสายทั้งหมด',
     disconnectOne: 'ถอดสายเส้นนี้',
-    moreLines_one: '… อีก {{count}} บรรทัด',
-    moreLines_other: '… อีก {{count}} บรรทัด',
     wires: 'สายที่ต่ออยู่ (คลิกเพื่อถอด)',
     disable: 'ปิดใช้งานโหนด',
     enable: 'เปิดใช้งานโหนด',
@@ -670,7 +660,6 @@ const th: Dict = {
     tool: { pencil: 'ดินสอ', eraser: 'ยางลบ', fill: 'เทสี', picker: 'ดูดสี' },
     face: { north: 'เหนือ', south: 'ใต้', east: 'ตะวันออก', west: 'ตะวันตก', up: 'บน', down: 'ล่าง' }
   },
-  harvestUi: { seconds: '{{s}} วิ', text: 'กำลังเก็บ {{bar}} {{s}} วิ', textNoTime: 'กำลังเก็บ {{bar}}', hint: 'ตัวอย่างบนจอเกม (ขนาด GUI 2) — เวลาวนซ้ำ' },
   controls: {
     hint: 'เมาส์และปุ่มของโปรแกรมทำโมเดล เลือกค่าพื้นฐานก่อน แล้วปรับแต่งได้ทุกอย่าง',
     preset: 'ค่าพื้นฐาน',
@@ -692,10 +681,37 @@ const th: Dict = {
     openJson: 'การควบคุมโปรแกรมทำโมเดลแบบ JSON (model-controls.json)',
     jsonHint: 'แก้การควบคุมแบบ JSON — แก้ถูกต้องแล้วใช้ได้ทันที'
   },
-  targets: { title: 'Mod loader และเวอร์ชัน', done: 'เสร็จ', atLeastOne: 'เลือกอย่างน้อย 1 เป้าหมาย' },
+  targets: { atLeastOne: 'เลือกอย่างน้อย 1 เป้าหมาย' },
+  ext: {
+    installed: 'ส่วนเสริมที่ติดตั้งแล้ว',
+    none: 'ยังไม่มีส่วนเสริม ส่วนเสริมเพิ่มโหนดและฟีเจอร์ให้ตัวแก้ไข ติดตั้งของทางการด้านล่าง หรือจะใช้ที่เก็บ GitHub ไหนก็ได้',
+    official: 'ส่วนเสริมของทางการ',
+    officialNames: { roleplay: 'โรลเพลย์', 'farmers-delight': "Farmer's Delight", thirst: 'ค่าน้ำ', skins: 'สกิน' },
+    fromGit: 'ติดตั้งจาก GitHub',
+    gitHint: 'เขียน owner/repo หรือที่อยู่เต็ม ต่อท้าย #แท็ก #สาขา หรือ #คอมมิต เพื่อเลือกเวอร์ชัน และ #สาขา:โฟลเดอร์ สำหรับส่วนเสริมที่อยู่ในที่เก็บใหญ่',
+    look: 'ดูก่อน',
+    fromFolder: 'ติดตั้งจากโฟลเดอร์ในเครื่อง (สำหรับคนทำส่วนเสริม)',
+    install: 'ติดตั้ง',
+    update: 'อัปเดต',
+    updateTo: 'อัปเดตเป็น {{v}}',
+    rollback: 'ย้อนกลับไป {{v}}',
+    remove: 'ลบ',
+    cancel: 'ยกเลิก',
+    enabled: 'เปิด',
+    installedVersion: 'ติดตั้งอยู่ {{v}}',
+    installedOk: 'ติดตั้ง {{name}} แล้ว',
+    missingBanner: 'โปรเจกต์นี้ต้องใช้ส่วนเสริมที่ยังไม่ได้ติดตั้ง: {{list}} โหนดของมันจะเป็นการ์ดสีเทาและข้อมูลยังเก็บไว้',
+    facts: '{{nodes}} โหนด · {{files}} ไฟล์ · {{size}}',
+    via: { release: 'รีลีส {{label}}', 'default-branch': 'สาขา {{label}}', ref: '{{label}}', commit: 'คอมมิต', local: 'โฟลเดอร์ในเครื่อง' },
+    noRelease: 'ที่เก็บนี้ยังไม่มีรีลีส: จะใช้คอมมิตล่าสุดของสาขาหลัก',
+    local: 'โฟลเดอร์ในเครื่อง: ใช้ตามที่เป็นอยู่และไม่อัปเดตให้',
+    targets: 'ใช้ได้กับ',
+    needs: 'ต้องติดตั้งส่วนเสริมเหล่านี้ก่อน: {{list}}',
+    safety: 'ส่วนเสริมเพิ่มโหนดและสร้างโค้ดใส่ม็อดของคุณ มันรันโค้ดในแอปนี้ไม่ได้ ดาวน์โหลดครั้งเดียวแล้วใช้ออฟไลน์ได้'
+  },
   settings: {
     title: 'ตั้งค่า',
-    tab: { app: 'แอป', game: 'เกมตอนทดสอบ', model: 'โปรแกรมทำโมเดล' },
+    tab: { app: 'แอป', extensions: 'ส่วนเสริม', game: 'เกมตอนทดสอบ', model: 'โปรแกรมทำโมเดล' },
     theme: 'ธีม',
     system: 'ตามระบบ',
     light: 'สว่าง',

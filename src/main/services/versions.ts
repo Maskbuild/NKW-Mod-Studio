@@ -1,9 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { FALLBACK_DEPS, FORGE_GRADLE, TOOL_VERSIONS } from '@core/gen/index'
-import { farmersDelightFor } from '@core/gen/profiles'
 import type { ResolvedDeps } from '@core/gen/types'
-import type { Target } from '@core/project'
+import type { LinkedMod, Target } from '@core/project'
 import { getJson, getText } from './net'
 
 const TTL = 24 * 60 * 60 * 1000
@@ -57,6 +56,84 @@ async function modrinth(slug: string, mc: string, loader: string, byId = false):
 function latestFromMetadata(xml: string, prefix: string): string | null {
   const all = [...xml.matchAll(/<version>([^<]+)<\/version>/g)].map((m) => m[1]).filter((v) => v.startsWith(prefix) && !/beta|alpha|rc/i.test(v))
   return all.length ? all[all.length - 1] : null
+}
+
+interface MrVersion {
+  id: string
+  project_id: string
+  version_type: string
+  dependencies?: { version_id?: string | null; project_id?: string | null; dependency_type: string }[]
+}
+
+const ID_RE = /^[A-Za-z0-9]{1,64}$/
+
+/** The newest version (release first) of a Modrinth project for a Minecraft version and loader, or null. */
+async function mrVersion(project: string, mc: string, loader: string): Promise<MrVersion | null> {
+  const list = await getJson<MrVersion[]>(
+    `https://api.modrinth.com/v2/project/${encodeURIComponent(project)}/version?game_versions=${encodeURIComponent(JSON.stringify([mc]))}&loaders=${encodeURIComponent(JSON.stringify([loader]))}`
+  )
+  return list.find((v) => v.version_type === 'release') ?? list[0] ?? null
+}
+
+/**
+ * Maven coordinates (maven.modrinth:<slug>:<version id>) of a linked Modrinth mod for a target, followed by
+ * the mods it requires (Modrinth's Maven does not bring those). Empty when it has no build for the target.
+ */
+async function linkedCoords(slug: string, mc: string, loader: string): Promise<string[]> {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const slugs = new Map<string, string>()
+  const slugOf = async (project: string) => {
+    if (!slugs.has(project)) slugs.set(project, (await getJson<{ slug: string }>(`https://api.modrinth.com/v2/project/${encodeURIComponent(project)}`)).slug)
+    return slugs.get(project)!
+  }
+  const visit = async (v: MrVersion, depth: number) => {
+    if (seen.has(v.project_id) || !ID_RE.test(v.id)) return
+    seen.add(v.project_id)
+    const s = await slugOf(v.project_id)
+    if (!/^[a-z0-9_-]{1,64}$/.test(s)) return
+    out.push(`maven.modrinth:${s}:${v.id}`)
+    if (depth >= 3) return
+    for (const d of v.dependencies ?? []) {
+      if (d.dependency_type !== 'required') continue
+      try {
+        const dep = d.version_id
+          ? await getJson<MrVersion>(`https://api.modrinth.com/v2/version/${encodeURIComponent(d.version_id)}`)
+          : d.project_id
+            ? await mrVersion(d.project_id, mc, loader)
+            : null
+        if (dep) await visit(dep, depth + 1)
+      } catch {
+        /* a dependency that cannot be found: the game will say what is missing */
+      }
+    }
+  }
+  const v = await mrVersion(slug, mc, loader)
+  if (v) await visit(v, 0)
+  return out
+}
+
+/** Linked mods for test runs: Modrinth mods as Maven coordinates (with what they need). */
+export async function linkedModDeps(mods: LinkedMod[], target: Target, cacheDir: string): Promise<string[]> {
+  const loader = target.loader === 'quilt' ? 'fabric' : target.loader
+  const out: string[] = []
+  for (const m of mods) {
+    if (m.source !== 'modrinth' || !m.role || m.role === 'none') continue
+    const v = await cached(cacheDir, `linked:${m.id}:${target.mc}:${loader}`, async () => (await linkedCoords(m.id, target.mc, loader)).join(' '))
+    for (const c of (v ?? '').split(' ').filter(Boolean)) if (!out.includes(c)) out.push(c)
+  }
+  return out
+}
+
+/** Modrinth projects extensions want in test runs, as Maven coordinates (a project without a build for this target is left out). */
+export async function extModDeps(slugs: string[], target: Target, cacheDir: string): Promise<string[]> {
+  const loader = target.loader === 'quilt' ? 'fabric' : target.loader
+  const out: string[] = []
+  for (const slug of slugs) {
+    const v = await cached(cacheDir, `ext-mod:${slug}:${target.mc}:${loader}`, () => modrinth(slug, target.mc, loader, true))
+    if (v) out.push(`maven.modrinth:${slug}:${v}`)
+  }
+  return out
 }
 
 export async function resolveDeps(target: Target, cacheDir: string): Promise<ResolvedDeps> {
@@ -127,12 +204,6 @@ export async function resolveDeps(target: Target, cacheDir: string): Promise<Res
     }
   }
 
-  const fd = farmersDelightFor(loader, mc)
-  if (fd) {
-    const mrLoader = loader === 'quilt' ? 'fabric' : loader
-    const v = await cached(cacheDir, `fd-id:${fd.slug}:${mc}:${mrLoader}`, () => modrinth(fd.slug, mc, mrLoader, true))
-    deps.farmersDelight = v ? `maven.modrinth:${fd.slug}:${v}` : null
-  }
   if (mc === '1.20.1' || mc === '1.21.1') {
     const mrLoader = loader === 'quilt' ? 'fabric' : loader
     const v = await cached(cacheDir, `geckolib-id:${mc}:${mrLoader}`, () => modrinth('geckolib', mc, mrLoader, true))

@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "id": "thirst",
+  "name": {
+    "en": "Thirst",
+    "th": "ค่าน้ำ"
+  },
+  "description": {
+    "en": "Water values for thirst mods (Tough As Nails, Thirst Was Taken 1/2, Legendary Survival Overhaul, Thirsty). The mod never needs them.",
+    "th": "ค่าน้ำสำหรับม็อดความกระหายน้ำ (Tough As Nails, Thirst Was Taken 1/2, Legendary Survival Overhaul, Thirsty) ม็อดของคุณไม่ต้องพึ่งม็อดเหล่านี้"
+  },
+  "version": "1.0.0",
+  "minApp": "0.2.1",
+  "pinTypes": {
+    "thirst": "#0ea5e9"
+  },
+  "nodes": ["nodes/thirst.json"],
+  "extendNodes": [
+    {
+      "type": "food",
+      "inputs": [
+        {
+          "id": "thirst",
+          "label": {
+            "en": "Thirst (add-on)",
+            "th": "ค่าน้ำ (ส่วนเสริม)"
+          },
+          "type": "thirst",
+          "optional": true
+        }
+      ],
+      "afterInput": "hit3",
+      "compile": {
+        "emit": {
+          "slot": "drinks",
+          "when": "input.thirst != null",
+          "value": {
+            "id": {
+              "prop": "id"
+            },
+            "drink": {
+              "computed": "prop.useSound == 'drink'"
+            },
+            "thirst": {
+              "computed": "input.thirst.thirst"
+            },
+            "hydration": {
+              "computed": "input.thirst.hydration"
+            },
+            "tan": {
+              "computed": "clamp(round(input.thirst.hydration / 2) * 10, 10, 100)"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "derive": [
+    {
+      "slot": "byThirst",
+      "from": "thirst.drinks",
+      "groupBy": "thirst",
+      "value": {
+        "thirst": {
+          "item": "thirst"
+        },
+        "ids": {
+          "collect": "id"
+        }
+      }
+    },
+    {
+      "slot": "byTan",
+      "from": "thirst.drinks",
+      "where": "item.hydration > 0",
+      "groupBy": "tan",
+      "value": {
+        "tan": {
+          "item": "tan"
+        },
+        "ids": {
+          "collect": "id"
+        }
+      }
+    }
+  ],
+  "generate": [
+    {
+      "id": "forge-class",
+      "when": "len(ext.drinks) > 0 && ((loader == 'forge' && (mc == '1.18.2' || mc == '1.19.2' || mc == '1.20.1')) || (loader == 'neoforge' && mc == '1.21.1'))",
+      "emit": [
+        {
+          "kind": "java",
+          "class": "NkwThirst",
+          "template": "templates/NkwThirstForge.tpl"
+        }
+      ]
+    },
+    {
+      "id": "fabric-class",
+      "when": "len(ext.drinks) > 0 && ((loader == 'fabric' || loader == 'quilt') && mc == '1.20.1')",
+      "emit": [
+        {
+          "kind": "java",
+          "class": "NkwThirst",
+          "template": "templates/NkwThirstFabric.tpl"
+        }
+      ]
+    },
+    {
+      "id": "tan-thirst",
+      "each": "ext.byThirst",
+      "emit": [
+        {
+          "kind": "file",
+          "path": "resources/data/toughasnails/{{ paths.itemTags }}/thirst/{{ item.thirst }}_thirst_drinks.json",
+          "template": "templates/tag.tpl"
+        }
+      ]
+    },
+    {
+      "id": "tan-hydration",
+      "each": "ext.byTan",
+      "emit": [
+        {
+          "kind": "file",
+          "path": "resources/data/toughasnails/{{ paths.itemTags }}/hydration/{{ item.tan }}_hydration_drinks.json",
+          "template": "templates/tag.tpl"
+        }
+      ]
+    },
+    {
+      "id": "lso",
+      "each": "ext.drinks",
+      "emit": [
+        {
+          "kind": "file",
+          "path": "resources/data/{{ modId }}/legendarysurvivaloverhaul/thirst/consumables/{{ item.id }}.json",
+          "template": "templates/lso.tpl"
+        }
+      ]
+    },
+    {
+      "id": "twt2",
+      "when": "len(ext.drinks) > 0",
+      "emit": [
+        {
+          "kind": "file",
+          "path": "resources/data/{{ modId }}/thirstwastaken2/drinks/{{ modId }}.json",
+          "template": "templates/twt2.tpl"
+        }
+      ]
+    }
+  ],
+  "hooks": [
+    {
+      "site": "commonInit",
+      "order": 30,
+      "when": "len(ext.drinks) > 0 && (((loader == 'forge' && (mc == '1.18.2' || mc == '1.19.2' || mc == '1.20.1')) || (loader == 'neoforge' && mc == '1.21.1')) || ((loader == 'fabric' || loader == 'quilt') && mc == '1.20.1'))",
+      "line": "NkwThirst.init();"
+    }
+  ]
+}

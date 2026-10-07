@@ -97,6 +97,14 @@ const CLASSES: Record<string, string> = {
   'net.minecraft.client.gui.GuiComponent': 'net.minecraft.client.gui.AbstractGui',
   'net.minecraft.client.resources.language.I18n': 'net.minecraft.client.resources.I18n',
   'net.minecraft.world.level.block.state.properties.IntegerProperty': 'net.minecraft.state.IntegerProperty',
+  'net.minecraft.world.item.TieredItem': 'net.minecraft.item.TieredItem',
+  'net.minecraft.world.level.material.PushReaction': 'net.minecraft.block.material.PushReaction',
+  'net.minecraft.world.phys.BlockHitResult': 'net.minecraft.util.math.BlockRayTraceResult',
+  'net.minecraft.world.phys.HitResult': 'net.minecraft.util.math.RayTraceResult',
+  'net.minecraft.nbt.ListTag': 'net.minecraft.nbt.ListNBT',
+  'net.minecraft.nbt.StringTag': 'net.minecraft.nbt.StringNBT',
+  'net.minecraft.nbt.CompoundTag': 'net.minecraft.nbt.CompoundNBT',
+  'net.minecraft.world.item.ShearsItem': 'net.minecraft.item.ShearsItem',
   'net.minecraft.world.level.block.state.properties.Property': 'net.minecraft.state.Property',
   // Forge API that moved later
   'net.minecraftforge.registries.RegistryObject': 'net.minecraftforge.fml.RegistryObject'
@@ -153,6 +161,11 @@ const NAMES: [RegExp, string][] = [
   [/\bInteractionResultHolder\b/g, 'ActionResult'],
   [/\bInteractionResult\b/g, 'ActionResultType'],
   [/\bBlockEntity\b/g, 'TileEntity'],
+  [/\bBlockHitResult\b/g, 'BlockRayTraceResult'],
+  [/\bHitResult\b/g, 'RayTraceResult'],
+  [/\bListTag\b/g, 'ListNBT'],
+  [/\bStringTag\b/g, 'StringNBT'],
+  [/\bCompoundTag\b/g, 'CompoundNBT'],
   [/\bPoseStack\b/g, 'MatrixStack'],
   [/\bGuiComponent\b/g, 'AbstractGui']
 ]

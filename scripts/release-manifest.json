@@ -1,0 +1,38 @@
+{
+  "note": "What goes into the release repository (the app) and how the export checks it.",
+  "include": [
+    ".github",
+    ".gitignore",
+    ".prettierignore",
+    ".prettierrc.json",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md",
+    "build",
+    "docs",
+    "electron-builder.yml",
+    "electron.vite.config.ts",
+    "extensions",
+    "package-lock.json",
+    "package.json",
+    "scripts",
+    "src",
+    "tests",
+    "tsconfig.json",
+    "tsconfig.node.json",
+    "tsconfig.web.json",
+    "vitest.config.ts"
+  ],
+  "exclude": ["node_modules", "out", "dist", "release", ".verify", ".git", "coverage"],
+  "excludeSuffix": [".tsbuildinfo", ".log", ".blockmap", ".DS_Store"],
+  "englishOnlyExcept": ["docs/GUIDE.th.md", "src/", "extensions/", "tests/", "build/", "scripts/fixture.ts"],
+  "maxFileBytes": 6000000,
+  "secretPatterns": [
+    "ghp_[A-Za-z0-9]{30,}",
+    "github_pat_[A-Za-z0-9_]{30,}",
+    "AKIA[0-9A-Z]{16}",
+    "-----BEGIN [A-Z ]*PRIVATE KEY-----",
+    "xox[baprs]-[A-Za-z0-9-]{10,}",
+    "sk-[A-Za-z0-9]{32,}"
+  ]
+}

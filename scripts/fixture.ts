@@ -4,8 +4,6 @@ import { crc32, deflateSync } from 'node:zlib'
 import type { GraphEdge, GraphNode, Project } from '../src/core/project'
 import { NODE_DEF_MAP, defaultData } from '../src/core/nodes/defs'
 import { bbmodelToGeo } from '../src/core/gen/geo'
-import { PROFILES } from '../src/core/gen/profiles'
-import { SCRIPT_PRESETS } from '../src/core/scriptApi'
 
 /** A top hat made in Blockbench as a plain Java block model (no armor bones): brim + crown. */
 export const HAT_BBMODEL = JSON.stringify({
@@ -356,20 +354,6 @@ export function writeFixture(dir: string): Project {
   wire('tex_ruby', 'out', 'piece_json2', 'icon')
   wire('m_crown', 'out', 'piece_json2', 'geo')
   wire('m_crown', 'out', 'piece_json', 'geo')
-  // Script nodes: both ready-made examples for every loader × version (real mod code), each logging a
-  // marker when its class is loaded so the in-game smoke test can see it was registered
-  for (const p of PROFILES)
-    for (const loader of p.loaders)
-      for (const preset of SCRIPT_PRESETS) {
-        const key = `${loader}-${p.mc}`
-        const code = preset
-          .code({ loader, mc: p.mc })
-          .replace(
-            /(public class (\w+)[^{]*\{)/,
-            (_m, head: string, cls: string) => `${head}\n    static {\n        NkwMod.LOGGER.info("[NKW] script loaded: ${cls}");\n    }\n`
-          )
-        node(`sc_${preset.id}_${key.replace(/[.-]/g, '_')}`, 'script', { targets: [key], code })
-      }
   node('piece_legs', 'armorPiece', { id: 'plain_leggings', name: 'Plain Leggings', slot: 'leggings' })
   wire('am', 'out', 'piece_legs', 'material')
   wire('tex_ruby', 'out', 'piece_legs', 'icon')
@@ -387,7 +371,16 @@ export function writeFixture(dir: string): Project {
   wire('blk', 'block', 'berries', 'places')
 
   // ── real crops: wheat-like (replant, hold to harvest) and a bush that grows back (stand still) ──
-  node('wheat', 'crop', { id: 'ruby_wheat', name: 'Ruby Wheat', nameTh: 'ข้าวทับทิม', input: 'hold', harvestSeconds: 1.5, produceMax: 3, seedMax: 2 })
+  node('wheat', 'crop', {
+    id: 'ruby_wheat',
+    name: 'Ruby Wheat',
+    nameTh: 'ข้าวทับทิม',
+    input: 'hold',
+    harvestSeconds: 1.5,
+    produceMax: 3,
+    seedMax: 2,
+    breakDrops: 'grown'
+  })
   ;['tex_soup', 'tex_lamp', 'tex_ruby_block', 'tex_ruby'].forEach((tx, i) => wire(tx, 'out', 'wheat', `stage${i + 1}`))
   wire('ruby', 'out', 'wheat', 'produce')
   node('wheat_seeds', 'item', { id: 'ruby_wheat_seeds', name: 'Ruby Wheat Seeds' })
@@ -403,7 +396,9 @@ export function writeFixture(dir: string): Project {
     regrowSeconds: 30,
     regrowStage: 4,
     input: 'stand',
-    harvestSeconds: 2
+    harvestSeconds: 2,
+    breakDrops: 'none',
+    adventure: false
   })
   ;['tex_soup', 'tex_ruby'].forEach((tx, i) => wire(tx, 'out', 'bush', `stage${i + 1}`))
   node('bush_berry', 'food', { id: 'ruby_bush_berry', name: 'Ruby Bush Berry', nutrition: 2 })
@@ -418,7 +413,15 @@ export function writeFixture(dir: string): Project {
   // game crops picked by hand: like the game, replanting itself, going back to a stage, Farmer's Delight
   node('g_wheat', 'gameCrop', { crops: undefined, crop: 'minecraft:wheat', input: 'hold', harvestSeconds: 1, after: 'normal', give: true })
   wire('ui_ring', 'out', 'g_wheat', 'ui')
-  node('g_carrots', 'gameCrop', { crops: undefined, crop: 'minecraft:carrots', input: 'stand', harvestSeconds: 1, after: 'replant', give: true })
+  node('g_carrots', 'gameCrop', {
+    crops: undefined,
+    crop: 'minecraft:carrots',
+    input: 'stand',
+    harvestSeconds: 1,
+    after: 'replant',
+    give: true,
+    breakDrops: 'none'
+  })
   node('g_berries', 'gameCrop', { crops: undefined, crop: 'minecraft:sweet_berry_bush', input: 'click', after: 'normal' })
   node('g_beet', 'gameCrop', { crops: undefined, crop: 'minecraft:beetroots', input: 'hold', after: 'regrow', backStage: 1 })
   wire('ui_bar', 'out', 'g_beet', 'ui')
@@ -430,6 +433,44 @@ export function writeFixture(dir: string): Project {
     after: 'replant'
   })
   wire('ui_bar', 'out', 'g_cabbage', 'ui')
+
+  // ── break rules: game blocks, another mod's block, a tag and wired mod blocks ──
+  node('rule_iron', 'breakRule', {
+    blocks: ['minecraft:stone', 'minecraft:deepslate', 'othermod:ruby_ore', '#minecraft:logs', 'nkwtest:ruby_pillar'],
+    tool: 'pickaxe',
+    level: 'iron',
+    onFail: 'noDrop',
+    messageTh: 'ต้องใช้อีเต้อเหล็ก 100%',
+    timer: true,
+    adventure: true
+  })
+  wire('ui_ring', 'out', 'rule_iron', 'ui')
+  wire('blk', 'block', 'rule_iron', 'block1')
+  wire('lamp', 'block', 'rule_iron', 'block2')
+  node('rule_axe', 'breakRule', { blocks: ['minecraft:oak_planks'], tool: 'axe', level: 'diamond', onFail: 'cantBreak', timer: true })
+  node('rule_shears', 'breakRule', { blocks: ['minecraft:white_wool'], tool: 'shears', onFail: 'cantBreak', message: false })
+  node('rule_sword', 'breakRule', { blocks: ['minecraft:cobweb'], tool: 'sword', level: 'netherite' })
+  node('rule_any', 'breakRule', { blocks: ['minecraft:obsidian'], tool: 'any', level: 'diamond' })
+
+  // ── regenerating blocks: mined like ores, and picked by holding right-click ──
+  node('regen_ores', 'regenBlock', { blocks: ['minecraft:iron_ore', 'minecraft:oak_log', 'othermod:ruby_ore'], hardness: 3, regenSeconds: 30 })
+  node('regen_hold', 'regenBlock', {
+    prefix: 'node',
+    blocks: ['minecraft:amethyst_block'],
+    input: 'hold',
+    harvestSeconds: 3,
+    depleted: 'minecraft:cobblestone',
+    give: true,
+    adventure: false,
+    toolWear: 3,
+    dropMin: 2,
+    dropMax: 4,
+    tabTitle: 'Resource Nodes'
+  })
+  wire('ui_bar', 'out', 'regen_hold', 'ui')
+  // a block of this mod grows back too, and a node can drop a mod item instead
+  wire('blk', 'block', 'regen_ores', 'block1')
+  wire('ruby', 'out', 'regen_hold', 'drop')
 
   // ── mobs: game bodies with a skin, spawn eggs, drops, natural spawning ──
   node('m_zombie', 'mob', {

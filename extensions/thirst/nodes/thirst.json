@@ -1,0 +1,77 @@
+{
+  "type": "thirst",
+  "category": "addon",
+  "title": {
+    "en": "Thirst (add-on)",
+    "th": "ค่าน้ำ (ส่วนเสริม)"
+  },
+  "description": {
+    "en": "Water value for thirst mods. Wire it into a Food node. The mod does not need any of them: when a player has Tough As Nails, Thirst Was Taken, Thirst Was Taken 2, Legendary Survival Overhaul or Thirsty installed, eating / drinking the food also restores thirst.",
+    "th": "ค่าน้ำสำหรับม็อดความกระหายน้ำ ต่อเข้าโหนดอาหาร — ม็อดเราไม่ต้องพึ่งม็อดพวกนี้ ถ้าผู้เล่นลง Tough As Nails, Thirst Was Taken, Thirst Was Taken 2, Legendary Survival Overhaul หรือ Thirsty ไว้ กิน/ดื่มอาหารนี้แล้วจะได้ค่าน้ำด้วย"
+  },
+  "icon": "💧",
+  "outputs": [
+    {
+      "id": "out",
+      "label": {
+        "en": "Thirst",
+        "th": "ค่าน้ำ"
+      },
+      "type": "thirst"
+    }
+  ],
+  "props": [
+    {
+      "key": "thirst",
+      "label": {
+        "en": "Thirst restored (½ drop each)",
+        "th": "ฟื้นค่าน้ำ (ครึ่งหยดต่อ 1)"
+      },
+      "kind": "int",
+      "default": 6,
+      "min": 1,
+      "max": 20,
+      "hint": {
+        "en": "20 = a full thirst bar, like hunger points. A water bottle is about 6.",
+        "th": "20 = เต็มหลอด เหมือนค่าความหิว — ขวดน้ำประมาณ 6"
+      }
+    },
+    {
+      "key": "hydration",
+      "label": {
+        "en": "Hydration (stays quenched longer)",
+        "th": "ความชุ่มชื้น (อิ่มน้ำนานขึ้น)"
+      },
+      "kind": "int",
+      "default": 4,
+      "min": 0,
+      "max": 20,
+      "hint": {
+        "en": "Works like food saturation: hidden water that is used up before the bar drops. Called \"quenched\" in Thirst Was Taken.",
+        "th": "คล้ายความอิ่มของอาหาร: ค่าน้ำสำรองที่ถูกใช้ก่อนหลอดลด (ใน Thirst Was Taken เรียกว่า quenched)"
+      }
+    }
+  ],
+  "compile": {
+    "emit": {
+      "slot": "values",
+      "mode": "ref",
+      "value": {
+        "thirst": {
+          "prop": "thirst",
+          "as": "int",
+          "min": 1,
+          "max": 20,
+          "default": 6
+        },
+        "hydration": {
+          "prop": "hydration",
+          "as": "int",
+          "min": 0,
+          "max": 20,
+          "default": 4
+        }
+      }
+    }
+  }
+}

@@ -137,8 +137,9 @@ export function bbmodelToGeo(text: string, identifier = 'geometry.nkw'): { geo: 
   const used = new Set<string>()
   const names = new Set<string>()
   const uniqueName = (n: string) => {
-    let name = (n || 'bone').replace(/[^A-Za-z0-9_.-]/g, '_')
-    for (let i = 2; names.has(name); i++) name = `${n}_${i}`
+    const base = (n || 'bone').replace(/[^A-Za-z0-9_.-]/g, '_')
+    let name = base
+    for (let i = 2; names.has(name); i++) name = `${base}_${i}`
     names.add(name)
     return name
   }
@@ -203,7 +204,10 @@ export function bbmodelToGeo(text: string, identifier = 'geometry.nkw'): { geo: 
     } else walk(node)
   }
   // elements not listed in the outliner (older files) go to a root bone
-  for (const e of bb.elements ?? []) if (!used.has(e.uuid)) cube(e) && loose.push(cube(e)!)
+  for (const e of bb.elements ?? []) {
+    const c = used.has(e.uuid) ? null : cube(e)
+    if (c) loose.push(c)
+  }
   if (loose.length) bones.unshift({ name: uniqueName('root'), pivot: [0, 0, 0], cubes: loose })
 
   const textures = (bb.textures ?? []).map((t, i) => {

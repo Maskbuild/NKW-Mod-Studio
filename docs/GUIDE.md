@@ -1,6 +1,6 @@
 # NKW Mod Studio — User Guide
 
-**English** · [ภาษาไทย](GUIDE.th.md)
+**English** · [Thai](GUIDE.th.md)
 
 This guide walks you through NKW Mod Studio from installing it to playing your mod in Minecraft. You don't need to know how to code.
 
@@ -21,12 +21,13 @@ This guide walks you through NKW Mod Studio from installing it to playing your m
 13. [Recipes](#13-recipes)
 14. [Farmer's Delight](#14-farmers-delight)
 15. [Creative tabs](#15-creative-tabs)
-16. [Java scripts (advanced)](#16-java-scripts-advanced)
-17. [Test in game and export a .jar](#17-test-in-game-and-export-a-jar)
-18. [Settings](#18-settings)
-19. [Keyboard shortcuts](#19-keyboard-shortcuts)
-20. [Troubleshooting](#20-troubleshooting)
-21. [Walkthrough: a ruby sword from start to finish](#21-walkthrough-a-ruby-sword-from-start-to-finish)
+16. [Test in game and export a .jar](#16-test-in-game-and-export-a-jar)
+17. [Settings](#17-settings)
+18. [Keyboard shortcuts](#18-keyboard-shortcuts)
+19. [Troubleshooting](#19-troubleshooting)
+20. [Walkthrough: a ruby sword from start to finish](#20-walkthrough-a-ruby-sword-from-start-to-finish)
+21. [Extensions](#21-extensions)
+22. [Skins (extension)](#22-skins-extension)
 
 ---
 
@@ -241,7 +242,20 @@ The **Game items** tab lists every item of the selected Minecraft version, with 
 - Search by Thai name, English name or ID. Filter by group, or switch to **Tags** (e.g. `minecraft:planks`, meaning any plank).
 - **Drag** an item onto the canvas, or **double-click** it, to create an **Existing Item** or **Item Tag** node you can wire into recipes.
 
-You can also add these nodes by hand from **Utility**: **Existing Item** (`minecraft:diamond`, or an item from another mod) and **Item Tag** (`minecraft:planks`).
+You can also add these nodes by hand from **Utility**: **Existing Item** (`minecraft:diamond`, or an item from another mod) and **Item Tag** (`minecraft:planks`). An Item Tag node shows the items of its tag as icons (a grid in the right panel, a few on the node); hover an icon to see the item's name.
+
+### Items of other mods (Modrinth or .jar files)
+
+Click **+ Mod** in the Game items tab: a list of Modrinth mods opens, like on the Modrinth site — only mods for the project's Minecraft version **and loader** (e.g. 1.20.1 Fabric). Each row shows the icon, name, author, description, where it runs, categories, loaders, downloads, followers and last update. Search, **Sort by**, **View** (mods per page), list / gallery layout and pages; click a name to open it on Modrinth. **⬇ Install ▾** offers **Required**, **Optional** or **Just install**. **Pick .jar files…** / **Pick a mods folder…** read mods already on this computer instead.
+
+Each linked mod has a role (in the gallery, or next to the list in Game items):
+
+- **Item list only**: its items, blocks (English names, icons), tags and **crops** show in the item lists, block pickers, Item Tag previews and the crop list of **Harvest a game crop**.
+- **Just install** (test runs): also added to the game **Test in game** starts (the build for the project's loader, with the mods it requires). Your mod does not depend on it.
+- **Optional**: in test runs, and listed as optional in your mod's metadata (fabric.mod.json `suggests`, mods.toml `mandatory=false` / `type="optional"`).
+- **Required**: in test runs, and players must install it too (the game refuses to start without it).
+
+Notes: every test target uses the mod's build for its own Minecraft version and loader (Fabric 1.20.1 gets the Fabric 1.20.1 build, NeoForge 1.21.1 the NeoForge 1.21.1 one); a target the mod has no build for leaves it out (the log says so). A .jar is for one Minecraft version and one loader: pick the right one again for another target. Dependencies use the mod's id in game, which is read when its items are loaded — load them once before building. Picked files go into test runs; a whole mods folder is linked for its item list (change the role per mod). **✕** removes a mod from the project.
 
 > Steve/Alex skins for the armor preview also come from these downloaded game files. The app doesn't ship any Mojang files.
 
@@ -283,6 +297,8 @@ Like Item, plus:
 - A **Thirst (add-on)** pin (see below).
 
 ### Thirst (add-on)
+
+_Part of the **Thirst** extension._
 
 Found under **Add-ons (other mods)** in the node library. Wire it into a Food node to give that food or drink a water value in thirst mods:
 
@@ -363,35 +379,80 @@ Category **Farming**. A plant that grows in up to 8 stages.
 - **Time to grow**: seconds until fully grown (0 = random like wheat).
 - **After harvest**:
   - _Gone: plant the seeds again_ (like wheat). Breaking it gives the harvest and some seeds back (**Seeds back min / max**).
+  - _Replants itself_ (like **Harvest a game crop**): picking it gives the harvest and the seeds back minus the one that goes back into the ground, and the crop grows again from the start. Needs a right-click harvest.
   - _Stays and grows back_: picking it gives the harvest, then it goes back to the stage you choose and grows again after the **cooldown**.
-- **How to harvest**: break it, right-click, **hold right-click** for the harvest time, or **right-click once and stand still** for the harvest time (moving cancels and you must click again). While harvesting, a timer shows on screen; wire a **Harvest timer look** node into **Harvest timer look** to choose how it looks (without one: text above the hotbar).
+- **How to harvest**: break it, right-click, **hold right-click** for the harvest time, or **right-click once and stand still** for the harvest time (moving cancels and you must click again). While harvesting, a timer shows on screen; wire a **Timer window** node into **Timer window** to choose how it looks (without one: text above the hotbar).
+- **Only while sneaking (Shift)**: crouch and right-click to pick it by hand (standing up stops a running harvest); a normal right-click does what it does in the game.
 - **Harvest count min / max**.
+- **When a player breaks it**: _drops like normal_, _drops only when fully grown_ (breaking a young plant gives nothing, not even the seed), or _gives nothing_ (only picking by hand gives the harvest — pair it with a right-click harvest). Picking by hand is never affected, and neither is creative mode.
+- **Can be picked in adventure mode** (shown for right-click harvests): off = players in adventure mode cannot pick it by hand.
 
 ### Harvest a game crop
+
+_Part of the **Roleplay** extension, like Break Rule, Regenerating Blocks, the Timer window, the config file and the hand-harvest settings of the Crop node._
 
 Gives a crop of Minecraft, Farmer's Delight or another mod the same hand harvest. It still grows like in the game, and breaking it still works as usual.
 
 - **Crop**: wheat, carrots, potatoes, beetroots, nether wart, sweet berry bush, cocoa, or Farmer's Delight cabbages, onions, tomatoes and rice. **Another block** takes any block ID with an `age` property (a crop of another mod).
 - **How to harvest**: right-click, hold right-click, or right-click once and stand still, with the **harvest time**.
+- **Only while sneaking (Shift)**: like the Crop node.
 - **After harvest**:
   - _Like the game / the mod_: berries and tomatoes are picked and stay; everything else breaks like when you break it (the normal drops).
   - _Replants itself_: the normal drops minus one seed, and the crop starts again from the beginning.
   - _Stays and goes back to a stage_: the normal drops, then it goes back to the stage you choose and grows again like in the game.
 - **Harvest goes into the inventory**: off = drops on the ground like normal; on = straight into the inventory (what does not fit drops at your feet). The Crop node has the same option for hand harvests.
+- **When a player breaks it**: the same three choices as the Crop node, e.g. _gives nothing_ so players must pick it by hand.
+- **Can be picked in adventure mode**: off = players in adventure mode cannot pick these crops by hand.
 - One node per crop. Farmer's Delight crops only exist on targets that have Farmer's Delight (the Problems panel tells you), and Farmer's Delight is added to "Test in game" for you.
 
-### Harvest timer look
+### Timer window
 
-How the harvest timer looks on screen. Wire its output into the **Harvest timer look** pin of Crop or Harvest a game crop nodes; one look can be used by many crops. The right panel shows a live preview on a pretend game screen.
+_Part of the **Roleplay** extension._ Category **Utility**. How the timer looks on screen — picking crops by hand and breaking blocks. Wire its output into the **Timer window** pin of Crop, Harvest a game crop, Regenerating Blocks or Break Rule nodes; one window can be used by many nodes. The panel shows a live preview on a pretend game screen (drag the slider to see any progress, press **Play** to loop, switch between picking a crop and breaking a block, or to the last seconds).
 
-- **Template**:
-  - _Text_: `Harvesting ■■■□□□□□□□ 1.2 s` (the look from before).
-  - _Bar that fills up_.
-  - _Circle that fills around the crosshair_ (clockwise from the top).
-- **Colour**, and for the bar and circle a **background colour** and **background opacity**.
-- Text and bar: **position** (under the crosshair, above the hotbar, top of the screen) and **move down** (negative = up).
-- Bar: **width** and **height**. Circle: **size** (radius) and **line thickness**; as thick as the size gives a filled circle.
-- **Show the seconds left**.
+A timer window is a small **box** made of **elements**, drawn bottom to top:
+
+- **Ready-made looks**: Bar, Text, Circle (the older looks), Glowing bar, Pill with time, Pulsing circle. Old projects keep their look until you edit it.
+- **Window**: where the box sits on the screen (under the crosshair, above the hotbar, top, centre or a corner), how far to move it, and its size.
+- **Elements**: Rectangle, Bar (fills in any of four directions), Circle (start angle, clockwise or not), Text (`{seconds}`, `{percent}` and `{bar}`; English and Thai versions), Image (a PNG of your project). Each has an **anchor** (a corner, an edge or the middle of the box), a position, a size, an **opacity**, and when it is **shown** (always, only when picking a crop, only when breaking a block, or only in the last 3 seconds).
+- **Colours**: one colour or a **gradient** (across or top to bottom, each end with its own opacity), a background for bars and circles, an outline for rectangles and bars.
+- **Animations** (up to 8 per element): opacity, move across / down, size, or colour; **over time** (once, repeating, or back and forth), **with the progress**, or **in the last 3 seconds**; with an easing.
+
+Pictures are shown in Minecraft 1.20.1 – 1.21.1 (other versions leave them out). The preview and the game use the same layout rules.
+
+### Break Rule (tool & level)
+
+Category **Blocks**. Makes blocks need a certain tool and mining (ore) level — for blocks of Minecraft, of other mods and of your own mod.
+
+- **Blocks (pick any number)**: tick blocks in the list (type to search; **Tick all … found** ticks every result, e.g. search `ore`), add ids of other mods such as `othermod:ruby_ore` (several at once, separated by spaces or commas), add tags such as `#minecraft:logs`, or drag blocks here from the **Game items** tab. Your own blocks: tick them in the list or wire their **Block** pin into the **Mod block** pins.
+- **Required tool**: pickaxe, axe, shovel, hoe, sword, shears, or _any tool_ (only the level counts).
+- **Minimum level (ore level)**: wood/gold, stone, iron, diamond or netherite and better. Tools of your mod count with their Tool Material's mining level.
+- **With the wrong tool**: _it breaks but drops nothing_ (like stone mined by hand), or _it cannot be broken_.
+- **Tell the player which tool is needed**: a red message above the hotbar, written for you (e.g. "Needs an iron pickaxe or better to drop anything"), or your own text in English and Thai.
+- **Show a timer while breaking**: like picking crops by hand, the time left to break the block shows on screen while you mine; the mining swing and cracks stay as usual. Wire a **Timer window** node into **Timer window** to choose text, bar or circle (without one: text above the hotbar). The time follows the real mining speed of your tool.
+- **Can be broken in adventure mode (right tool)**: nothing can be broken in adventure mode normally. On: holding a tool that passes the rule lets you break these blocks — the tool gets a hidden "can break" list of them (a list a map maker set already is kept). An empty hand cannot.
+- Creative mode is never stopped. A block in two rules follows the first one. Block tags need Minecraft 1.18.2 or newer; on 1.21.2+ swords have no mining level, so any sword counts.
+
+### Regenerating Blocks
+
+Category **Blocks**. Blocks of Minecraft (or another mod) that are harvested like crops and grow back — resource nodes for adventure maps and servers.
+
+- **Blocks (pick any number)**: e.g. iron ore, oak log, `othermod:ruby_ore`, or blocks of your own mod (tick them in the list or wire their **Block** pin into the **Mod block** pins). Each one gets its own block (`regen_iron_ore` with the **ID prefix** `regen`) that looks like the original (it uses the original's model) and gives the original's drops. Full blocks such as ores, stone and logs look best; tags cannot be used.
+- **Drops instead (item)**: wire any item — of the game, another mod or your own mod — to give it (**count min / max**) instead of the original's drops.
+- **How to harvest**, like crops: _break it_ (mined like a block: **hardness**, **mined fast with**; the original's right tool is needed for drops, fortune and silk touch work; **Show a timer while breaking**), _hold left-click_ or _left-click once and stand still_ for the **harvest time** (with the timer; wire a **Timer window** node to choose its look). _Hold left-click_ works like mining: only the time the button is held counts, letting go stops it at once (the timer goes away) and looking at another block starts over. With the left-click ways the block cannot be mined and the tool keeps swinging while you hold the button, in adventure mode too. Every way needs a tool good enough for the original block, like mining it: a wooden pickaxe cannot take iron ore (the player is told _Needs a better tool_).
+- **Tool durability used per harvest** (left-click ways): the item in the main hand loses this much durability each harvest (0 = none). _Break it_ wears tools like mining in the game. Creative mode is not affected.
+- After the harvest it turns into the **block while growing back** (`minecraft:bedrock` by default — any block id for its look). That block cannot be broken, resists explosions and pistons cannot move it; after **Grows back after** seconds it turns back.
+- **Harvest goes into the inventory**, **Can be picked in adventure mode** (right-click ways).
+- **Only operators (OP)** can place these blocks; anyone else gets a message. They are in their own **creative tab** (**Creative tab title** EN/TH), after your tabs; every Regenerating Blocks node with the same **ID prefix** adds its blocks to that one tab (use another prefix for a separate tab). In creative mode an OP removes them by breaking them as usual.
+
+### Config file (for server owners)
+
+A mod with crops picked by hand, Regenerating Blocks or Break Rules gets a config file, `config/<modid>-harvest.json`, written with the nodes' settings the first time the game starts (delete it to get them back; changes apply after a restart). It only changes **times** and **adds blocks** — everything else stays as set in the nodes. A section is only there when the mod has what it changes (no Break Rule node → no `breakRules`).
+
+- **crops**: your crops picked by holding / standing still → `harvestSeconds`.
+- **gameCrops**: one set per **Harvest a game crop** node (`"1"`, `"2"` … in node order; `_crops` shows its crops) → `harvestSeconds`, and `add`: more crops of the game or other mods, picked the same way (they need growth stages).
+- **regenBlocks**: each Regenerating Block → `regrowSeconds`, and `harvestSeconds` for the left-click ways.
+- **breakRules**: one set per **Break Rule** node (`_rule` / `_blocks` show it) → `add`: more block ids (or `#tags`, not on 1.16.5) that follow the same rule.
+- Only blocks of the game or of other mods can be added; ids that are not in the game are ignored and reported in the log.
 
 ### Shared block settings
 
@@ -536,6 +597,8 @@ Ingredients can be your own items, **Existing Item** nodes, or **Item Tag** node
 
 ## 14. Farmer's Delight
 
+_These nodes come from the **Farmer's Delight** extension._
+
 | Node | Settings |
 |---|---|
 | **Cutting Board** | One input. Tool: knife, axe, pickaxe, shovel or shears. Up to 4 results, each with a count and a chance. |
@@ -557,26 +620,7 @@ Items not wired into any tab are handled by the project setting **Items not conn
 - _Hidden_: only obtainable with `/give`.
 - _Put them in a main tab automatically_.
 
-## 16. Java scripts (advanced)
-
-The **Java Class (Script)** node lets you add a real Java source file to your mod, written the same way as in any Minecraft mod. Use it for behavior the nodes don't cover. You need to know Java and the loader's API.
-
-- **Use for**: pick the loaders and versions the file is written for. None = all. Java APIs differ between loaders and versions, and the file is left out of builds for other targets.
-- **Your mod's own classes are available**: `NkwMod` (with `MOD_ID`), `ModItems`, `ModBlocks`, `ModSounds`.
-- **Forge / NeoForge**: put `@EventBusSubscriber` on the class and `@SubscribeEvent` on event methods.
-- **Fabric / Quilt**: `implements ModInitializer` (or `ClientModInitializer`). The app registers the class as an entrypoint for you.
-- **The editor works like an IDE**:
-  - Highlighting and live checks.
-  - Completion while typing. Classes are **imported automatically**. Ctrl+Space shows suggestions.
-  - Hover a class to see its package.
-  - Ctrl+F searches.
-  - The expand button opens a large editor.
-- **Insert an example…**: replaces the code with a ready-made class written for the selected loader and version.
-- **Check code**: compiles the mod with Gradle for the selected target. Java errors are underlined on their lines.
-- On the canvas, the node shows the class name, its targets and a preview of the first lines.
-- The class name must not clash with the classes the app generates. Problems will tell you if it does.
-
-## 17. Test in game and export a .jar
+## 16. Test in game and export a .jar
 
 ### ▶ Test in game
 
@@ -598,12 +642,12 @@ Click **⬇ Export .jar**. When the build finishes, choose where to save the `.j
 
 To release for several versions, switch **Target** and export once per target.
 
-## 18. Settings
+## 17. Settings
 
 Open with the gear button.
 
 - **Theme**: System / Light / Dark.
-- **Language**: ไทย / English.
+- **Language**: Thai / English.
 - **Game memory (RAM)** for testing: 1–16 GB.
 - **Download Java/Gradle automatically when needed**.
 - **Java installations** found on your PC.
@@ -611,13 +655,13 @@ Open with the gear button.
 The **Test game** tab sets up Minecraft for "Test in game" (written to the test game's options before it starts; other settings stay as you left them in the game):
 
 - Fullscreen, window size (with presets), max FPS (up to unlimited), VSync, GUI scale, render distance.
-- Master volume, brightness, mouse sensitivity, game language (same as the app, English or ไทย).
+- Master volume, brightness, mouse sensitivity, game language (same as the app, English or Thai).
 - Pause or keep running when the game window loses focus.
 - **Controls**: click a key, then press the new key or mouse button (Esc cancels). **Reset all** brings back Minecraft's keys.
 
 The **Model editor** tab sets the model editor's mouse and keys: a Blockbench, Maya or Blender preset, or your own (see [Model editor](#model-editor-3d-models)).
 
-## 19. Keyboard shortcuts
+## 18. Keyboard shortcuts
 
 | Keys | Action |
 |---|---|
@@ -634,14 +678,13 @@ The **Model editor** tab sets the model editor's mouse and keys: a Blockbench, M
 | Alt+click pin | Disconnect that pin's wires |
 | Space + drag, right/middle drag | Pan |
 | F2 / Del (Assets) | Rename / Delete file |
-| Ctrl+Space / Ctrl+F (script editor) | Suggestions / Search |
 | Ctrl+Shift+P / Ctrl+P | Command palette / Open a generated file |
 | Ctrl+B / Ctrl+J / Ctrl+Alt+B | Side bar / Problems & Console / Properties |
 | Ctrl+Tab / Ctrl+W | Next tab / Close tab |
 | G S R B V, or Maya Q W E R (model editor) | Move, Scale, Rotate, Paint, Select |
 | F / A (model editor) | Frame selected / everything |
 
-## 20. Troubleshooting
+## 19. Troubleshooting
 
 | Problem | What to do |
 |---|---|
@@ -653,12 +696,11 @@ The **Model editor** tab sets the model editor's mouse and keys: a Blockbench, M
 | A 3D armor shows as 2D | 3D armor only works on 1.20.1 and 1.21.1. |
 | Farmer's Delight recipes are missing | The selected target has no Farmer's Delight version (see section 14). |
 | Sound doesn't fade with distance | Convert it again with **Mono** on. |
-| Script error in Check code | The underlined line shows the javac error. Make sure the code fits the selected loader and version. |
 | Windows SmartScreen warning | **More info → Run anyway**. |
 
 To report a bug, open an issue on [GitHub](https://github.com/Maskbuild/NKW-Mod-Studio/issues) with the Console log.
 
-## 21. Walkthrough: a ruby sword from start to finish
+## 20. Walkthrough: a ruby sword from start to finish
 
 1. **New project** → template **Empty** → name `Ruby Mod`, ID `ruby_mod`, target **Fabric 1.21.1** → Create.
 2. Drop `ruby.png` and `ruby_sword.png` onto the canvas. Two **Texture** nodes appear.
@@ -676,5 +718,35 @@ To report a bug, open an issue on [GitHub](https://github.com/Maskbuild/NKW-Mod-
 9. Check **Problems** → "No problems". Click **▶ Test in game**.
 10. In game, open the creative inventory → **Ruby Mod** tab. Craft the sword, hit a mob, and it gets slowed.
 11. Happy with it? Click **⬇ Export .jar** and share your mod.
+
+---
+
+## 21. Extensions
+
+Many features are **extensions**: Roleplay (Break Rule, Regenerating Blocks, Harvest a game crop, the hand-harvest settings of Crop, the Timer window, the config file), Farmer's Delight, Thirst and Skins. An extension adds nodes (and what they generate into your mod). It is a folder of data files — it cannot run code inside the app.
+
+**Install**: *Settings → Extensions* (or the banner on the home page). Click **Install** on an official extension, or write a GitHub address:
+
+- `owner/repo` or `https://github.com/owner/repo` — the latest release (or, with no release, the newest commit of the main branch)
+- `owner/repo#v1.2.0` — a tag, branch or commit
+- `owner/repo#main:extensions/roleplay` — an extension inside a bigger repository
+
+You first see a card (name, version, what it adds, where it comes from, the exact commit); then **Install**. It is downloaded once and works **offline** afterwards. Each extension can be turned **off**, **updated** (when a newer release exists), **rolled back** to the previous version, or **removed**. Developers can install a folder from their own disk.
+
+**Projects** remember the extensions they use. If one is missing, the nodes show as gray cards (their settings are kept), Problems explains what is needed, and a banner offers to install it. Turn the extension back on and everything is as before.
+
+## 22. Skins (extension)
+
+Install **Skins** from *Settings → Extensions*. It works on **Fabric, Quilt and NeoForge, Minecraft 1.20.1 – 1.21.1** (Forge, older and newer versions: not yet — the app tells you).
+
+1. Add a **Skin** node for each skin: name (English / Thai), ID, the **skin file** (a square PNG: 64, 128, 256, 512, 1024 or 2048 pixels), an optional **mouth-open** PNG of the same size, arms (wide / slim) and a **Figura set**.
+2. Add one **Skin wardrobe** node: the window title, the **key** that opens the wardrobe (players can change it in Controls) and/or a **wardrobe block** (give it a texture; right-click it to open the window), and whether Figura avatars win.
+3. Select the wardrobe node to see the **wardrobe**: a sample model (drag to turn it) wearing the selected skin, every skin as a card with its names, picture and size check, and the mouth-open view.
+
+In game the window lists your skins; the choice is remembered per world and **everyone on the server sees it** (the mod must be on the server and on the clients). The skin file size is checked when you build.
+
+- **Mouth**: with a mouth-open picture, the mouth opens while the player writes in chat and whenever another mod calls `NkwSkins`'s speaking switch (the command `/<modid>_skin mouth true|false` does the same by hand). **Plasmo Voice is not connected automatically yet**: its API could not be checked, so voice activity does not move the mouth on its own.
+- **Figura**: *Export Figura avatars…* writes one avatar folder per set (an `avatar.json`, the pictures and a small script that puts the skin on the player model). With *Let Figura avatars win* on, a player who has a Figura avatar sees that instead of the skin. Skin textures larger than 64 pixels work because the model keeps the 64-pixel layout.
+- The arms in game follow the player's own model (wide or slim); the setting on the Skin node is used by the preview and by Figura.
 
 Have fun making mods! — **Nam Kueap Wan (NKW)**

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { open } from 'node:fs/promises'
+import { open, rm } from 'node:fs/promises'
 import ffmpegPath from 'ffmpeg-static'
 
 /** Audio/video formats the converter accepts (anything ffmpeg can decode that users commonly have). */
@@ -28,8 +28,10 @@ export function convertToOgg(input: string, output: string, o: ConvertOptions): 
     const p = spawn(ffmpeg(), args, { windowsHide: true, shell: false })
     let err = ''
     p.stderr.on('data', (d: Buffer) => (err += d.toString()).length > 4000 && (err = err.slice(-4000)))
-    p.on('error', fail)
-    p.on('close', (code) => (code === 0 ? ok() : fail(new Error(err.trim().split('\n').pop() || `ffmpeg exited with ${code}`))))
+    // a failed conversion must not leave a half-written file in the project
+    const failed = (e: Error) => void rm(output, { force: true }).finally(() => fail(e))
+    p.on('error', failed)
+    p.on('close', (code) => (code === 0 ? ok() : failed(new Error(err.trim().split('\n').pop() || `ffmpeg exited with ${code}`))))
   })
 }
 
@@ -44,7 +46,7 @@ export async function oggSeconds(file: string): Promise<number | null> {
     const head = Buffer.alloc(Math.min(4096, size))
     await fh.read(head, 0, head.length, 0)
     const id = head.indexOf('\x01vorbis', 0, 'latin1')
-    if (id < 0) return null
+    if (id < 0 || id + 16 > head.length) return null
     const rate = head.readUInt32LE(id + 12)
     if (!rate) return null
     const tailLen = Math.min(65536, size)

@@ -1,12 +1,15 @@
 import type { ArmorMatIR, ArmorSlot, AttributeIR, BlockIR, EffectIR, HitIR, ItemIR, MobIR, ToolMatIR, ToolType } from '../ir'
-import { scriptAppliesTo, scriptSource } from '../scriptApi'
 import { geoLoopName } from './geo'
 import { geckoArmorSource } from './gecko'
-import { genHarvest, harvestUiIndex, usesHarvest } from './harvest'
+import { genHarvest, genHarvestHud, harvestUiIndex, usesHarvest, usesHud } from './harvest'
+import { genBreakRules, usesBreakRules } from './breakRules'
+import { genExtensions } from './extgen'
+import { genRegen, regenCtor, usesRegen } from './regen'
+import { genConfig, usesConfig } from './config'
 import { toMcp1165 } from './mcp'
 import { parseJavaModel, rotateBoxes, shapeBoxes, type Box } from './model'
 import { mcAtLeast, type VersionProfile } from './profiles'
-import { fabricLike, type GenCtx } from './types'
+import { fabricLike, forgeNames, type GenCtx } from './types'
 
 /**
  * Java source generation. All code uses official Mojang mappings, so the vanilla-facing parts
@@ -121,6 +124,33 @@ export const MC = {
   ItemEntity: 'net.minecraft.world.entity.item.ItemEntity'
 }
 
+/** Translatable text (`key` and `args` are Java expressions): TranslatableComponent before 1.19, Component.translatable after. */
+export function translatable(p: VersionProfile, j: JavaFile, key: string, ...args: string[]): string {
+  const a = args.map((x) => `, ${x}`).join('')
+  if (p.mc === '1.16.5' || p.mc === '1.18.2') {
+    j.use('net.minecraft.network.chat.TranslatableComponent')
+    return `new TranslatableComponent(${key}${a})`
+  }
+  j.use(MC.Component)
+  return `Component.translatable(${key}${a})`
+}
+
+/** The game's block or item registry: BuiltInRegistries (1.19.3+) or Registry. */
+export function registry(p: VersionProfile, j: JavaFile, kind: 'BLOCK' | 'ITEM'): string {
+  j.use(p.builtInRegistries ? MC.BuiltIn : MC.Registry)
+  return `${p.builtInRegistries ? 'BuiltInRegistries' : 'Registry'}.${kind}`
+}
+
+/** Scheduled block ticks: the random type tick() takes, and the call that schedules a tick `ticks` from now. */
+export function blockTicks(p: VersionProfile, j: JavaFile): { random: string; schedule: string } {
+  const old = p.mc === '1.16.5' || p.mc === '1.18.2'
+  j.use(old ? 'java.util.Random' : 'net.minecraft.util.RandomSource')
+  return {
+    random: old ? 'Random' : 'RandomSource',
+    schedule: p.mc === '1.16.5' ? 'level.getBlockTicks().scheduleTick(pos, this, ticks)' : 'level.scheduleTick(pos, this, ticks)'
+  }
+}
+
 /** Duration in ticks; infinite = -1 on 1.19.4+ (MobEffectInstance.INFINITE_DURATION), else max int. */
 function effectTicks(e: EffectIR, p: VersionProfile): string {
   if (!e.infinite) return String(e.ticks)
@@ -211,7 +241,7 @@ export function genJava(ctx: GenCtx): void {
   const tabIcons = tabIconItems(ctx)
   const allItemIds = [...ir.items.map((i) => i.id), ...blockItems, ...tabIcons.map((t) => t.id), ...ir.mobs.map((m) => `${m.id}_spawn_egg`)]
   const modelBlocks = ir.blocks.filter((b) => b.kind === 'model')
-  const cutoutBlocks = ir.blocks.filter((b) => b.kind === 'model' || b.kind === 'crop')
+  const cutoutBlocks = ir.blocks.filter((b) => b.kind === 'model' || b.kind === 'crop' || ((b.kind === 'regen' || b.kind === 'depleted') && b.seeThrough))
   const needsRenderLayer = cutoutBlocks.length > 0
   const hasGeo = ctx.gecko && ir.items.some((i) => i.armor?.geo)
 
@@ -427,8 +457,16 @@ ${wornEffectsMethod()}
   }
 
   if (ir.blocks.some((b) => b.crop)) genCropBlock(ctx, out)
+  if (usesRegen(ir)) genRegen(ctx, out)
   if (ir.mobs.length) genMobs(ctx, out)
   if (usesHarvest(ir)) genHarvest(ctx, out)
+  if (usesHud(ir)) {
+    genHarvestHud(ctx, out)
+    ctx.hooks.add('forgeClientInit', 'NkwHarvestHud.init(bus);', 10)
+    ctx.hooks.add('fabricClientInit', 'NkwHarvestHud.init();', 10)
+  }
+  if (usesBreakRules(ir)) genBreakRules(ctx, out)
+  if (usesConfig(ir)) genConfig(ctx, out)
 
   if (fab && !p.jukeboxSongs && ir.items.some((i) => i.disc)) {
     const j = new JavaFile(pkg, 'NkwDiscItem').use(MC.RecordItem, MC.SoundEvent, MC.Item)
@@ -602,11 +640,17 @@ ${ir.sounds.map((s) => `    public static final ${holder} ${C(s.id)} = SOUNDS.re
       j.use(MC.Items)
       return 'new ItemStack(Items.BOOK)'
     }
+    /** Items of a tab; items of the game / other mods are looked up and skipped when missing (an empty stack would crash the tab). */
     const accept = (tab: (typeof ir.tabs)[number], indent: string) =>
       tab.items
-        .map((id) => itemExpr(id))
+        .map((id) => {
+          const e = itemExpr(id)
+          if (!e) return null
+          if (id.startsWith(`${ctx.ns}:`)) return `${indent}output.accept(${e});`
+          j.use(MC.Item, MC.Items)
+          return `${indent}{\n${indent}    Item item = ${e};\n${indent}    if (item != Items.AIR) output.accept(item);\n${indent}}`
+        })
         .filter((e): e is string => !!e)
-        .map((e) => `${indent}output.accept(${e});`)
         .join('\n')
     let body: string
     if (!p.tabRegistry) {
@@ -684,16 +728,31 @@ ${accept(tb, '            ')}
 
   // ───────── main class ─────────
   const endDiscs = ir.items.filter((i) => i.disc && i.disc.onEnd !== 'stay')
-  if (endDiscs.length) genJukebox(ctx, endDiscs, get, out)
+  if (endDiscs.length) {
+    genJukebox(ctx, endDiscs, get, out)
+    ctx.hooks.add('commonInit', 'NkwJukebox.init();', 10)
+  }
   const headItems = p.propertiesId ? [] : ir.items.filter((i) => i.headwear && i.headwearRightClick !== false)
-  if (headItems.length) genHeadwear(ctx, headItems, get, out)
-  const thirstMod = genThirst(ctx, get, out)
+  if (headItems.length) {
+    genHeadwear(ctx, headItems, get, out)
+    ctx.hooks.add('commonInit', 'NkwHeadwear.init();', 20)
+  }
+  if (usesHarvest(ir)) ctx.hooks.add('commonInit', 'NkwHarvest.init();', 40)
+  if (usesBreakRules(ir)) ctx.hooks.add('commonInit', 'NkwBreakRules.init();', 50)
   if (ir.items.some((i) => (i.tool?.durability ?? 0) > 0) && p.toolApi !== 'tierLevel') genTiers(ctx, out)
   const attrItems = ir.items.filter((i) => i.attributes?.length)
-  if (attrItems.length) genAttributes(ctx, attrItems, get, out)
+  if (attrItems.length) {
+    genAttributes(ctx, attrItems, get, out)
+    ctx.hooks.add('commonInit', 'NkwAttributes.init();', 60)
+  }
+  genExtensions(ctx, out)
+  const hookLines = (site: Parameters<typeof ctx.hooks.add>[0]) =>
+    ctx.hooks
+      .get(site)
+      .map((l) => `        ${l}\n`)
+      .join('')
   // Script nodes: the user's own Java files, in the mod's package (Forge/NeoForge find @EventBusSubscriber
   // classes themselves; Fabric/Quilt entrypoints are added to the mod metadata)
-  for (const s of ir.scripts) if (scriptAppliesTo(s.targets, ctx.target)) out(s.className, scriptSource(s.code, pkg))
 
   const count = `${ir.items.length + ir.blocks.length} items, ${ir.blocks.length} blocks, ${ir.sounds.length} sounds, ${ir.recipes.length} recipes`
   const idFn = p.rlFactory
@@ -718,7 +777,7 @@ public class NkwMod implements ModInitializer {
         ModBlocks.init();
         ModItems.init();
         ModTabs.init();
-${ir.mobs.length ? '        ModEntities.init();\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}${thirstMod ? '        NkwThirst.init();\n' : ''}${usesHarvest(ir) ? '        NkwHarvest.init();\n' : ''}${attrItems.length ? '        NkwAttributes.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${ir.mobs.length ? '        ModEntities.init();\n' : ''}${hookLines('commonInit')}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 }`
     } else {
@@ -731,7 +790,7 @@ ${ir.mobs.length ? '        ModEntities.init();\n' : ''}${endDiscs.length ? '   
         ...(p.tabRegistry ? ['ModTabs.TABS'] : [])
       ]
       const clientSetup = needsRenderLayer && !p.modelRenderType
-      if (ir.mobs.length || usesHarvest(ir))
+      if (ir.mobs.length || ctx.hooks.has('forgeClientInit'))
         j.use(
           neo ? 'net.neoforged.fml.loading.FMLEnvironment' : 'net.minecraftforge.fml.loading.FMLEnvironment',
           neo ? 'net.neoforged.api.distmarker.Dist' : 'net.minecraftforge.api.distmarker.Dist'
@@ -749,8 +808,11 @@ public class NkwMod {
     ${ctor}
         NkwTags.init();
 ${regs.map((r) => `        ${r}.register(bus);`).join('\n')}
-${ir.mobs.length ? `        ModEntities.init(bus);\n        if (FMLEnvironment.dist == Dist.CLIENT) NkwMobsClient.init(bus);\n` : ''}${usesHarvest(ir) ? '        if (FMLEnvironment.dist == Dist.CLIENT) NkwHarvestHud.init(bus);\n' : ''}
-${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${endDiscs.length ? '        NkwJukebox.init();\n' : ''}${headItems.length ? '        NkwHeadwear.init();\n' : ''}${thirstMod ? '        NkwThirst.init();\n' : ''}${usesHarvest(ir) ? '        NkwHarvest.init();\n' : ''}${attrItems.length ? '        NkwAttributes.init();\n' : ''}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
+${ir.mobs.length ? `        ModEntities.init(bus);\n        if (FMLEnvironment.dist == Dist.CLIENT) NkwMobsClient.init(bus);\n` : ''}${ctx.hooks
+        .get('forgeClientInit')
+        .map((l) => `        if (FMLEnvironment.dist == Dist.CLIENT) ${l}\n`)
+        .join('')}
+${clientSetup ? '        bus.addListener(NkwMod::clientSetup);\n' : ''}${hookLines('commonInit')}        LOGGER.info("[NKW] {} registered ${count}", MOD_ID);
     }
 
     ${idFn}
@@ -786,7 +848,7 @@ public class NkwClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
 ${cutoutBlocks.map((b) => `        BlockRenderLayerMap.INSTANCE.putBlock(ModBlocks.${C(b.id)}, RenderType.cutout());`).join('\n')}
-${usesHarvest(ir) ? '        NkwHarvestHud.init();\n' : ''}${ir.mobs.map((m) => (p.mc === '1.16.5' ? `        EntityRendererRegistry.INSTANCE.register(ModEntities.${C(m.id)}, (manager, context) -> ${mobRenderer(ctx, m, 'manager')});` : `        EntityRendererRegistry.register(ModEntities.${C(m.id)}, context -> ${mobRenderer(ctx, m, 'context')});`)).join('\n')}
+${hookLines('fabricClientInit')}${ir.mobs.map((m) => (p.mc === '1.16.5' ? `        EntityRendererRegistry.INSTANCE.register(ModEntities.${C(m.id)}, (manager, context) -> ${mobRenderer(ctx, m, 'manager')});` : `        EntityRendererRegistry.register(ModEntities.${C(m.id)}, context -> ${mobRenderer(ctx, m, 'context')});`)).join('\n')}
     }
 }`)
     )
@@ -1089,6 +1151,14 @@ function blocksClass(ctx: GenCtx): string {
     if (b.requiresTool) s += '.requiresCorrectToolForDrops()'
     if (b.light > 0) s += `.lightLevel(state -> ${b.light})`
     if (b.kind === 'model') s += '.noOcclusion()'
+    if (b.kind === 'regen' || b.kind === 'depleted') {
+      // looks like another block (see-through ones must not hide neighbours); pistons cannot move it (1.20+: a property, before: a method)
+      if (b.seeThrough) s += '.noOcclusion()'
+      if (!p.blockMaterial) {
+        j.use('net.minecraft.world.level.material.PushReaction')
+        s += '.pushReaction(PushReaction.BLOCK)'
+      }
+    }
     if (!b.solid) s += '.noCollission()'
     return s
   }
@@ -1101,7 +1171,7 @@ function blocksClass(ctx: GenCtx): string {
     s += '.noCollission().randomTicks().instabreak().sound(SoundType.CROP)'
     const seed = ir.items.find((i) => i.places === b.id)
     const input = ['break', 'click', 'hold', 'stand'].indexOf(cr.input)
-    const args = `${s}, ${cr.soil === 'dirt'}, ${cr.growStep}, ${cr.mode === 'regrow'}, ${cr.regrowAge}, ${cr.regrowTicks}, ${input}, ${cr.harvestTicks}, ${harvestUiIndex(ir, cr.ui)}, ${cr.give}`
+    const args = `${s}, ${cr.soil === 'dirt'}, ${cr.growStep}, ${cr.mode === 'regrow'}, ${cr.regrowAge}, ${cr.regrowTicks}, ${input}, ${cr.harvestTicks}, ${harvestUiIndex(ir, cr.ui)}, ${cr.give}, ${cr.adventure}, ${cr.sneak}, ${cr.mode === 'auto'}`
     if (!seed) return `new NkwCropBlock(${args})`
     j.use(MC.ItemLike)
     const ref = fab ? `ModItems.${C(seed.id)}` : `ModItems.${C(seed.id)}.get()`
@@ -1116,6 +1186,8 @@ function blocksClass(ctx: GenCtx): string {
   const ctorFor = (b: BlockIR): string => {
     if (b.crop) return cropCtor(b)
     const props = propsFor(b)
+    if (b.javaClass) return `new ${b.javaClass}(${props})`
+    if (b.regen || b.depleted) return regenCtor(ctx, b, props)
     if (b.kind === 'model' && b.model) {
       let boxes: Box[]
       try {
@@ -1397,13 +1469,8 @@ ${it.food.hits.map((h) => `                    new NkwEffect(NkwEffect.${HIT_ACT
 `
     }
     const lines: string[] = []
-    const tr = (key: string, ...args: string[]) => {
-      j.use(MC.Component)
-      const a = args.length ? `, ${args.join(', ')}` : ''
-      return ['1.16.5', '1.18.2'].includes(p.mc)
-        ? (j.use('net.minecraft.network.chat.TranslatableComponent'), `new TranslatableComponent("${key}"${a})`)
-        : `Component.translatable("${key}"${a})`
-    }
+    j.use(MC.Component)
+    const tr = (key: string, ...args: string[]) => translatable(p, j, `"${key}"`, ...args)
     if (it.headwear) lines.push(`tooltip.add(${tr(`tooltip.${ctx.ns}.wearable_head`)}.withStyle(ChatFormatting.LIGHT_PURPLE));`)
     // stat bonuses, grouped under "When in Main Hand:" … like vanilla attribute modifiers
     const shown = (it.attributes ?? []).filter((a) => a.tooltip)
@@ -1413,7 +1480,7 @@ ${it.food.hits.map((h) => `                    new NkwEffect(NkwEffect.${HIT_ACT
         j.use(MC.Attributes)
         const op = a.operation === 'add' ? 0 : a.operation === 'base' ? 1 : 2
         const shownAmount = Math.abs(a.operation === 'add' ? a.amount : a.amount * 100)
-        const name = tr('').replace('""', `Attributes.${a.field}${p.stackId ? '.value()' : ''}.getDescriptionId()`)
+        const name = translatable(p, j, `Attributes.${a.field}${p.stackId ? '.value()' : ''}.getDescriptionId()`)
         const line = tr(`attribute.modifier.${a.amount < 0 ? 'take' : 'plus'}.${op}`, JSON.stringify(String(Number(shownAmount.toFixed(2)))), name)
         lines.push(`tooltip.add(${line}.withStyle(ChatFormatting.${a.amount < 0 ? 'RED' : 'BLUE'}));`)
       }
@@ -1446,7 +1513,7 @@ ${lines.map((l) => `                ${l}`).join('\n')}
   /** Spawn egg of a mob: colours in the item (≤1.21.3) or in its item model (1.21.4). */
   const eggCtor = (m: MobIR): string => {
     const P = baseProps(`${m.id}_spawn_egg`)
-    const ref = fab ? `ModEntities.${C(m.id)}` : `ModEntities.${C(m.id)}`
+    const ref = `ModEntities.${C(m.id)}`
     if (p.itemDefinitions) {
       j.use('net.minecraft.world.item.SpawnEggItem')
       return `new SpawnEggItem(${fab ? ref : `${ref}.get()`}, ${P})`
@@ -1464,6 +1531,8 @@ ${lines.map((l) => `                ${l}`).join('\n')}
     return `new ForgeSpawnEggItem(${ref}, ${colours}, ${P})`
   }
   const blockItem = (id: string) => {
+    // Regenerating Blocks: operators only, named after the original block
+    if (ir.blocks.some((b) => b.id === id && b.regen)) return `new NkwRegenBlockItem(${get('ModBlocks', id)}, ${baseProps(id)})`
     j.use(MC.BlockItem)
     return `new BlockItem(${get('ModBlocks', id)}, ${baseProps(id)})`
   }
@@ -1500,7 +1569,6 @@ ${propsHelper}
   j.use(neo ? MC.Registries : 'net.minecraftforge.registries.ForgeRegistries')
   const holder = neo ? 'DeferredHolder<Item, Item>' : 'RegistryObject<Item>'
   const create = neo ? 'DeferredRegister.create(Registries.ITEM, NkwMod.MOD_ID)' : 'DeferredRegister.create(ForgeRegistries.ITEMS, NkwMod.MOD_ID)'
-  void ns
   return j.render(`
 public final class ModItems {
     public static final DeferredRegister<Item> ITEMS = ${create};
@@ -1518,15 +1586,13 @@ ${propsHelper}}`)
  * level getters are named on that version, and a server level-tick handler that calls tick(level).
  */
 export function forgeEvents(ctx: GenCtx, j: JavaFile) {
-  const neo = ctx.loader === 'neoforge'
-  const old = !neo && (ctx.p.mc === '1.16.5' || ctx.p.mc === '1.18.2')
-  const base = neo ? 'net.neoforged.neoforge' : 'net.minecraftforge'
-  j.use(neo ? 'net.neoforged.neoforge.common.NeoForge' : 'net.minecraftforge.common.MinecraftForge')
+  const { neo, old, base, bus, player, level } = forgeNames(ctx)
+  j.use(forgeNames(ctx).busImport)
   return {
     base,
-    bus: neo ? 'NeoForge.EVENT_BUS' : 'MinecraftForge.EVENT_BUS',
-    player: old ? 'getPlayer()' : 'getEntity()',
-    level: old ? 'getWorld()' : 'getLevel()',
+    bus,
+    player,
+    level,
     /** `private static void onTick(…)` running tick(level) after every server level tick */
     tickHandler(): string {
       if (neo && ctx.p.jukeboxSongs) {
@@ -1687,95 +1753,6 @@ ${discs
   )
 }
 
-/**
- * Thirst add-on for the thirst mods that only take values from code. Tough As Nails, Thirst Was Taken 2
- * and Legendary Survival Overhaul read data files instead (see genData). Everything goes through
- * reflection, so the mod neither needs nor ships the thirst mod and does nothing when it is absent.
- * - Thirst Was Taken (Forge 1.18.2–1.20.1, NeoForge 1.21.1): its RegisterThirstValueEvent.
- * - Thirsty (Fabric 1.20.1): entries added to its item list when a server starts.
- * Returns whether NkwThirst was written.
- */
-function genThirst(ctx: GenCtx, get: (cls: string, id: string) => string, out: (cls: string, text: string) => void): boolean {
-  const { ir, pkg, loader, p, ns } = ctx
-  const items = ir.items.filter((it) => it.food?.thirst)
-  if (!items.length) return false
-  const neo = loader === 'neoforge'
-  const twt = (loader === 'forge' && ['1.18.2', '1.19.2', '1.20.1'].includes(p.mc)) || (neo && p.mc === '1.21.1')
-  const thirsty = fabricLike(loader) && p.mc === '1.20.1'
-  if (!twt && !thirsty) return false
-  const j = new JavaFile(pkg, 'NkwThirst')
-  let body: string
-  if (twt) {
-    j.use(MC.Item, 'java.lang.reflect.Method', 'java.util.function.Consumer')
-    j.use(neo ? 'net.neoforged.fml.ModList' : 'net.minecraftforge.fml.ModList')
-    j.use(neo ? 'net.neoforged.bus.api.EventPriority' : 'net.minecraftforge.eventbus.api.EventPriority')
-    const ev = forgeEvents(ctx, j)
-    body = `
-/** Thirst values for Thirst Was Taken, used only when it is installed. */
-public final class NkwThirst {
-    private NkwThirst() {}
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    public static void init() {
-        if (!ModList.get().isLoaded("thirst")) return;
-        try {
-            Class event = Class.forName("dev.ghen.thirst.foundation.common.event.RegisterThirstValueEvent");
-            ${ev.bus}.addListener(EventPriority.NORMAL, false, event, (Consumer) NkwThirst::register);
-        } catch (ReflectiveOperationException | LinkageError e) {
-            NkwMod.LOGGER.warn("[NKW] Thirst Was Taken support is off: {}", e.toString());
-        }
-    }
-
-    private static void register(Object event) {
-        try {
-            Method drink = event.getClass().getMethod("addDrink", Item.class, int.class, int.class);
-            Method food = event.getClass().getMethod("addFood", Item.class, int.class, int.class);
-${items.map((it) => `            ${it.food!.drink ? 'drink' : 'food'}.invoke(event, ${get('ModItems', it.id)}, ${it.food!.thirst!.thirst}, ${it.food!.thirst!.hydration});`).join('\n')}
-            NkwMod.LOGGER.info("[NKW] thirst values added for ${items.length} item(s) (Thirst Was Taken)");
-        } catch (ReflectiveOperationException e) {
-            NkwMod.LOGGER.warn("[NKW] Could not add thirst values: {}", e.toString());
-        }
-    }
-}`
-  } else {
-    j.use('java.lang.reflect.Field', MC.List, 'net.fabricmc.loader.api.FabricLoader', 'net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents')
-    body = `
-/** Thirst values for Thirsty, used only when it is installed. */
-public final class NkwThirst {
-    private NkwThirst() {}
-
-    public static void init() {
-        if (FabricLoader.getInstance().isModLoaded("thirsty")) ServerLifecycleEvents.SERVER_STARTING.register(server -> thirsty());
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void thirsty() {
-        try {
-            Class<?> config = Class.forName("net.obe107.thirsty.config.ModConfig");
-            Object instance = config.getMethod("getInstance").invoke(null);
-            List<Object> items = (List<Object>) config.getField("customItems").get(instance);
-            // an empty list gets Thirsty's defaults first
-            if (items.isEmpty()) config.getMethod("validatePostLoad").invoke(instance);
-            Class<?> entry = Class.forName("net.obe107.thirsty.config.ModConfig$ItemEntry");
-            Field itemId = entry.getField("itemId");
-${items.map((it) => `            add(items, entry, itemId, "${ns}:${it.id}", ${it.food!.thirst!.thirst}, ${it.food!.thirst!.hydration});`).join('\n')}
-            config.getMethod("validatePostLoad").invoke(instance);
-            NkwMod.LOGGER.info("[NKW] thirst values added for ${items.length} item(s) (Thirsty)");
-        } catch (ReflectiveOperationException | LinkageError | ClassCastException e) {
-            NkwMod.LOGGER.warn("[NKW] Thirsty support is off: {}", e.toString());
-        }
-    }
-
-    private static void add(List<Object> items, Class<?> entry, Field itemId, String id, int thirst, int saturation) throws ReflectiveOperationException {
-        for (Object o : items) if (id.equals(itemId.get(o))) return;
-        items.add(entry.getConstructor(String.class, int.class, int.class).newInstance(id, thirst, saturation));
-    }
-}`
-  }
-  out('NkwThirst', j.render(body))
-  return true
-}
-
 /** Copies of a tool tier / material with other durability (a Tool node's own durability, 1.21+). */
 function genTiers(ctx: GenCtx, out: (cls: string, text: string) => void): void {
   const { pkg, p } = ctx
@@ -1884,6 +1861,7 @@ function genAttributes(ctx: GenCtx, items: ItemIR[], get: (cls: string, id: stri
     })
   const modId = holder ? 'modifier.id()' : 'modifier.getId()'
   const inventory = p.mc === '1.16.5' ? 'player.inventory' : 'player.getInventory()'
+  j.use(MC.ItemStack)
   let hooks: string
   if (fab) {
     j.use('net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents')
@@ -1967,7 +1945,9 @@ ${adds.join('\n')}
             case FEET:
                 return player.getItemBySlot(EquipmentSlot.FEET).getItem() == item;
             default:
-                return ${inventory}.contains(new ItemStack(item));
+                // any stack of the item (Inventory.contains would also compare damage / names)
+                for (ItemStack stack : ${inventory}.items) if (stack.getItem() == item) return true;
+                return false;
         }
     }
 }`)
@@ -1990,8 +1970,7 @@ function genCropBlock(ctx: GenCtx, out: (cls: string, text: string) => void): vo
     MC.ServerLevel,
     MC.Level
   )
-  const random = p.mc === '1.16.5' || p.mc === '1.18.2' ? (j.use('java.util.Random'), 'Random') : (j.use('net.minecraft.util.RandomSource'), 'RandomSource')
-  const schedule = p.mc === '1.16.5' ? 'level.getBlockTicks().scheduleTick(pos, this, ticks)' : 'level.scheduleTick(pos, this, ticks)'
+  const { random, schedule } = blockTicks(p, j)
   out(
     'NkwCropBlock',
     j.render(`
@@ -2010,8 +1989,14 @@ public class NkwCropBlock extends CropBlock {
     public final int ui;
     /** a hand harvest goes straight into the inventory */
     public final boolean give;
+    /** players in adventure mode may pick it by hand */
+    public final boolean adventure;
+    /** picked by hand only while sneaking */
+    public final boolean sneak;
+    /** a hand harvest replants it (one seed is used) */
+    public final boolean replant;
 
-    public NkwCropBlock(BlockBehaviour.Properties properties, boolean dirt, int growStep, boolean regrow, int regrowAge, int regrowTicks, int input, int harvestTicks, int ui, boolean give) {
+    public NkwCropBlock(BlockBehaviour.Properties properties, boolean dirt, int growStep, boolean regrow, int regrowAge, int regrowTicks, int input, int harvestTicks, int ui, boolean give, boolean adventure, boolean sneak, boolean replant) {
         super(properties);
         this.dirt = dirt;
         this.growStep = growStep;
@@ -2022,6 +2007,9 @@ public class NkwCropBlock extends CropBlock {
         this.harvestTicks = harvestTicks;
         this.ui = ui;
         this.give = give;
+        this.adventure = adventure;
+        this.sneak = sneak;
+        this.replant = replant;
     }
 
     @Override
@@ -2463,6 +2451,6 @@ ${items.map((it) => `        if (item == ${get('ModItems', it.id)}) return true;
 }
 
 /** Hidden items that exist only to show a tab's logo texture as its icon. */
-export function tabIconItems(ctx: GenCtx): { id: string; texture: string }[] {
+function tabIconItems(ctx: GenCtx): { id: string; texture: string }[] {
   return ctx.ir.tabs.filter((t) => t.logo && !t.icon).map((t) => ({ id: `${t.id}_tab_icon`, texture: t.logo! }))
 }

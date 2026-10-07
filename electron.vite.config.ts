@@ -10,7 +10,8 @@ function csp(): Plugin {
   const common = [
     "default-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: nkw-asset:",
+    // mod images in the Modrinth gallery
+    "img-src 'self' data: blob: nkw-asset: https://cdn.modrinth.com",
     "media-src 'self' blob: nkw-asset:",
     "font-src 'self' data:",
     "worker-src 'self' blob:",

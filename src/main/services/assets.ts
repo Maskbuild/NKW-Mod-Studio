@@ -31,7 +31,7 @@ export interface AssetEntry {
 }
 
 /** Top-level folder for every asset kind. Sub-folders below these are free-form. */
-export const ROOT: Record<AssetKind, string> = { texture: 'textures', model: 'models', geo: 'geo', sound: 'sounds', animation: 'animations' }
+const ROOT: Record<AssetKind, string> = { texture: 'textures', model: 'models', geo: 'geo', sound: 'sounds', animation: 'animations' }
 const ROOTS = Object.values(ROOT)
 const EXT: Record<AssetKind, string> = { texture: 'png', model: 'json', geo: 'json', sound: 'ogg', animation: 'json' }
 /** folder path below the assets directory, e.g. "textures/weapons/swords" */
@@ -51,8 +51,9 @@ export const EXTENSIONS: Record<AssetKind, string[]> = {
 }
 
 function uniqueName(dir: string, base: string, ext: string): string {
-  let name = base || 'file'
-  for (let i = 2; existsSync(join(dir, `${name}.${ext}`)); i++) name = `${base}_${i}`
+  const first = base || 'file'
+  let name = first
+  for (let i = 2; existsSync(join(dir, `${name}.${ext}`)); i++) name = `${first}_${i}`
   return name
 }
 
@@ -70,6 +71,7 @@ function pngSize(buf: Buffer): { width: number; height: number } | null {
 async function writePng(projectDir: string, folder: string, base: string, buf: Buffer): Promise<ImportedAsset> {
   const size = pngSize(buf)
   if (!size) throw new Error('Not a valid PNG image')
+  if (!size.width || !size.height) throw new Error('Not a valid PNG image')
   if (size.width > 4096 || size.height > 4096) throw new Error('Image is larger than 4096×4096')
   const dir = join(projectDir, 'assets', folder)
   await mkdir(dir, { recursive: true })
@@ -83,6 +85,26 @@ async function writePng(projectDir: string, folder: string, base: string, buf: B
     ...size,
     warning: !pow2(size.width) || !pow2(size.height) ? 'Size is not a power of two (16, 32, 64…)' : undefined
   }
+}
+
+/**
+ * Saves the PNG textures embedded in a .bbmodel. `textures[i]` is the asset of texture i (holes where a
+ * texture is not embedded, so slots keep their order).
+ */
+async function embeddedTextures(
+  projectDir: string,
+  list: { name: string; base64: string | null }[],
+  base: string
+): Promise<{ textures: string[]; extra: ImportedAsset[] }> {
+  const textures: string[] = []
+  const extra: ImportedAsset[] = []
+  for (const [i, t] of list.entries()) {
+    if (!t.base64) continue
+    const png = await writePng(projectDir, ROOT.texture, toId(t.name.replace(/\.png$/i, '')) || `${base}_${i}`, Buffer.from(t.base64, 'base64'))
+    textures[i] = png.asset
+    extra.push(png)
+  }
+  return { textures, extra }
 }
 
 /** Copies a user-picked file into the project, validating its type by content. Audio/video is converted to .ogg. */
@@ -138,16 +160,10 @@ export async function importAsset(
         const conv = bbmodelToGeo(buf.toString('utf8'), `geometry.${base}`)
         if (!geoBones(conv.geo).some((b) => b.cubes?.length)) throw new Error('The Blockbench model has no cubes')
         const name = uniqueName(dir, base, 'json')
-        const extra: ImportedAsset[] = []
-        const textures: string[] = []
-        for (const [i, t] of conv.textures.entries()) {
-          if (!t.base64) continue
-          const png = await writePng(projectDir, ROOT.texture, toId(t.name.replace(/.png$/i, '')) || `${base}_${i}`, Buffer.from(t.base64, 'base64'))
-          textures.push(png.asset)
-          extra.push(png)
-        }
+        const { textures, extra } = await embeddedTextures(projectDir, conv.textures, base)
         await writeFile(join(dir, `${name}.json`), JSON.stringify(conv.geo))
-        return [{ asset: `${into}/${name}.json`, kind, name, textures }, ...extra]
+        // GeckoLib models take one texture: the embedded ones in order, without gaps
+        return [{ asset: `${into}/${name}.json`, kind, name, textures: textures.filter(Boolean) }, ...extra]
       }
       const json = JSON.parse(buf.toString('utf8')) as Record<string, unknown>
       if (!Array.isArray(json['minecraft:geometry'])) throw new Error('Not a GeckoLib/Bedrock .geo.json model')
@@ -159,14 +175,7 @@ export async function importAsset(
       if (ext === 'bbmodel') {
         const conv = convertBBModel(buf.toString('utf8'))
         const name = uniqueName(dir, base, 'json')
-        const textures: string[] = []
-        const extra: ImportedAsset[] = []
-        for (const [i, t] of conv.textures.entries()) {
-          if (!t.base64) continue
-          const png = await writePng(projectDir, ROOT.texture, toId(t.name.replace(/\.png$/i, '')) || `${base}_${i}`, Buffer.from(t.base64, 'base64'))
-          textures[i] = png.asset
-          extra.push(png)
-        }
+        const { textures, extra } = await embeddedTextures(projectDir, conv.textures, base)
         await writeFile(join(dir, `${name}.json`), JSON.stringify(conv.model))
         return [{ asset: `${into}/${name}.json`, kind, name, textureSlots: Math.min(4, conv.textures.length || 1), textures }, ...extra]
       }

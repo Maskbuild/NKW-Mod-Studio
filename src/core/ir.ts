@@ -1,6 +1,7 @@
 import type { ArmorFit } from './gen/geo'
 import type { ProjectMeta } from './project'
 import type { L10n } from './nodes/defs'
+import type { TimerDoc } from './timerUi'
 
 export type Ingredient = { item: string } | { tag: string }
 
@@ -64,8 +65,6 @@ export interface ItemIR extends Named {
     hits: HitIR[]
     /** drunk like a potion (animation + gulping sound) instead of eaten */
     drink: boolean
-    /** water value for thirst mods (Thirst add-on node) */
-    thirst: ThirstIR | null
   }
   tool?: {
     type: ToolType
@@ -114,7 +113,8 @@ export interface CropIR {
   soil: 'farmland' | 'dirt'
   /** ticks per age step; 0 = random growth like wheat */
   growStep: number
-  mode: 'replant' | 'regrow'
+  /** replant: gone, plant the seeds again · auto: replants itself (one seed used) · regrow: back to an age */
+  mode: 'replant' | 'auto' | 'regrow'
   /** regrow: the age a harvest goes back to, and the ticks from there to fully grown */
   regrowAge: number
   regrowTicks: number
@@ -129,26 +129,19 @@ export interface CropIR {
   ui: HarvestUiIR | null
   /** a hand harvest goes straight into the inventory instead of dropping */
   give: boolean
+  /** what breaking it by a player gives: normal loot, only when fully grown, or nothing */
+  breakDrops: BreakDrops
+  /** players in adventure mode may pick it by hand */
+  adventure: boolean
+  /** picked by hand only while sneaking */
+  sneak: boolean
 }
 
-/** How the harvest timer is drawn (Harvest UI node). Colours are 0xRRGGBB. */
-export interface HarvestUiIR {
-  style: 'text' | 'bar' | 'ring'
-  color: number
-  back: number
-  /** background opacity 0–255 */
-  backAlpha: number
-  /** bar / text: where on the screen, moved down by offset */
-  place: 'crosshair' | 'hotbar' | 'top'
-  offset: number
-  width: number
-  height: number
-  /** ring around the crosshair: radius and line thickness (thickness >= radius = a filled circle) */
-  radius: number
-  thickness: number
-  /** show the seconds left */
-  time: boolean
-}
+/** Drops when a player breaks a plant (hand harvests are not affected). */
+export type BreakDrops = 'normal' | 'grown' | 'none'
+
+/** How the timer window looks (Timer window node): a document of elements, see timerUi.ts. */
+export type HarvestUiIR = TimerDoc
 
 /** Picking a crop of the game or of another mod by hand (Game Crop Harvest node). */
 export interface GameCropIR {
@@ -163,12 +156,64 @@ export interface GameCropIR {
   ui: HarvestUiIR | null
   /** the harvest goes straight into the inventory instead of dropping */
   give: boolean
+  breakDrops: BreakDrops
+  /** players in adventure mode may pick it by hand */
+  adventure: boolean
+  /** picked by hand only while sneaking */
+  sneak: boolean
+}
+
+/** Blocks (of any mod, or #tags) that need a tool type / mining level (Break Rule node). */
+export interface BreakRuleIR {
+  nodeId: string
+  /** block ids, e.g. minecraft:stone, othermod:ruby_ore */
+  blocks: string[]
+  /** block tag ids, without '#' */
+  tags: string[]
+  tool: 'pickaxe' | 'axe' | 'shovel' | 'hoe' | 'sword' | 'shears' | 'any'
+  level: ToolLevel
+  /** wrong tool: the block breaks without drops, or cannot be broken */
+  onFail: 'noDrop' | 'cantBreak'
+  /** action-bar text for a wrong tool, null = none */
+  message: { en: string; th: string } | null
+  /** show the breaking progress on screen (with this look; null = the default look) */
+  timer: boolean
+  ui: HarvestUiIR | null
+  /** players in adventure mode may break these blocks with the right tool */
+  adventure: boolean
+}
+
+/** A block of the game / another mod that is harvested and grows back (Regenerating Blocks node). */
+export interface RegenIR {
+  /** the block it stands for: looks like it and drops its loot, e.g. minecraft:iron_ore */
+  original: string
+  /** registry id (no namespace) of the block it turns into until it grows back */
+  depleted: string
+  input: 'break' | 'hold' | 'stand'
+  harvestTicks: number
+  ui: HarvestUiIR | null
+  /** break harvest: show the breaking time on screen */
+  timer: boolean
+  /** gives this item instead of the original's drops (any item: the game's, another mod's or this mod's) */
+  drop: { item: string; min: number; max: number } | null
+  give: boolean
+  adventure: boolean
+  /** durability the main-hand item loses per left-button harvest (mining wears tools like the game) */
+  wear: number
 }
 
 export interface BlockIR extends Named {
-  kind: 'cube' | 'model' | 'crop'
+  /** regen: a Regenerating Blocks block; depleted: what it is while growing back */
+  kind: 'cube' | 'model' | 'crop' | 'regen' | 'depleted'
   /** Crop node settings */
   crop?: CropIR
+  regen?: RegenIR
+  /** depleted blocks: the model they look like, the block they grow back into, after how many ticks */
+  depleted?: { look: string; restore: string; ticks: number }
+  /** regen / depleted: the block it looks like is see-through (glass, leaves …), so it must not hide its neighbours */
+  seeThrough?: boolean
+  /** a class an extension generates (extends Block, constructed with the block properties) instead of Block */
+  javaClass?: string
   /** registers a BlockItem for the block */
   hasItem: boolean
   shape: 'cube_all' | 'cube_bottom_top' | 'pillar'
@@ -232,17 +277,6 @@ export type RecipeIR = { name: string; nodeId: string } & (
   | { kind: 'cooking'; station: 'smelting' | 'blasting' | 'smoking' | 'campfire_cooking'; input: Ingredient; result: string; xp: number; time: number }
   | { kind: 'stonecutting'; input: Ingredient; result: string; count: number }
   | { kind: 'smithing'; template: Ingredient | null; base: Ingredient; addition: Ingredient; result: string }
-  | { kind: 'fdCutting'; input: Ingredient; tool: string; results: { item: string; count: number; chance: number }[] }
-  | {
-      kind: 'fdCooking'
-      ingredients: Ingredient[]
-      container: string | null
-      result: string
-      count: number
-      xp: number
-      time: number
-      tab: string
-    }
 )
 
 export interface TabIR {
@@ -255,18 +289,6 @@ export interface TabIR {
   logo: string | null
   /** item ids shown in this tab (mod or vanilla) */
   items: string[]
-}
-
-/** A Java source file written by the user (Script node). */
-export interface ScriptIR {
-  nodeId: string
-  /** the public class = file name */
-  className: string
-  /** targets it applies to, as "loader-mc"; empty = all */
-  targets: string[]
-  code: string
-  /** Fabric/Quilt entrypoints the class implements */
-  entry: { main: boolean; client: boolean }
 }
 
 /** Where a stat bonus is active. */
@@ -287,12 +309,6 @@ export interface HitIR {
   ability: 'fire' | 'lightning' | 'freeze' | 'teleport' | 'clear'
   ticks: number
   chance: number
-}
-
-/** Thirst restored by a food in thirst mods: points on a 20-point bar, like hunger and saturation. */
-export interface ThirstIR {
-  thirst: number
-  hydration: number
 }
 
 /** A creature (Mob node). */
@@ -327,15 +343,21 @@ export interface ModIR {
   sounds: SoundIR[]
   recipes: RecipeIR[]
   tabs: TabIR[]
-  scripts: ScriptIR[]
   mobs: MobIR[]
   gameCrops: GameCropIR[]
+  breakRules: BreakRuleIR[]
+  /** linked mods the mod's metadata depends on (required, or optional) */
+  dependsOn: { modId: string; title: string; required: boolean }[]
   /** animated textures (asset path → .mcmeta animation settings) */
   textureAnims: Record<string, { frametime: number; interpolate: boolean }>
+  /** data the extensions' nodes produced: extension id → slot → records */
+  ext: Record<string, Record<string, Record<string, unknown>[]>>
 }
 
 export interface Diagnostic {
   severity: 'error' | 'warning'
   nodeId?: string
   message: L10n
+  /** the problem goes away when this extension is installed */
+  needsExtension?: string
 }

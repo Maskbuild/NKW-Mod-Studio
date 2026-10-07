@@ -9,7 +9,7 @@ import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { java } from '@codemirror/lang-java'
 import { json } from '@codemirror/lang-json'
 import { overrideKey } from '@core/project'
-import { highlight } from '../graph/ScriptEditor'
+import { highlight } from '../components/highlight'
 import { useStore } from '../store'
 import { useIde } from './ideStore'
 

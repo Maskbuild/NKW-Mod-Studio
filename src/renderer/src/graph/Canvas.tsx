@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent as RMouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as RMouseEvent } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -21,7 +21,9 @@ import {
 import { useTranslation } from 'react-i18next'
 import { NODE_DEF_MAP, canConnect, pinOf } from '@core/nodes/defs'
 import { edgeStyle, newId, useStore, type FlowNode } from '../store'
-import { NODE_TYPES, CATEGORY_COLOR } from './NodeView'
+import { buildNodeTypes } from './NodeView'
+import { registry } from '@core/ext/registry'
+import { useRegistryVersion } from '../ext/useRegistry'
 import { EDGE_TYPES } from './WireEdge'
 import { L } from '../i18n'
 import { QuickAdd, matchPin, type Pending } from './QuickAdd'
@@ -63,6 +65,8 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
   const nodes = useStore((s) => s.nodes)
   const edges = useStore((s) => s.edges)
   const rf = useReactFlow()
+  const registryVersion = useRegistryVersion()
+  const nodeTypes = useMemo(() => buildNodeTypes(), [registryVersion])
   const [qa, setQa] = useState<{ x: number; y: number; pending: Pending | null } | null>(null)
   const connecting = useRef<OnConnectStartParams | null>(null)
   const wrap = useRef<HTMLDivElement>(null)
@@ -79,12 +83,13 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
     const meaningful = changes.some(
       (c) => c.type === 'remove' || c.type === 'add' || (c.type === 'position' && !c.dragging) || (c.type === 'dimensions' && c.resizing)
     )
-    if (meaningful)
+    if (meaningful) {
+      const ids = new Set(next.map((n) => n.id))
       s.setGraph(
         next,
-        s.edges.filter((e) => next.some((n) => n.id === e.source) && next.some((n) => n.id === e.target))
+        s.edges.filter((e) => ids.has(e.source) && ids.has(e.target))
       )
-    else useStore.setState({ nodes: next })
+    } else useStore.setState({ nodes: next })
   }, [])
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
@@ -233,7 +238,7 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
       <ReactFlow<FlowNode>
         nodes={nodes}
         edges={edges}
-        nodeTypes={NODE_TYPES}
+        nodeTypes={nodeTypes}
         edgeTypes={EDGE_TYPES}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
@@ -278,7 +283,7 @@ export function Canvas({ quickAddRef }: { quickAddRef: React.MutableRefObject<((
           pannable
           zoomable
           style={{ width: 170, height: 110 }}
-          nodeColor={(n) => CATEGORY_COLOR[NODE_DEF_MAP[n.type ?? '']?.category ?? 'util']}
+          nodeColor={(n) => registry.categoryColor(NODE_DEF_MAP[n.type ?? '']?.category ?? 'util')}
           nodeBorderRadius={6}
         />
         <Controls showInteractive={false}>

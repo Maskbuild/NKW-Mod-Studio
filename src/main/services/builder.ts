@@ -11,9 +11,14 @@ import { getProfile } from '@core/gen/profiles'
 import { mergeOptionsTxt } from '@core/gameOptions'
 import { applyOverrides } from '@core/gen/overrides'
 import type { GenFile, ResolvedDeps } from '@core/gen/types'
-import { ASSET_RE, type Project, type Target } from '@core/project'
+import { ASSET_RE, javaPackage, type Project, type Target } from '@core/project'
 import { ensureGradle, ensureJdk, findJdks, gradleLaunch, type Progress } from './toolchain'
-import { resolveDeps } from './versions'
+import { extTestSlugs } from '@core/gen/extgen'
+import { checkExtAssets } from './assetchecks'
+import { extModDeps, linkedModDeps, resolveDeps } from './versions'
+import { loadMod, modJarPath } from './vanilla'
+
+if (import.meta.env.DEV) void import('../devExtensions')
 
 const SAFE_PATH = /^[A-Za-z0-9_.][A-Za-z0-9_./-]*$/
 
@@ -113,7 +118,47 @@ export async function startBuild(o: BuildOptions): Promise<RunningBuild> {
 
   o.progress('Resolving versions')
   const deps: ResolvedDeps = await resolveDeps(o.target, o.toolsDir)
+  try {
+    deps.extMods = await extModDeps(
+      extTestSlugs({ ir, p: profile, loader: o.target.loader, target: o.target, ns: ir.meta.modId, pkg: javaPackage(ir.meta) }),
+      o.target,
+      o.toolsDir
+    )
+  } catch (e) {
+    o.log(`[NKW] Mods the extensions want in the test are left out (offline?): ${(e as Error).message}`)
+  }
   const outDir = buildDir(o.projectDir, o.target)
+  // linked mods in the test run: Modrinth ones through Gradle, .jar files copied next to the build
+  const linked = (o.project.mods ?? []).filter((m) => m.role && m.role !== 'none')
+  if (linked.length) {
+    o.progress('Linked mods')
+    try {
+      deps.linkedMods = await linkedModDeps(linked, o.target, o.toolsDir)
+    } catch (e) {
+      o.log(`[NKW] Linked Modrinth mods are left out (offline?): ${(e as Error).message}`)
+    }
+    for (const m of linked.filter((x) => x.source === 'modrinth'))
+      if (!deps.linkedMods?.some((c) => c.startsWith(`maven.modrinth:${m.id}:`)))
+        o.log(`[NKW] ${m.title} has no ${o.target.loader} build for Minecraft ${o.target.mc} on Modrinth: left out of the test`)
+    deps.localMods = []
+    for (const m of linked.filter((x) => x.source === 'file')) {
+      const jar = modJarPath(o.toolsDir, o.target.mc, m.id)
+      const info = await loadMod(o.toolsDir, o.target.mc, m.id).catch(() => null)
+      if (info?.loaders && !info.loaders.includes(o.target.loader)) {
+        o.log(`[NKW] ${m.title} is made for ${info.loaders.join(' / ')}, not ${o.target.loader}: left out of the test`)
+        continue
+      }
+      if (!existsSync(jar)) {
+        o.log(`[NKW] ${m.title}: pick its .jar for Minecraft ${o.target.mc} in Game items to use it in the test`)
+        continue
+      }
+      await mkdir(join(outDir, 'nkw-mods'), { recursive: true })
+      await copyFile(jar, join(outDir, 'nkw-mods', `${m.id}-1.jar`))
+      deps.localMods.push(m.id)
+    }
+  }
+  const assetProblems = await checkExtAssets(ir, o.target, (a) => assetPath(o.projectDir, a))
+  if (assetProblems.length) throw new Error(`Fix the files first:\n${assetProblems.slice(0, 8).join('\n')}`)
   const generated = generate(ir, o.target, deps, { readText: (a) => readFileSyncUtf8(assetPath(o.projectDir, a)) })
   const { files, edited } = applyOverrides(generated, o.project, o.target)
   const changed = await writeGenerated(o.projectDir, outDir, files)

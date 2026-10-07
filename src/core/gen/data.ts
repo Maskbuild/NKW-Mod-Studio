@@ -34,9 +34,11 @@ export function genData(ctx: GenCtx): void {
       })
       continue
     }
-    // a block without its own item drops whatever item places it (seeds-style), or nothing
+    // a block without its own item drops whatever item places it (seeds-style), or nothing;
+    // Regenerating Blocks drop the original block's loot from Java, never themselves
     const placer = ir.items.find((i) => i.places === b.id)
-    const drop = b.drop ?? (b.hasItem ? `${ns}:${b.id}` : placer ? `${ns}:${placer.id}` : null)
+    const regen = b.kind === 'regen' || b.kind === 'depleted'
+    const drop = regen ? null : (b.drop ?? (b.hasItem ? `${ns}:${b.id}` : placer ? `${ns}:${placer.id}` : null))
     if (!drop) {
       files.push({ path: `${D}/${ns}/${dir('loot_tables', 'loot_table')}/blocks/${b.id}.json`, text: json({ type: 'minecraft:block', pools: [] }) })
       continue
@@ -111,24 +113,6 @@ export function genData(ctx: GenCtx): void {
   for (const m of ir.armorMats) repairTag('armor', m.id, m.repair)
   if (!p.jukeboxSongs) for (const it of ir.items) if (it.disc) addTag(`${D}/minecraft/${itemTags}/music_discs.json`, `${ns}:${it.id}`)
 
-  // ── thirst mods (Thirst add-on): data files the mods read when installed, ignored otherwise ──
-  const drinks = ir.items.filter((it) => it.food?.thirst)
-  const twt2: Record<string, { thirst: number; quenched: number }> = {}
-  for (const it of drinks) {
-    const w = it.food!.thirst!
-    // Tough As Nails: thirst tags 1–20, hydration tags 10–100 (%)
-    addTag(`${D}/toughasnails/${itemTags}/thirst/${w.thirst}_thirst_drinks.json`, `${ns}:${it.id}`)
-    if (w.hydration > 0) addTag(`${D}/toughasnails/${itemTags}/hydration/${tanHydration(w.hydration)}_hydration_drinks.json`, `${ns}:${it.id}`)
-    // Legendary Survival Overhaul: one file per item
-    files.push({
-      path: `${D}/${ns}/legendarysurvivaloverhaul/thirst/consumables/${it.id}.json`,
-      text: json([{ effects: [], hydration: w.thirst, properties: {}, saturation: w.hydration }])
-    })
-    twt2[`${ns}:${it.id}`] = { thirst: w.thirst, quenched: w.hydration }
-  }
-  // Thirst Was Taken 2
-  if (drinks.length) files.push({ path: `${D}/${ns}/thirstwastaken2/drinks/${ns}.json`, text: json({ values: twt2 }) })
-
   for (const [path, values] of tags)
     files.push({
       path,
@@ -165,7 +149,8 @@ function cropLoot(ns: string, id: string, c: NonNullable<BlockIR['crop']>, seed:
     pools.push({ rolls: 1, entries: [{ type: 'minecraft:item', name: c.produce, functions: countFn(c.produceMin, c.produceMax) }], conditions: grown })
   if (seed) {
     const children: unknown[] = []
-    if (c.mode === 'replant' && c.seedMax > 0)
+    // seeds back when fully grown (a crop that replants itself uses one of them again)
+    if (c.mode !== 'regrow' && c.seedMax > 0)
       children.push({ type: 'minecraft:item', name: `${ns}:${seed}`, conditions: grown, functions: countFn(c.seedMin, c.seedMax) })
     children.push({ type: 'minecraft:item', name: `${ns}:${seed}`, conditions: [{ condition: 'minecraft:inverted', term: grown[0] }] })
     pools.push({ rolls: 1, entries: [{ type: 'minecraft:alternatives', children }] })
@@ -174,9 +159,6 @@ function cropLoot(ns: string, id: string, c: NonNullable<BlockIR['crop']>, seed:
 }
 
 /** Tough As Nails only has hydration tags for 10, 20 … 100 %: hydration 0–20 → nearest step. */
-function tanHydration(hydration: number): number {
-  return Math.min(100, Math.max(10, Math.round(hydration / 2) * 10))
-}
 
 function recipeJson(ctx: GenCtx, r: RecipeIR, ing: (i: Ingredient) => unknown, stack: (id: string, count?: number) => Record<string, unknown>): unknown {
   const { p } = ctx
@@ -218,41 +200,5 @@ function recipeJson(ctx: GenCtx, r: RecipeIR, ing: (i: Ingredient) => unknown, s
         addition: ing(r.addition),
         result: stack(r.result)
       }
-    case 'fdCutting': {
-      if (!ctx.fd) return null
-      return {
-        type: 'farmersdelight:cutting',
-        ingredients: [ing(r.input)],
-        tool: fdTool(ctx, r.tool),
-        result: r.results.map((x) => {
-          const base = p.stackId ? { item: { id: x.item, count: x.count } } : { item: x.item, ...(x.count !== 1 ? { count: x.count } : {}) }
-          return x.chance < 1 ? { ...base, chance: x.chance } : base
-        })
-      }
-    }
-    case 'fdCooking': {
-      if (!ctx.fd) return null
-      return {
-        type: 'farmersdelight:cooking',
-        recipe_book_tab: r.tab,
-        ingredients: r.ingredients.map(ing),
-        result: { ...stack(r.result), count: r.count },
-        ...(r.container ? { container: stack(r.container) } : {}),
-        experience: r.xp,
-        cookingtime: r.time
-      }
-    }
-  }
-}
-
-function fdTool(ctx: GenCtx, tool: string): unknown {
-  const modern = ctx.p.smithingTransform // 1.20+: vanilla tool tags exist
-  switch (tool) {
-    case 'knife':
-      return { tag: ctx.fd!.knifeTag }
-    case 'shears':
-      return { item: 'minecraft:shears' }
-    default:
-      return modern ? { tag: `minecraft:${tool}s` } : { type: 'farmersdelight:tool_action', action: `${tool}_dig` }
   }
 }

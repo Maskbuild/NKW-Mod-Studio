@@ -1,0 +1,375 @@
+{
+  "type": "regenBlock",
+  "category": "block",
+  "title": {
+    "en": "Regenerating Blocks",
+    "th": "บล็อกเกิดใหม่ (ทรัพยากร)"
+  },
+  "description": {
+    "en": "Blocks of Minecraft, other mods or this mod that are harvested like crops (mined, or with the left mouse button) and grow back. Each picked block gets its own copy: it looks like the original and gives the original's drops (or the item wired into \"Drops instead\"), then turns into a block that cannot be broken (bedrock by default) and grows back after a while. Only operators (OP) can place them; they are in their own creative tab.",
+    "th": "บล็อกของ Minecraft ม็อดอื่น หรือม็อดเรา ที่เก็บได้แบบพืช (ขุด หรือใช้คลิกซ้าย) และเกิดใหม่ได้ แต่ละบล็อกที่เลือกจะได้บล็อกของตัวเอง: หน้าตาเหมือนต้นฉบับและได้ของเหมือนต้นฉบับ (หรือไอเทมที่ต่อเข้าขา \"ดรอปแทน\") เก็บแล้วกลายเป็นบล็อกที่ทุบไม่ได้ (ค่าเริ่มต้นคือ bedrock) แล้วเกิดใหม่ตามเวลา · วางได้เฉพาะ OP และอยู่ในแท็บครีเอทีฟของตัวเอง"
+  },
+  "icon": "♻",
+  "inputs": [
+    {
+      "id": "ui",
+      "label": {
+        "en": "Timer window",
+        "th": "หน้าต่างเวลา"
+      },
+      "type": "harvestUi",
+      "optional": true
+    },
+    {
+      "id": "drop",
+      "label": {
+        "en": "Drops instead (item)",
+        "th": "ดรอปแทน (ไอเทม)"
+      },
+      "type": "item",
+      "optional": true
+    },
+    {
+      "id": "block",
+      "label": {
+        "en": "Mod block",
+        "th": "บล็อกของม็อด"
+      },
+      "type": "block",
+      "optional": true,
+      "group": "blocks",
+      "count": 32
+    }
+  ],
+  "outputs": [],
+  "props": [
+    {
+      "key": "blocks",
+      "label": {
+        "en": "Blocks (pick any number)",
+        "th": "บล็อก (เลือกได้หลายอัน)"
+      },
+      "kind": "blockList",
+      "noTags": true,
+      "default": ["minecraft:iron_ore"],
+      "hint": {
+        "en": "Full blocks (ores, stone, logs, wood …) look best: the copy uses the original block model. Blocks of this mod: tick them here or wire their Block pin into the Mod block pins.",
+        "th": "บล็อกเต็มก้อน (แร่ หิน ท่อนไม้ ไม้ …) จะสวยที่สุด เพราะบล็อกที่สร้างใช้โมเดลของบล็อกต้นฉบับ · บล็อกของม็อดเรา: ติ๊กในรายการ หรือต่อขา \"บล็อก\" เข้าขา \"บล็อกของม็อด\""
+      }
+    },
+    {
+      "key": "prefix",
+      "label": {
+        "en": "ID prefix",
+        "th": "คำนำหน้า ID"
+      },
+      "kind": "id",
+      "default": "regen",
+      "hint": {
+        "en": "regen → regen_iron_ore, regen_iron_ore_depleted. Nodes with the same prefix share one creative tab.",
+        "th": "regen → regen_iron_ore, regen_iron_ore_depleted · โหนดที่ใช้คำนำหน้าเดียวกันจะอยู่แท็บครีเอทีฟเดียวกัน"
+      }
+    },
+    {
+      "key": "input",
+      "label": {
+        "en": "How to harvest",
+        "th": "วิธีเก็บเกี่ยว"
+      },
+      "kind": "select",
+      "default": "break",
+      "options": [
+        {
+          "value": "break",
+          "label": {
+            "en": "Break it (mine)",
+            "th": "ทุบ (ขุด)"
+          }
+        },
+        {
+          "value": "hold",
+          "label": {
+            "en": "Hold left-click for a while",
+            "th": "กดคลิกซ้ายค้างตามเวลา"
+          }
+        },
+        {
+          "value": "stand",
+          "label": {
+            "en": "Left-click once, then stand still",
+            "th": "คลิกซ้ายครั้งเดียวแล้วยืนนิ่งตามเวลา"
+          }
+        }
+      ],
+      "hint": {
+        "en": "Break: mined like a block. Hold: counts only while the button is held, stops as soon as it is let go and starts over on another block. Either way the tool must be good enough for the original block (a wooden pickaxe cannot take iron ore).",
+        "th": "ทุบ: ขุดเหมือนบล็อกทั่วไป · กดค้าง: นับเวลาเฉพาะตอนกดค้าง ปล่อยปุ่มแล้วหยุดทันที หันไปบล็อกอื่นเริ่มนับใหม่ · ทุกแบบต้องใช้อุปกรณ์ที่ขุดบล็อกต้นฉบับได้ (อีเต้อไม้ขุดแร่เหล็กไม่ได้)"
+      }
+    },
+    {
+      "key": "harvestSeconds",
+      "label": {
+        "en": "Harvest time (seconds)",
+        "th": "เวลาเก็บ (วินาที)"
+      },
+      "kind": "float",
+      "default": 2,
+      "min": 0.1,
+      "max": 120,
+      "step": 0.1,
+      "showIf": "data.input=='hold'||data.input=='stand'"
+    },
+    {
+      "key": "timer",
+      "label": {
+        "en": "Show a timer while breaking",
+        "th": "แสดงเวลาตอนทุบ"
+      },
+      "kind": "bool",
+      "default": true,
+      "showIf": "(data.input == null ? 'break' : data.input)=='break'"
+    },
+    {
+      "key": "hardness",
+      "label": {
+        "en": "Hardness (mining time)",
+        "th": "ความแข็ง (เวลาขุด)"
+      },
+      "kind": "float",
+      "default": 3,
+      "min": 0,
+      "max": 100,
+      "step": 0.5,
+      "hint": {
+        "en": "Iron ore: 3, stone: 1.5, logs: 2, obsidian: 50",
+        "th": "แร่เหล็ก: 3, หิน: 1.5, ท่อนไม้: 2, ออบซิเดียน: 50"
+      },
+      "showIf": "(data.input == null ? 'break' : data.input)=='break'"
+    },
+    {
+      "key": "tool",
+      "label": {
+        "en": "Mined fast with",
+        "th": "ขุดเร็วด้วย"
+      },
+      "kind": "select",
+      "default": "pickaxe",
+      "options": [
+        {
+          "value": "none",
+          "label": {
+            "en": "Hand / any",
+            "th": "มือเปล่า / อะไรก็ได้"
+          }
+        },
+        {
+          "value": "pickaxe",
+          "label": {
+            "en": "Pickaxe",
+            "th": "อีเต้อ"
+          }
+        },
+        {
+          "value": "axe",
+          "label": {
+            "en": "Axe",
+            "th": "ขวาน"
+          }
+        },
+        {
+          "value": "shovel",
+          "label": {
+            "en": "Shovel",
+            "th": "พลั่ว"
+          }
+        },
+        {
+          "value": "hoe",
+          "label": {
+            "en": "Hoe",
+            "th": "จอบ"
+          }
+        }
+      ],
+      "showIf": "(data.input == null ? 'break' : data.input)=='break'"
+    },
+    {
+      "key": "sound",
+      "label": {
+        "en": "Sound type",
+        "th": "เสียงบล็อก"
+      },
+      "kind": "select",
+      "default": "stone",
+      "options": [
+        {
+          "value": "stone",
+          "label": {
+            "en": "Stone",
+            "th": "หิน"
+          }
+        },
+        {
+          "value": "wood",
+          "label": {
+            "en": "Wood",
+            "th": "ไม้"
+          }
+        },
+        {
+          "value": "metal",
+          "label": {
+            "en": "Metal",
+            "th": "โลหะ"
+          }
+        },
+        {
+          "value": "glass",
+          "label": {
+            "en": "Glass",
+            "th": "แก้ว"
+          }
+        },
+        {
+          "value": "grass",
+          "label": {
+            "en": "Grass",
+            "th": "หญ้า"
+          }
+        },
+        {
+          "value": "sand",
+          "label": {
+            "en": "Sand",
+            "th": "ทราย"
+          }
+        },
+        {
+          "value": "gravel",
+          "label": {
+            "en": "Gravel",
+            "th": "กรวด"
+          }
+        },
+        {
+          "value": "wool",
+          "label": {
+            "en": "Wool",
+            "th": "ขนแกะ"
+          }
+        }
+      ]
+    },
+    {
+      "key": "regenSeconds",
+      "label": {
+        "en": "Grows back after (seconds)",
+        "th": "เกิดใหม่หลังจาก (วินาที)"
+      },
+      "kind": "int",
+      "default": 60,
+      "min": 1,
+      "max": 86400
+    },
+    {
+      "key": "depleted",
+      "label": {
+        "en": "Block while growing back (cannot be broken)",
+        "th": "บล็อกระหว่างรอเกิดใหม่ (ทุบไม่ได้)"
+      },
+      "kind": "nsid",
+      "default": "minecraft:bedrock",
+      "hint": {
+        "en": "Its look, e.g. minecraft:bedrock, minecraft:cobblestone",
+        "th": "ใช้หน้าตาของบล็อกนี้ เช่น minecraft:bedrock, minecraft:cobblestone"
+      }
+    },
+    {
+      "key": "dropMin",
+      "label": {
+        "en": "\"Drops instead\" count min",
+        "th": "จำนวน \"ดรอปแทน\" ต่ำสุด"
+      },
+      "kind": "int",
+      "default": 1,
+      "min": 1,
+      "max": 64,
+      "hint": {
+        "en": "Only used when an item is wired into \"Drops instead\".",
+        "th": "ใช้เมื่อต่อไอเทมเข้าขา \"ดรอปแทน\" เท่านั้น"
+      }
+    },
+    {
+      "key": "dropMax",
+      "label": {
+        "en": "\"Drops instead\" count max",
+        "th": "จำนวน \"ดรอปแทน\" สูงสุด"
+      },
+      "kind": "int",
+      "default": 1,
+      "min": 1,
+      "max": 64
+    },
+    {
+      "key": "give",
+      "label": {
+        "en": "Harvest goes into the inventory",
+        "th": "ผลผลิตเข้าตัวทันที"
+      },
+      "kind": "bool",
+      "default": false,
+      "hint": {
+        "en": "Off: drops on the ground like normal. On: straight into the inventory (what does not fit drops at your feet).",
+        "th": "ปิด: ดรอปบนพื้นแบบปกติ · เปิด: เข้าช่องเก็บของเลย (ถ้าเต็มจะดรอปที่เท้า)"
+      }
+    },
+    {
+      "key": "toolWear",
+      "label": {
+        "en": "Tool durability used per harvest",
+        "th": "ค่าคงทนเครื่องมือที่เสียต่อครั้ง"
+      },
+      "kind": "int",
+      "default": 1,
+      "min": 0,
+      "max": 64,
+      "hint": {
+        "en": "The item in the main hand loses this much durability each time a block is picked with the left button (0 = none). Mining (\"Break\") wears tools like the game does. Creative mode is not affected.",
+        "th": "ไอเทมในมือหลักเสียค่าคงทนเท่านี้ทุกครั้งที่เก็บด้วยคลิกซ้าย (0 = ไม่เสีย) · แบบ \"ทุบ\" เสียค่าคงทนตามปกติของเกม · โหมดสร้างสรรค์ไม่เสีย"
+      },
+      "showIf": "data.input!= null&&data.input!='break'"
+    },
+    {
+      "key": "adventure",
+      "label": {
+        "en": "Can be picked in adventure mode",
+        "th": "เก็บได้ในโหมดผจญภัย (Adventure)"
+      },
+      "kind": "bool",
+      "default": true,
+      "hint": {
+        "en": "Off: players in adventure mode cannot pick it by hand.",
+        "th": "ปิด: ผู้เล่นโหมดผจญภัยเก็บด้วยมือไม่ได้"
+      },
+      "showIf": "data.input!= null&&data.input!='break'"
+    },
+    {
+      "key": "tabTitle",
+      "label": {
+        "en": "Creative tab title (EN)",
+        "th": "ชื่อแท็บครีเอทีฟ (EN)"
+      },
+      "kind": "text",
+      "default": "Regenerating Blocks"
+    },
+    {
+      "key": "tabTitleTh",
+      "label": {
+        "en": "Creative tab title (TH)",
+        "th": "ชื่อแท็บครีเอทีฟ (ไทย)"
+      },
+      "kind": "text",
+      "default": "บล็อกเกิดใหม่"
+    }
+  ]
+}

@@ -1,11 +1,11 @@
 import type { Edge, Node, XYPosition } from '@xyflow/react'
-import { parseJavacError } from '@core/scriptApi'
 import { create } from 'zustand'
 import { NODE_DEF_MAP, PIN_COLORS, defaultData, pinOf } from '@core/nodes/defs'
 import type { Diagnostic } from '@core/ir'
-import { toId, type GraphEdge, type GraphNode, type Project, type Target } from '@core/project'
+import { toId, type LinkedMod, type GraphEdge, type GraphNode, type Project, type Target } from '@core/project'
 import { api, type AssetEntry, type Settings } from './api'
 import type { VanillaData } from '@core/vanilla'
+import { usedExtensions } from '@core/ext/used'
 
 export type NodeData = Record<string, unknown>
 export type FlowNode = Node<NodeData>
@@ -13,6 +13,8 @@ type Snapshot = { nodes: FlowNode[]; edges: Edge[] }
 
 const HISTORY = 120
 let idSeq = Date.now() % 100000
+/** the save in progress (see save) */
+let pendingSave: Promise<void> | null = null
 
 export function newId(prefix = 'n'): string {
   return `${prefix}${(++idSeq).toString(36)}${Math.random().toString(36).slice(2, 5)}`
@@ -88,8 +90,6 @@ export interface BuildState {
   progress: { msg: string; done?: number; total?: number } | null
   logs: string[]
   lastCode: number | null
-  /** javac errors of Script classes from the last build (file class, line, message) */
-  javaErrors: { cls: string; line: number; message: string; severity: 'error' | 'warning' }[]
 }
 
 interface State {
@@ -100,6 +100,8 @@ interface State {
   targets: Target[]
   /** generated files edited in the code view (Project.overrides) */
   overrides: Record<string, string>
+  /** other mods linked to the project (Modrinth or .jar files): their items show in the editor */
+  mods: LinkedMod[]
   activeTarget: number
   nodes: FlowNode[]
   edges: Edge[]
@@ -108,6 +110,8 @@ interface State {
   dirty: boolean
   saving: boolean
   diagnostics: Diagnostic[]
+  /** extensions the open project was saved with */
+  projectExt: string[]
   issues: Record<string, 'error' | 'warning'>
   assets: AssetEntry[]
   clipboard: Snapshot | null
@@ -130,6 +134,7 @@ interface State {
   updateData(id: string, patch: NodeData): void
   setMeta(meta: Project['meta']): void
   /** edits (text) or reverts (null) a generated file of a target */
+  setMods(mods: LinkedMod[]): void
   setOverride(key: string, text: string | null): void
   setTargets(t: Target[], active?: number): void
   setDiagnostics(d: Diagnostic[]): void
@@ -160,6 +165,7 @@ export const useStore = create<State>((set, get) => ({
   meta: null,
   targets: [],
   overrides: {},
+  mods: [],
   activeTarget: 0,
   nodes: [],
   edges: [],
@@ -168,10 +174,11 @@ export const useStore = create<State>((set, get) => ({
   dirty: false,
   saving: false,
   diagnostics: [],
+  projectExt: [],
   issues: {},
   assets: [],
   clipboard: null,
-  build: { running: false, task: null, progress: null, logs: [], lastCode: null, javaErrors: [] },
+  build: { running: false, task: null, progress: null, logs: [], lastCode: null },
   toasts: [],
   vanilla: {},
 
@@ -191,6 +198,7 @@ export const useStore = create<State>((set, get) => ({
       meta: p.meta,
       targets: p.targets,
       overrides: p.overrides ?? {},
+      mods: p.mods ?? [],
       activeTarget: Math.min(p.activeTarget, p.targets.length - 1),
       nodes: f.nodes,
       edges: f.edges,
@@ -198,13 +206,16 @@ export const useStore = create<State>((set, get) => ({
       future: [],
       dirty: false,
       diagnostics: [],
+      projectExt: (p.extensions ?? []).map((e) => e.id),
       issues: {},
-      build: { running: false, task: null, progress: null, logs: [], lastCode: null, javaErrors: [] }
+      build: { running: false, task: null, progress: null, logs: [], lastCode: null }
     })
     void get().refreshAssets()
   },
   async closeProject() {
     if (get().dirty) await get().save()
+    // a failed save keeps the project open, so nothing is lost
+    if (get().dirty) return
     await api.closeProject()
     set({ page: 'home', dir: null, meta: null, nodes: [], edges: [], past: [], future: [] })
     set({ settings: await api.settings() })
@@ -212,13 +223,16 @@ export const useStore = create<State>((set, get) => ({
   project() {
     const s = get()
     if (!s.meta) return null
+    const used = usedExtensions(s.nodes.map((n) => ({ type: n.type ?? '' })))
     return {
       schemaVersion: 1,
       meta: s.meta,
       targets: s.targets,
       activeTarget: s.activeTarget,
       graph: fromFlow(s.nodes, s.edges),
-      ...(Object.keys(s.overrides).length ? { overrides: s.overrides } : {})
+      ...(Object.keys(s.overrides).length ? { overrides: s.overrides } : {}),
+      ...(s.mods.length ? { mods: s.mods } : {}),
+      ...(used.length ? { extensions: used } : {})
     }
   },
   setGraph(nodes, edges, record = false) {
@@ -271,6 +285,9 @@ export const useStore = create<State>((set, get) => ({
   setMeta(meta) {
     set({ meta, dirty: true })
   },
+  setMods(mods) {
+    set({ mods, dirty: true })
+  },
   setOverride(key, text) {
     set((s) => {
       const overrides = { ...s.overrides }
@@ -312,16 +329,37 @@ export const useStore = create<State>((set, get) => ({
     set({ nodes, dirty: true })
   },
   async save() {
+    // one save at a time: a second call waits for the running one, then saves what changed meanwhile
+    while (pendingSave) await pendingSave
     const p = get().project()
-    if (!p || get().saving) return
-    set({ saving: true })
+    if (!p) return
+    const before = get()
+    const run = (async () => {
+      set({ saving: true })
+      try {
+        await api.saveProject(p)
+        // edits made while saving stay unsaved
+        const s = get()
+        const same =
+          s.nodes === before.nodes &&
+          s.edges === before.edges &&
+          s.meta === before.meta &&
+          s.targets === before.targets &&
+          s.activeTarget === before.activeTarget &&
+          s.overrides === before.overrides &&
+          s.mods === before.mods
+        if (same) set({ dirty: false })
+      } catch (e) {
+        get().toast(String((e as Error).message ?? e), true)
+      } finally {
+        set({ saving: false })
+      }
+    })()
+    pendingSave = run
     try {
-      await api.saveProject(p)
-      set({ dirty: false })
-    } catch (e) {
-      get().toast(String((e as Error).message ?? e), true)
+      await run
     } finally {
-      set({ saving: false })
+      if (pendingSave === run) pendingSave = null
     }
   },
   copy() {
@@ -359,8 +397,11 @@ export const useStore = create<State>((set, get) => ({
             typeof n.id === 'string' &&
             typeof n.type === 'string' &&
             (NODE_DEF_MAP[n.type] || n.type === 'comment' || n.type === 'reroute') &&
-            n.position &&
-            typeof n.data === 'object'
+            Number.isFinite(n.position?.x) &&
+            Number.isFinite(n.position?.y) &&
+            !!n.data &&
+            typeof n.data === 'object' &&
+            !Array.isArray(n.data)
         )
         const keep = new Set(known.map((n) => n.id))
         clip = { nodes: known, edges: (parsed.edges as Snapshot['edges']).filter((e) => e && keep.has(e.source) && keep.has(e.target)) }
@@ -421,17 +462,11 @@ export const useStore = create<State>((set, get) => ({
   appendLogs(lines) {
     set((s) => {
       const logs = s.build.logs.length + lines.length > 6000 ? [...s.build.logs.slice(-(6000 - lines.length)), ...lines] : [...s.build.logs, ...lines]
-      // javac errors of Script files are shown in their editor
-      const found = lines
-        .map(parseJavacError)
-        .filter((e): e is NonNullable<typeof e> => !!e)
-        .filter((e) => !s.build.javaErrors.some((x) => x.cls === e.cls && x.line === e.line && x.message === e.message))
-      return { build: { ...s.build, logs, javaErrors: found.length ? [...s.build.javaErrors, ...found].slice(-200) : s.build.javaErrors } }
+      return { build: { ...s.build, logs } }
     })
   },
   setBuild(p) {
-    // a new build starts with no javac errors
-    set((s) => ({ build: { ...s.build, ...(p.running ? { javaErrors: [] } : {}), ...p } }))
+    set((s) => ({ build: { ...s.build, ...p } }))
   }
 }))
 

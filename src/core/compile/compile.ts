@@ -1,7 +1,11 @@
 import { ASSET_RE, ID_RE, NSID_RE, type GraphNode, type Project, type Target } from '../project'
 import { parseFit } from '../gen/geo'
-import { isReservedClass, scriptAppliesTo, scriptClassName, scriptEntrypoints } from '../scriptApi'
-import { ATTRIBUTES, EFFECTS, NODE_DEF_MAP, canConnect, gameCropIds, pinOf, type L10n } from '../nodes/defs'
+import { extHost } from '../ext/host'
+import { extensionOfType } from '../ext/used'
+import { docAssets, docOfNode } from '../timerUi'
+import { recordMatches, recordValues, runMappings } from '../ext/mapping'
+import { REMOVED_NODE_TYPES } from '../nodes/removed'
+import { ATTRIBUTES, BREAK_TOOLS, EFFECTS, NODE_DEF_MAP, TOOL_LEVELS, breakRuleEntries, canConnect, gameCropIds, pinOf, type L10n } from '../nodes/defs'
 import type {
   ArmorMatIR,
   ArmorSlot,
@@ -18,11 +22,11 @@ import type {
   ModIR,
   ModelRef,
   SoundIR,
-  ThirstIR,
   ToolMatIR
 } from '../ir'
-import type { GameCropIR, HarvestUiIR } from '../ir'
-import { farmersDelightFor, getProfile, isSupported, mcAtLeast } from '../gen/profiles'
+import type { BreakDrops, BreakRuleIR, GameCropIR, HarvestUiIR } from '../ir'
+import { getProfile, isSupported, mcAtLeast } from '../gen/profiles'
+import { extensionSupports, targetConfigFor } from '../ext/support'
 import { separateIconMode } from '../gen/assets'
 
 const ARMOR_SLOTS: ArmorSlot[] = ['helmet', 'chestplate', 'leggings', 'boots']
@@ -34,10 +38,18 @@ const ARMOR_NAME: Record<ArmorSlot, L10n> = {
 }
 
 type Data = Record<string, unknown>
-const str = (d: Data, k: string, def = ''): string => (typeof d[k] === 'string' ? (d[k] as string) : def)
-const num = (d: Data, k: string, def = 0): number => (typeof d[k] === 'number' && Number.isFinite(d[k]) ? (d[k] as number) : def)
+export const str = (d: Data, k: string, def = ''): string => (typeof d[k] === 'string' ? (d[k] as string) : def)
+export const num = (d: Data, k: string, def = 0): number => (typeof d[k] === 'number' && Number.isFinite(d[k]) ? (d[k] as number) : def)
 const bool = (d: Data, k: string, def = false): boolean => (typeof d[k] === 'boolean' ? (d[k] as boolean) : def)
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+/** Whole number in a range (counts, protection points … that the game reads as integers). */
+const int = (d: Data, k: string, def: number, lo: number, hi: number) => clamp(Math.round(num(d, k, def)), lo, hi)
+/** A select setting: one of the options the node definition offers, else its default (old or edited data). */
+const sel = <T extends string = string>(n: GraphNode, key: string): T => {
+  const p = NODE_DEF_MAP[n.type]?.props.find((x) => x.key === key)
+  const v = str(n.data, key)
+  return (p?.options?.some((o) => o.value === v) ? v : String(p?.default ?? '')) as T
+}
 
 export interface CompileResult {
   ir: ModIR
@@ -47,55 +59,55 @@ export interface CompileResult {
 /** Material id used by tools / armor with no material wired in (iron stats). */
 const DEFAULT_MAT = 'nkw_iron'
 
+/** Blocks you can see through: copies of them must not hide the faces of their neighbours. */
+const SEE_THROUGH =
+  /glass|leaves|ice$|^ice|slime|honey|_pane|bars|door|fence|wall|slab|stairs|lantern|torch|chain|scaffolding|azalea|cobweb|spawner|beacon|grate|copper_bulb|mangrove_roots/
+
+const BREAK_DROPS: BreakDrops[] = ['normal', 'grown', 'none']
+const breakDropsOf = (d: Data): BreakDrops => (BREAK_DROPS.includes(d.breakDrops as BreakDrops) ? (d.breakDrops as BreakDrops) : 'normal')
+
+const TOOL_NAME: Record<BreakRuleIR['tool'], L10n> = {
+  pickaxe: { en: 'pickaxe', th: 'อีเต้อ' },
+  axe: { en: 'axe', th: 'ขวาน' },
+  shovel: { en: 'shovel', th: 'พลั่ว' },
+  hoe: { en: 'hoe', th: 'จอบ' },
+  sword: { en: 'sword', th: 'ดาบ' },
+  shears: { en: 'shears', th: 'กรรไกร' },
+  any: { en: 'tool', th: 'เครื่องมือ' }
+}
+const LEVEL_NAME: Record<BreakRuleIR['level'], L10n> = {
+  wood: { en: 'wooden', th: 'ไม้' },
+  stone: { en: 'stone', th: 'หิน' },
+  iron: { en: 'iron', th: 'เหล็ก' },
+  diamond: { en: 'diamond', th: 'เพชร' },
+  netherite: { en: 'netherite', th: 'เนเธอไรต์' }
+}
+
+/** The action-bar text of a Break Rule, e.g. "Needs an iron pickaxe or better to drop anything". */
+function breakRuleMessage(r: Pick<BreakRuleIR, 'tool' | 'level' | 'onFail'>): L10n {
+  const tool = TOOL_NAME[r.tool]
+  const leveled = r.tool !== 'shears' && r.level !== 'wood'
+  const lv = LEVEL_NAME[r.level]
+  const top = r.level === 'netherite'
+  const what =
+    r.tool === 'shears'
+      ? 'shears'
+      : leveled
+        ? `${/^[aeiou]/.test(lv.en) ? 'an' : 'a'} ${lv.en} ${tool.en}${top ? '' : ' or better'}`
+        : `${r.tool === 'axe' ? 'an' : 'a'} ${tool.en}`
+  const th = leveled ? `${tool.th}ระดับ${lv.th}${top ? '' : 'ขึ้นไป'}` : tool.th
+  return r.onFail === 'cantBreak'
+    ? { en: `Needs ${what} to break`, th: `ต้องใช้${th}ถึงจะทุบได้` }
+    : { en: `Needs ${what} to drop anything`, th: `ต้องใช้${th}ถึงจะได้ของ` }
+}
+
+/** Crop properties the Roleplay extension adds (ignored while it is off). */
+const ROLEPLAY_CROP_KEYS = new Set(['mode', 'regrowSeconds', 'regrowStage', 'input', 'harvestSeconds', 'give', 'breakDrops', 'adventure', 'sneak'])
+
 /**
  * Graph → IR. Pure function: no filesystem access, safe to run in a Web Worker.
  * Pass `target` to also check loader/version specific compatibility.
  */
-/**
- * Brackets / quotes the generated Java would choke on, found before building (Gradle would report the
- * same, much later). Skips strings, chars and comments.
- */
-export function scriptBracketProblem(code: string): { en: string; th: string; line: number } | null {
-  const stack: { ch: string; line: number }[] = []
-  const pairs: Record<string, string> = { ')': '(', ']': '[', '}': '{' }
-  let line = 1
-  for (let i = 0; i < code.length; i++) {
-    const c = code[i]
-    if (c === '\n') line++
-    if (c === '/' && code[i + 1] === '/') {
-      while (i < code.length && code[i] !== '\n') i++
-      line++
-      continue
-    }
-    if (c === '/' && code[i + 1] === '*') {
-      const end = code.indexOf('*/', i + 2)
-      if (end < 0) return { en: `unclosed comment (line ${line})`, th: `คอมเมนต์ไม่ได้ปิด (บรรทัด ${line})`, line }
-      line += code.slice(i, end).split('\n').length - 1
-      i = end + 1
-      continue
-    }
-    if (c === '"' || c === "'") {
-      let j = i + 1
-      while (j < code.length && code[j] !== c && code[j] !== '\n') j += code[j] === '\\' ? 2 : 1
-      if (code[j] !== c)
-        return {
-          en: `unclosed ${c === '"' ? 'string' : 'character'} (line ${line})`,
-          th: `${c === '"' ? 'ข้อความ' : 'ตัวอักษร'}ไม่ได้ปิดเครื่องหมายคำพูด (บรรทัด ${line})`,
-          line
-        }
-      i = j
-      continue
-    }
-    if (c === '(' || c === '[' || c === '{') stack.push({ ch: c, line })
-    else if (c in pairs) {
-      const top = stack.pop()
-      if (!top || top.ch !== pairs[c]) return { en: `unexpected "${c}" (line ${line})`, th: `มี "${c}" เกินมา (บรรทัด ${line})`, line }
-    }
-  }
-  const open = stack.pop()
-  return open ? { en: `"${open.ch}" is never closed (line ${open.line})`, th: `"${open.ch}" ยังไม่ได้ปิด (บรรทัด ${open.line})`, line: open.line } : null
-}
-
 export function compile(project: Project, target?: Target): CompileResult {
   const diags: Diagnostic[] = []
   const err = (nodeId: string | undefined, en: string, th: string) => diags.push({ severity: 'error', nodeId, message: { en, th } })
@@ -107,7 +119,22 @@ export function compile(project: Project, target?: Target): CompileResult {
     // disabled nodes stay on the canvas but are not part of the mod (their wires are ignored too)
     if (n.data.disabled === true) continue
     if (!NODE_DEF_MAP[n.type]) {
-      err(n.id, `Unknown node type "${n.type}"`, `ไม่รู้จักโหนดชนิด "${n.type}"`)
+      const gone = REMOVED_NODE_TYPES[n.type]
+      if (gone) warn(n.id, gone.en, gone.th)
+      else {
+        const ext = extensionOfType(n.type)
+        diags.push({
+          severity: 'error',
+          nodeId: n.id,
+          message: ext
+            ? {
+                en: `Needs the "${ext}" extension (Settings → Extensions) for "${n.type}"`,
+                th: `ต้องติดตั้งส่วนเสริม "${ext}" (ตั้งค่า → ส่วนเสริม) สำหรับโหนด "${n.type}"`
+              }
+            : { en: `Unknown node type "${n.type}"`, th: `ไม่รู้จักโหนดชนิด "${n.type}"` },
+          ...(ext ? { needsExtension: ext } : {})
+        })
+      }
       continue
     }
     nodes.set(n.id, n)
@@ -313,38 +340,14 @@ export function compile(project: Project, target?: Target): CompileResult {
     return out
   }
 
-  /** Harvest timer look (Harvest UI node) plugged into a crop's "ui" pin. */
+  /** Timer window node plugged into a node's "ui" pin. */
   const harvestUi = (nodeId: string): HarvestUiIR | null => {
     const s = source(nodeId, 'ui')
     if (!s || s.node.type !== 'harvestUi') return null
-    const d = s.node.data
-    const rgb = (k: string, def: string) => parseInt((/^#[0-9a-f]{6}$/i.test(str(d, k)) ? str(d, k) : def).slice(1), 16)
-    const int = (k: string, def: number, lo: number, hi: number) => clamp(Math.round(num(d, k, def)), lo, hi)
-    const style = str(d, 'style', 'bar')
-    const place = str(d, 'place', 'crosshair')
-    return {
-      style: style === 'text' || style === 'ring' ? style : 'bar',
-      color: rgb('color', '#4ade80'),
-      back: rgb('back', '#000000'),
-      backAlpha: Math.round((int('backOpacity', 50, 0, 100) * 255) / 100),
-      place: place === 'hotbar' || place === 'top' ? place : 'crosshair',
-      offset: int('offset', 0, -200, 200),
-      width: int('width', 60, 10, 300),
-      height: int('height', 4, 1, 20),
-      radius: int('radius', 9, 3, 40),
-      thickness: int('thickness', 3, 1, 40),
-      time: bool(d, 'time', true)
-    }
-  }
-
-  /** Thirst add-on node plugged into a food. */
-  const thirst = (nodeId: string): ThirstIR | null => {
-    const s = source(nodeId, 'thirst')
-    if (!s || s.node.type !== 'thirst') return null
-    return {
-      thirst: clamp(Math.round(num(s.node.data, 'thirst', 6)), 1, 20),
-      hydration: clamp(Math.round(num(s.node.data, 'hydration', 4)), 0, 20)
-    }
+    const { doc, problems } = docOfNode(s.node.data)
+    if (problems.length) warn(s.node.id, `Timer window: ${problems[0]} (the default look is used)`, `หน้าต่างเวลา: ${problems[0]} (ใช้แบบมาตรฐานแทน)`)
+    for (const a of docAssets(doc)) if (!ASSET_RE.test(a)) err(s.node.id, `Timer window: invalid image "${a}"`, `หน้าต่างเวลา: ไฟล์รูป "${a}" ไม่ถูกต้อง`)
+    return doc
   }
 
   /** Length of the first sound file behind a Sound Event (seconds, measured at import). */
@@ -435,10 +438,63 @@ export function compile(project: Project, target?: Target): CompileResult {
     sounds: [],
     recipes: [],
     tabs: [],
-    scripts: [],
     mobs: [],
     gameCrops: [],
-    textureAnims: {}
+    breakRules: [],
+    dependsOn: [],
+    textureAnims: {},
+    ext: {}
+  }
+
+  /** Blocks extensions add through `contribute.blocks`: one block for every record of a slot. */
+  const contributeBlocks = () => {
+    const TOOLS = ['none', 'pickaxe', 'axe', 'shovel', 'hoe']
+    const LEVELS = ['wood', 'stone', 'iron', 'diamond']
+    for (const ext of extHost.list())
+      for (const c of ext.manifest.contribute.blocks) {
+        const [fromExt, fromSlot] = c.from.split('.')
+        for (const rec of ir.ext[fromExt]?.[fromSlot] ?? []) {
+          if (!recordMatches(c.where, rec)) continue
+          const v = recordValues(c.value, rec)
+          const id = String(v.id ?? '')
+          const nodeId = typeof rec.nodeId === 'string' ? rec.nodeId : undefined
+          if (!ID_RE.test(id)) {
+            err(nodeId, `Invalid block ID "${id}" (use a-z, 0-9, _)`, `ID บล็อก "${id}" ไม่ถูกต้อง (ใช้ a-z, 0-9, _)`)
+            continue
+          }
+          const text = (k: string) => (typeof v[k] === 'string' && v[k] ? (v[k] as string) : null)
+          const number = (k: string, d: number, lo: number, hi: number) => clamp(typeof v[k] === 'number' ? (v[k] as number) : d, lo, hi)
+          const shape = text('shape')
+          const tool = text('tool')
+          const level = text('toolLevel')
+          const b: BlockIR = {
+            id,
+            name: text('name') ?? id,
+            nameTh: text('nameTh') ?? '',
+            nodeId: nodeId ?? '',
+            kind: 'cube',
+            ...(text('javaClass') ? { javaClass: text('javaClass')! } : {}),
+            shape: shape === 'cube_bottom_top' || shape === 'pillar' ? shape : 'cube_all',
+            textures: { side: text('side'), top: text('top'), bottom: text('bottom') },
+            model: null,
+            rotatable: false,
+            hasItem: v.hasItem !== false,
+            solid: v.solid !== false,
+            hardness: number('hardness', 3, 0, 100),
+            resistance: number('resistance', 6, 0, 3600000),
+            sound: text('sound') ?? 'stone',
+            tool: (TOOLS.includes(tool ?? '') ? tool : 'pickaxe') as BlockIR['tool'],
+            toolLevel: (LEVELS.includes(level ?? '') ? level : 'wood') as BlockIR['toolLevel'],
+            requiresTool: v.requiresTool === true,
+            light: Math.round(number('light', 0, 0, 15)),
+            drop: text('drop'),
+            dropMin: Math.round(number('dropMin', 1, 0, 64)),
+            dropMax: Math.round(number('dropMax', 1, 0, 64))
+          }
+          if (!b.textures.side) err(nodeId, `Block "${id}" has no texture`, `บล็อก "${id}" ไม่มีเท็กซ์เจอร์`)
+          else ir.blocks.push(b)
+        }
+      }
   }
 
   const names = (n: GraphNode) => ({
@@ -447,7 +503,7 @@ export function compile(project: Project, target?: Target): CompileResult {
   })
   const itemBase = (n: GraphNode) => ({
     maxStack: clamp(Math.round(num(n.data, 'maxStack', 64)), 1, 64),
-    rarity: (str(n.data, 'rarity', 'common') as ItemIR['rarity']) || 'common',
+    rarity: sel<ItemIR['rarity']>(n, 'rarity'),
     fireResistant: bool(n.data, 'fireResistant'),
     glint: bool(n.data, 'glint'),
     handheld: bool(n.data, 'handheld'),
@@ -462,11 +518,11 @@ export function compile(project: Project, target?: Target): CompileResult {
     return c === 1 ? base : `${base}_${c}`
   }
 
-  let usesFD = false
   let usesGeo = false
   let usesDefaultTool = false
   let usesDefaultArmor = false
-  let tabNodes = 0
+  /** creative tabs of Regenerating Blocks nodes (after the project's own tabs) */
+  const regenTabs: ModIR['tabs'] = []
 
   for (const n of nodes.values()) {
     const d = n.data
@@ -494,8 +550,7 @@ export function compile(project: Project, target?: Target): CompileResult {
             fast: bool(d, 'fast'),
             effects: effects(n.id),
             hits: hits(n.id),
-            drink: d.useSound === 'drink',
-            thirst: thirst(n.id)
+            drink: d.useSound === 'drink'
           }
         it.attributes = attributes(n.id, 'mainhand')
         ir.items.push(it)
@@ -516,7 +571,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           glint: false,
           handheld: true,
           tool: {
-            type: str(d, 'toolType', 'sword') as NonNullable<ItemIR['tool']>['type'],
+            type: sel<NonNullable<ItemIR['tool']>['type']>(n, 'toolType'),
             material: mat ? str(mat.node.data, 'id') : DEFAULT_MAT,
             damage: num(d, 'attackDamage', 3),
             speed: num(d, 'attackSpeed', -2.4),
@@ -539,7 +594,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           durability: clamp(Math.round(num(d, 'durability', 500)), 1, 100000),
           speed: num(d, 'speed', 6),
           damage: num(d, 'damage', 2),
-          level: str(d, 'level', 'iron') as ToolMatIR['level'],
+          level: sel<ToolMatIR['level']>(n, 'level'),
           enchantability: clamp(Math.round(num(d, 'enchantability', 14)), 0, 100),
           repair: ingredient(n.id, 'repair', false)
         }
@@ -554,7 +609,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           ...names(n),
           nodeId: n.id,
           kind: is3d ? 'model' : 'cube',
-          shape: (str(d, 'shape', 'cube_all') as BlockIR['shape']) || 'cube_all',
+          shape: sel<BlockIR['shape']>(n, 'shape'),
           textures: {
             side: is3d ? null : texture(n.id, 'texture', true),
             top: is3d ? null : texture(n.id, 'top', false),
@@ -566,10 +621,10 @@ export function compile(project: Project, target?: Target): CompileResult {
           solid: !is3d || bool(d, 'solid', true),
           hardness: clamp(num(d, 'hardness', 3), 0, 100),
           resistance: clamp(num(d, 'resistance', 6), 0, 3600000),
-          sound: str(d, 'sound', 'stone'),
-          tool: str(d, 'tool', 'pickaxe') as BlockIR['tool'],
-          toolLevel: str(d, 'toolLevel', 'wood') as BlockIR['toolLevel'],
-          requiresTool: str(d, 'tool', 'pickaxe') !== 'none' && bool(d, 'requiresTool', true),
+          sound: sel(n, 'sound'),
+          tool: sel<BlockIR['tool']>(n, 'tool'),
+          toolLevel: sel<BlockIR['toolLevel']>(n, 'toolLevel'),
+          requiresTool: sel(n, 'tool') !== 'none' && bool(d, 'requiresTool', true),
           light: clamp(Math.round(num(d, 'light', 0)), 0, 15),
           drop: item(n.id, 'drop', false),
           dropMin: clamp(Math.round(num(d, 'dropMin', 1)), 0, 64),
@@ -582,16 +637,24 @@ export function compile(project: Project, target?: Target): CompileResult {
         break
       }
       case 'crop': {
+        // the hand-harvest settings belong to the Roleplay extension: without it a crop is a plain growing plant
+        const d = extHost.has('roleplay') ? n.data : Object.fromEntries(Object.entries(n.data).filter(([k]) => !ROLEPLAY_CROP_KEYS.has(k)))
         const stages: string[] = []
         for (let i = 1; i <= 8; i++) {
           const s = texture(n.id, `stage${i}`, false)
           if (s) stages.push(s)
         }
         if (!stages.length) err(n.id, 'Connect at least one growth stage texture', 'ต่อเท็กซ์เจอร์ระยะการโตอย่างน้อย 1 ระยะ')
-        const mode = str(d, 'mode', 'replant') === 'regrow' ? 'regrow' : 'replant'
+        const mode = (['regrow', 'auto'].includes(str(d, 'mode')) ? str(d, 'mode') : 'replant') as NonNullable<BlockIR['crop']>['mode']
         const input = (['break', 'click', 'hold', 'stand'].includes(str(d, 'input')) ? str(d, 'input') : 'break') as NonNullable<BlockIR['crop']>['input']
-        if (mode === 'regrow' && input === 'break')
-          warn(n.id, 'A crop that grows back needs a right-click harvest: right-click is used', 'พืชที่โตใหม่ต้องเก็บด้วยคลิกขวา: ใช้คลิกขวาแทน')
+        if (mode !== 'replant' && input === 'break')
+          warn(
+            n.id,
+            mode === 'auto'
+              ? 'A crop that replants itself needs a right-click harvest: right-click is used'
+              : 'A crop that grows back needs a right-click harvest: right-click is used',
+            mode === 'auto' ? 'พืชที่ปลูกใหม่เองต้องเก็บด้วยคลิกขวา: ใช้คลิกขวาแทน' : 'พืชที่โตใหม่ต้องเก็บด้วยคลิกขวา: ใช้คลิกขวาแทน'
+          )
         const growSeconds = clamp(Math.round(num(d, 'growSeconds', 0)), 0, 36000)
         const produceMin = clamp(Math.round(num(d, 'produceMin', 1)), 1, 64)
         const seedMin = clamp(Math.round(num(d, 'seedMin', 1)), 0, 64)
@@ -624,18 +687,191 @@ export function compile(project: Project, target?: Target): CompileResult {
             mode,
             regrowAge: clamp(Math.round(num(d, 'regrowStage', 0)), 0, 6),
             regrowTicks: clamp(Math.round(num(d, 'regrowSeconds', 60)), 1, 36000) * 20,
-            input: mode === 'regrow' && input === 'break' ? 'click' : input,
-            harvestTicks: Math.round(clamp(num(d, 'harvestSeconds', 2), 0.5, 120) * 20),
+            input: mode !== 'replant' && input === 'break' ? 'click' : input,
+            harvestTicks: Math.round(clamp(num(d, 'harvestSeconds', 2), 0.1, 120) * 20),
             produce: item(n.id, 'produce', true),
             produceMin,
             produceMax: Math.max(produceMin, clamp(Math.round(num(d, 'produceMax', 2)), 1, 64)),
             seedMin,
             seedMax: Math.max(seedMin, clamp(Math.round(num(d, 'seedMax', 3)), 0, 64)),
             ui: harvestUi(n.id),
-            give: bool(d, 'give', false)
+            give: bool(d, 'give', false),
+            breakDrops: breakDropsOf(d),
+            adventure: bool(d, 'adventure', true),
+            sneak: bool(d, 'sneak', false)
           }
         }
+        if (b.crop!.breakDrops === 'none' && b.crop!.input === 'break')
+          warn(
+            n.id,
+            'Breaking is the harvest but breaking gives nothing: pick a right-click harvest',
+            'ตั้งให้เก็บเกี่ยวด้วยการทุบ แต่ทุบแล้วไม่ได้อะไร: เลือกวิธีเก็บแบบคลิกขวา'
+          )
         ir.blocks.push(b)
+        break
+      }
+      case 'regenBlock': {
+        const prefix = str(d, 'prefix', 'regen') || 'regen'
+        if (!ID_RE.test(prefix)) err(n.id, `Invalid ID prefix "${prefix}" (use a-z, 0-9, _)`, `คำนำหน้า ID "${prefix}" ไม่ถูกต้อง (ใช้ a-z, 0-9, _)`)
+        // "left-click" was removed: older projects hold the button instead
+        const rawInput = str(d, 'input') === 'click' ? 'hold' : str(d, 'input')
+        const input = (['break', 'hold', 'stand'].includes(rawInput) ? rawInput : 'break') as NonNullable<BlockIR['regen']>['input']
+        const look = str(d, 'depleted', 'minecraft:bedrock').replace(/^#/, '') || 'minecraft:bedrock'
+        if (!NSID_RE.test(look)) err(n.id, `"${look}" is not a block ID (e.g. minecraft:bedrock)`, `"${look}" ไม่ใช่ ID บล็อก (เช่น minecraft:bedrock)`)
+        const ticks = clamp(Math.round(num(d, 'regenSeconds', 60)), 1, 86400) * 20
+        const breaking = input === 'break'
+        const tool = sel<BlockIR['tool']>(n, 'tool')
+        const items: string[] = []
+        const base = (id: string, name: string): BlockIR => ({
+          id,
+          name,
+          nameTh: '',
+          nodeId: n.id,
+          kind: 'regen',
+          shape: 'cube_all',
+          textures: { side: null, top: null, bottom: null },
+          model: null,
+          rotatable: false,
+          hasItem: true,
+          solid: true,
+          // right-click harvests: the block itself cannot be mined; blocks resist explosions either way
+          hardness: breaking ? clamp(num(d, 'hardness', 3), 0, 100) : -1,
+          resistance: 3600000,
+          sound: sel(n, 'sound'),
+          tool: breaking ? tool : 'none',
+          toolLevel: 'wood',
+          requiresTool: false,
+          light: 0,
+          drop: null,
+          dropMin: 1,
+          dropMax: 1
+        })
+        const entries = breakRuleEntries(d)
+        // blocks of this mod wired in
+        for (let i = 1; i <= 32; i++) {
+          const s = source(n.id, `block${i}`)
+          if (!s || !['block', 'block3d'].includes(s.node.type)) continue
+          const id = `${modid}:${str(s.node.data, 'id')}`
+          if (!entries.includes(id)) entries.push(id)
+        }
+        if (!entries.length) err(n.id, 'Pick at least one block', 'เลือกบล็อกอย่างน้อย 1 อัน')
+        const dropItem = item(n.id, 'drop', false)
+        const dropMin = clamp(Math.round(num(d, 'dropMin', 1)), 1, 64)
+        const drop = dropItem ? { item: dropItem, min: dropMin, max: Math.max(dropMin, clamp(Math.round(num(d, 'dropMax', 1)), 1, 64)) } : null
+        for (const e of entries) {
+          if (e.startsWith('#') || !NSID_RE.test(e)) {
+            err(n.id, `"${e}" is not a block ID (tags cannot be used here)`, `"${e}" ไม่ใช่ ID บล็อก (ใช้แท็กที่นี่ไม่ได้)`)
+            continue
+          }
+          const [ns, path] = e.split(':')
+          // minecraft:iron_ore → regen_iron_ore, mymod:ruby_ore → regen_ruby_ore, othermod:ruby_ore → regen_othermod_ruby_ore
+          const id = `${prefix}_${ns === 'minecraft' || ns === modid ? '' : `${ns}_`}${path.replace(/[/.-]/g, '_')}`
+          if (!ID_RE.test(id)) {
+            err(n.id, `"${e}" makes the invalid ID "${id}"`, `"${e}" ได้ ID "${id}" ที่ไม่ถูกต้อง`)
+            continue
+          }
+          const pretty = path.replace(/[/_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+          ir.blocks.push({
+            ...base(id, `${pretty} (Regenerating)`),
+            seeThrough: SEE_THROUGH.test(path),
+            nameTh: `${pretty} (เกิดใหม่)`,
+            regen: {
+              original: e,
+              depleted: `${id}_depleted`,
+              input,
+              harvestTicks: Math.round(clamp(num(d, 'harvestSeconds', 2), 0.1, 120) * 20),
+              ui: harvestUi(n.id),
+              timer: breaking && bool(d, 'timer', true),
+              drop,
+              give: bool(d, 'give', false),
+              adventure: bool(d, 'adventure', true),
+              wear: breaking ? 0 : int(d, 'toolWear', 1, 0, 64)
+            }
+          })
+          ir.blocks.push({
+            ...base(`${id}_depleted`, `${pretty} (Growing Back)`),
+            nameTh: `${pretty} (รอเกิดใหม่)`,
+            kind: 'depleted',
+            seeThrough: SEE_THROUGH.test(look.split(':')[1] ?? ''),
+            hasItem: false,
+            hardness: -1,
+            tool: 'none',
+            depleted: { look, restore: id, ticks }
+          })
+          items.push(`${modid}:${id}`)
+        }
+        if (items.length) {
+          const tabId = `${prefix}_blocks`
+          // nodes with the same ID prefix share one creative tab (named by the first of them)
+          const same = regenTabs.find((tb) => tb.id === tabId)
+          if (same) {
+            same.items.push(...items.filter((it) => !same.items.includes(it)))
+            break
+          }
+          regenTabs.push({
+            id: tabId,
+            nodeId: n.id,
+            title: str(d, 'tabTitle') || 'Regenerating Blocks',
+            titleTh: str(d, 'tabTitleTh'),
+            icon: items[0],
+            logo: null,
+            items
+          })
+        }
+        break
+      }
+      case 'breakRule': {
+        const blocks: string[] = []
+        const tags: string[] = []
+        for (const e of breakRuleEntries(d)) {
+          const tag = e.startsWith('#')
+          const id = tag ? e.slice(1) : e
+          if (!NSID_RE.test(id)) {
+            err(
+              n.id,
+              `"${e}" is not a block ID (e.g. minecraft:stone) or a tag (#minecraft:logs)`,
+              `"${e}" ไม่ใช่ ID บล็อก (เช่น minecraft:stone) หรือแท็ก (#minecraft:logs)`
+            )
+            continue
+          }
+          const list = tag ? tags : blocks
+          if (!list.includes(id)) list.push(id)
+        }
+        // blocks of this mod wired in
+        for (let i = 1; i <= 32; i++) {
+          const s = source(n.id, `block${i}`)
+          if (!s || !['block', 'block3d', 'crop'].includes(s.node.type)) continue
+          const id = `${modid}:${str(s.node.data, 'id')}`
+          if (!blocks.includes(id)) blocks.push(id)
+        }
+        if (!blocks.length && !tags.length) {
+          err(n.id, 'Pick at least one block', 'เลือกบล็อกอย่างน้อย 1 อัน')
+          break
+        }
+        const tool = ((BREAK_TOOLS as readonly string[]).includes(str(d, 'tool')) ? str(d, 'tool') : 'pickaxe') as BreakRuleIR['tool']
+        const level = (
+          tool === 'shears' ? 'wood' : (TOOL_LEVELS as readonly string[]).includes(str(d, 'level')) ? str(d, 'level') : 'stone'
+        ) as BreakRuleIR['level']
+        if (tool === 'any' && level === 'wood')
+          warn(n.id, 'Any tool of any level: every player passes this rule', 'เครื่องมืออะไรก็ได้ ระดับไหนก็ได้: ผู้เล่นทุกคนผ่านกฎนี้')
+        const onFail = str(d, 'onFail') === 'cantBreak' ? 'cantBreak' : 'noDrop'
+        const auto = breakRuleMessage({ tool, level, onFail })
+        const en = str(d, 'messageEn').trim()
+        const th = str(d, 'messageTh').trim()
+        ir.breakRules.push({
+          nodeId: n.id,
+          blocks,
+          tags,
+          tool,
+          level,
+          onFail,
+          message: bool(d, 'message', true) ? { en: en || auto.en, th: th || (en ? en : auto.th) } : null,
+          timer: bool(d, 'timer', false),
+          ui: harvestUi(n.id),
+          adventure: bool(d, 'adventure', false)
+        })
+        if (source(n.id, 'ui') && !bool(d, 'timer', false))
+          warn(n.id, 'A timer window is wired in but "Show a timer while breaking" is off', 'ต่อหน้าต่างเวลาไว้ แต่ยังไม่ได้เปิด "แสดงเวลาตอนทุบ"')
         break
       }
       case 'gameCrop': {
@@ -647,7 +883,8 @@ export function compile(project: Project, target?: Target): CompileResult {
         const input = (['click', 'hold', 'stand'].includes(str(d, 'input')) ? str(d, 'input') : 'hold') as GameCropIR['input']
         // "like the game": picked bushes go back to their picked stage, everything else breaks
         const NORMAL: Record<string, number> = { 'minecraft:sweet_berry_bush': 1, 'farmersdelight:tomatoes': 0 }
-        const fdMissing = !!target && !farmersDelightFor(target.loader, target.mc)
+        const fdExt = extHost.get('farmers-delight')
+        const fdMissing = !!target && !!fdExt && !targetConfigFor(fdExt.manifest, target.loader, target.mc)
         for (const block of blocks) {
           if (!NSID_RE.test(block) || block.split(':')[0] === ir.meta.modId) {
             err(
@@ -680,11 +917,14 @@ export function compile(project: Project, target?: Target): CompileResult {
             nodeId: n.id,
             block,
             input,
-            harvestTicks: input === 'click' ? 0 : Math.round(clamp(num(d, 'harvestSeconds', 2), 0.5, 120) * 20),
+            harvestTicks: input === 'click' ? 0 : Math.round(clamp(num(d, 'harvestSeconds', 2), 0.1, 120) * 20),
             after: after as GameCropIR['after'],
             back,
             ui: harvestUi(n.id),
-            give: bool(d, 'give', false)
+            give: bool(d, 'give', false),
+            breakDrops: breakDropsOf(d),
+            adventure: bool(d, 'adventure', true),
+            sneak: bool(d, 'sneak', false)
           })
         }
         break
@@ -769,15 +1009,15 @@ export function compile(project: Project, target?: Target): CompileResult {
           nodeId: n.id,
           durability: clamp(Math.round(num(d, 'durability', 20)), 1, 1000),
           protection: {
-            helmet: num(d, 'helmet', 2),
-            chestplate: num(d, 'chestplate', 6),
-            leggings: num(d, 'leggings', 5),
-            boots: num(d, 'boots', 2)
+            helmet: int(d, 'helmet', 2, 0, 30),
+            chestplate: int(d, 'chestplate', 6, 0, 30),
+            leggings: int(d, 'leggings', 5, 0, 30),
+            boots: int(d, 'boots', 2, 0, 30)
           },
           enchantability: clamp(Math.round(num(d, 'enchantability', 15)), 0, 100),
           toughness: num(d, 'toughness', 0),
           knockback: clamp(num(d, 'knockback', 0), 0, 1),
-          equipSound: str(d, 'equipSound', 'iron'),
+          equipSound: sel(n, 'equipSound'),
           layer1: texture(n.id, 'layer1', true),
           layer2: texture(n.id, 'layer2', true),
           repair: ingredient(n.id, 'repair', false)
@@ -806,7 +1046,7 @@ export function compile(project: Project, target?: Target): CompileResult {
             model: null,
             handheld: false,
             maxStack: 1,
-            rarity: (str(d, 'rarity', 'common') as ItemIR['rarity']) || 'common',
+            rarity: sel<ItemIR['rarity']>(n, 'rarity'),
             fireResistant: bool(d, 'fireResistant'),
             glint: false,
             armor: { material: mat ? str(mat.node.data, 'id') : DEFAULT_MAT, slot, geo: g, effects: [] }
@@ -840,7 +1080,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           ...(g?.java && !iconModel ? { separateIcon: true } : {}),
           handheld: false,
           maxStack: 1,
-          rarity: (str(d, 'rarity', 'common') as ItemIR['rarity']) || 'common',
+          rarity: sel<ItemIR['rarity']>(n, 'rarity'),
           fireResistant: bool(d, 'fireResistant'),
           glint: false,
           armor: { material: mat ? str(mat.node.data, 'id') : DEFAULT_MAT, slot, geo: g, effects: effects(n.id) },
@@ -946,7 +1186,7 @@ export function compile(project: Project, target?: Target): CompileResult {
             .join('')
         )
         if (result)
-          ir.recipes.push({ kind: 'shaped', name: recipeName(result, 'shaped'), nodeId: n.id, pattern, key, result, count: clamp(num(d, 'count', 1), 1, 64) })
+          ir.recipes.push({ kind: 'shaped', name: recipeName(result, 'shaped'), nodeId: n.id, pattern, key, result, count: int(d, 'count', 1, 1, 64) })
         break
       }
       case 'recipeShapeless': {
@@ -964,14 +1204,14 @@ export function compile(project: Project, target?: Target): CompileResult {
             nodeId: n.id,
             ingredients: ings,
             result,
-            count: clamp(num(d, 'count', 1), 1, 64)
+            count: int(d, 'count', 1, 1, 64)
           })
         break
       }
       case 'recipeCooking': {
         const input = ingredient(n.id, 'input', true)
         const result = item(n.id, 'result', true)
-        const station = str(d, 'kind', 'smelting') as 'smelting'
+        const station = sel<'smelting'>(n, 'kind')
         if (input && result)
           ir.recipes.push({
             kind: 'cooking',
@@ -995,7 +1235,7 @@ export function compile(project: Project, target?: Target): CompileResult {
             nodeId: n.id,
             input,
             result,
-            count: clamp(num(d, 'count', 1), 1, 64)
+            count: int(d, 'count', 1, 1, 64)
           })
         break
       }
@@ -1015,68 +1255,7 @@ export function compile(project: Project, target?: Target): CompileResult {
           })
         break
       }
-      case 'fdCutting': {
-        usesFD = true
-        const input = ingredient(n.id, 'input', true)
-        const results: { item: string; count: number; chance: number }[] = []
-        for (let i = 1; i <= 4; i++) {
-          const it = item(n.id, `out${i}`, i === 1)
-          if (it) results.push({ item: it, count: clamp(num(d, `count${i}`, 1), 1, 64), chance: i === 1 ? 1 : clamp(num(d, `chance${i}`, 1), 0, 1) })
-        }
-        if (input && results.length)
-          ir.recipes.push({ kind: 'fdCutting', name: recipeName(results[0].item, 'cutting'), nodeId: n.id, input, tool: str(d, 'tool', 'knife'), results })
-        break
-      }
-      case 'fdCooking': {
-        usesFD = true
-        const ings: Ingredient[] = []
-        for (let i = 1; i <= 6; i++) {
-          const g = ingredient(n.id, `i${i}`, false)
-          if (g) ings.push(g)
-        }
-        const result = item(n.id, 'result', true)
-        if (!ings.length) err(n.id, 'Add at least one ingredient', 'ใส่วัตถุดิบอย่างน้อย 1 อย่าง')
-        else if (result)
-          ir.recipes.push({
-            kind: 'fdCooking',
-            name: recipeName(result, 'cooking'),
-            nodeId: n.id,
-            ingredients: ings,
-            container: item(n.id, 'container', false),
-            result,
-            count: clamp(num(d, 'count', 1), 1, 64),
-            xp: num(d, 'xp', 1),
-            time: clamp(Math.round(num(d, 'time', 200)), 1, 72000),
-            tab: str(d, 'tab', 'meals')
-          })
-        break
-      }
-      case 'script': {
-        const code = str(d, 'code')
-        const targets = Array.isArray(d.targets) ? (d.targets as unknown[]).filter((x): x is string => typeof x === 'string') : []
-        if (target && !scriptAppliesTo(targets, target)) break
-        if (code.length > 200000) {
-          err(n.id, 'The file is too long (max 200,000 characters)', 'ไฟล์ยาวเกินไป (สูงสุด 200,000 ตัวอักษร)')
-          break
-        }
-        const className = scriptClassName(code)
-        if (!className) {
-          err(n.id, 'Java: declare a public class (e.g. "public class MyScript {")', 'Java: ต้องมี public class (เช่น "public class MyScript {")')
-          break
-        }
-        if (isReservedClass(className))
-          err(
-            n.id,
-            `Java: the class name "${className}" is used by the generated mod — pick another`,
-            `Java: ชื่อคลาส "${className}" ม็อดใช้อยู่แล้ว ตั้งชื่ออื่น`
-          )
-        const unbalanced = scriptBracketProblem(code)
-        if (unbalanced) err(n.id, `Java: ${unbalanced.en}`, `Java: ${unbalanced.th}`)
-        ir.scripts.push({ nodeId: n.id, className, targets, code, entry: scriptEntrypoints(code) })
-        break
-      }
       case 'creativeTab': {
-        tabNodes++
         const id = str(d, 'id') || 'main'
         if (!ID_RE.test(id)) err(n.id, `Invalid ID "${id}" (use a-z, 0-9, _)`, `ID "${id}" ไม่ถูกต้อง (ใช้ a-z, 0-9, _)`)
         ir.tabs.push({
@@ -1091,6 +1270,48 @@ export function compile(project: Project, target?: Target): CompileResult {
         break
       }
     }
+  }
+
+  runMappings(
+    extHost.mapped(),
+    {
+      nodes,
+      source,
+      idOf: itemIdOf,
+      target: target ? { loader: target.loader, mc: target.mc } : null,
+      ingredient: (nodeId, handle) => ingredient(nodeId, handle, false),
+      texture: (nodeId, handle) => texture(nodeId, handle, false),
+      diag: (severity, nodeId, message) => diags.push({ severity, nodeId, message })
+    },
+    ir.ext
+  )
+
+  contributeBlocks()
+  // extensions that made something but do not work for this target yet
+  if (target)
+    for (const ext of extHost.list()) {
+      const made = Object.values(ir.ext[ext.manifest.id] ?? {}).some((records) => records.length > 0)
+      if (made && !extensionSupports(ext.manifest, target.loader, target.mc))
+        warn(
+          undefined,
+          `${ext.manifest.name.en} does not support ${target.loader} ${target.mc} yet: what it adds is left out`,
+          `${ext.manifest.name.th || ext.manifest.name.en} ยังไม่รองรับ ${target.loader} ${target.mc}: สิ่งที่ส่วนเสริมนี้เพิ่มจะไม่ถูกใส่`
+        )
+    }
+
+  ir.tabs.push(...regenTabs)
+
+  // linked mods set as required / optional: dependencies in the mod's metadata (by their id in game)
+  for (const m of project.mods ?? []) {
+    if (m.role !== 'required' && m.role !== 'optional') continue
+    if (!m.modId)
+      warn(
+        undefined,
+        `${m.title}: its mod id is not known yet, so it is not listed as a dependency. Load its items once (Game items) first.`,
+        `${m.title}: ยังไม่รู้ ID ม็อดของมัน จึงยังไม่ใส่เป็น dependency ให้โหลดไอเทมของม็อดนี้ (แท็บไอเทมเกม) ก่อนหนึ่งครั้ง`
+      )
+    else if (m.modId !== modid && !ir.dependsOn.some((d) => d.modId === m.modId))
+      ir.dependsOn.push({ modId: m.modId, title: m.title, required: m.role === 'required' })
   }
 
   // tools / armor without a material use iron (armor also looks like iron armor when worn)
@@ -1121,12 +1342,6 @@ export function compile(project: Project, target?: Target): CompileResult {
       vanillaLook: 'iron'
     })
 
-  // two script files with the same class for the same target
-  for (const [i, a] of ir.scripts.entries())
-    for (const b of ir.scripts.slice(i + 1))
-      if (a.className === b.className && (!a.targets.length || !b.targets.length || a.targets.some((x) => b.targets.includes(x))))
-        err(b.nodeId, `Java: class "${b.className}" is already defined by another Script node`, `Java: คลาส "${b.className}" มีในโหนดสคริปต์อื่นแล้ว`)
-
   // ── cross-checks ──
   const seen = new Map<string, string>()
   const claim = (id: string, nodeId: string) => {
@@ -1141,6 +1356,23 @@ export function compile(project: Project, target?: Target): CompileResult {
         'No seeds: wire this crop into an Item\'s "Places block" pin so it can be planted',
         'ยังไม่มีเมล็ด: ต่อพืชนี้เข้าขา "วางเป็นบล็อก" ของไอเทม เพื่อให้ปลูกได้'
       )
+  // Regenerating Blocks of this mod's blocks: a Block or 3D Block of the mod (not a crop or another regenerating block)
+  for (const b of ir.blocks)
+    if (
+      b.regen?.original.startsWith(`${modid}:`) &&
+      !ir.blocks.some((x) => (x.kind === 'cube' || x.kind === 'model') && `${modid}:${x.id}` === b.regen!.original)
+    )
+      err(b.nodeId, `${b.regen.original} is not a Block or 3D Block of this mod`, `${b.regen.original} ไม่ใช่บล็อกหรือบล็อก 3D ของม็อดนี้`)
+  // Break Rules: own blocks must exist; a block in two rules follows the first one
+  const ruled = new Map<string, string>()
+  for (const r of ir.breakRules)
+    for (const b of [...r.blocks, ...r.tags.map((x) => `#${x}`)]) {
+      if (b.startsWith(`${modid}:`) && !ir.blocks.some((x) => `${modid}:${x.id}` === b))
+        err(r.nodeId, `${b} is not a block of this mod`, `${b} ไม่ใช่บล็อกของม็อดนี้`)
+      const prev = ruled.get(b)
+      if (prev && prev !== r.nodeId) warn(r.nodeId, `${b} is already in another Break Rule (that one is used)`, `${b} อยู่ในกฎการทุบอื่นแล้ว (ใช้กฎนั้น)`)
+      else ruled.set(b, r.nodeId)
+    }
   for (const m of ir.mobs) {
     claim(`entity:${m.id}`, m.nodeId)
     claim(`item:${m.id}_spawn_egg`, m.nodeId)
@@ -1166,27 +1398,20 @@ export function compile(project: Project, target?: Target): CompileResult {
     }
     main.items.push(...loose.filter((id) => !main!.items.includes(id)))
   }
-  void tabNodes
 
   if (target) {
     if (!isSupported(target.loader, target.mc)) err(undefined, `${target.loader} ${target.mc} is not supported`, `ไม่รองรับ ${target.loader} ${target.mc}`)
     else {
       const p = getProfile(target.mc)
-      const fdItems = JSON.stringify([ir.recipes, ir.tabs, ir.blocks.map((x) => x.drop)]).includes('farmersdelight:')
-      if (fdItems && !usesFD && !farmersDelightFor(target.loader, target.mc))
+      const fdExt = extHost.get('farmers-delight')
+      const fdItems = JSON.stringify([ir.recipes, ir.tabs, ir.blocks, ir.breakRules]).includes('farmersdelight:')
+      const usesFD = !!(ir.ext['farmers-delight']?.cuttingRecipes?.length || ir.ext['farmers-delight']?.cookingRecipes?.length)
+      if (fdItems && !usesFD && fdExt && !targetConfigFor(fdExt.manifest, target.loader, target.mc))
         warn(
           undefined,
           `Farmer's Delight items are used but Farmer's Delight is not available for ${target.loader} ${target.mc}`,
           `มีการใช้ไอเทมของ Farmer's Delight แต่ ${target.loader} ${target.mc} ไม่มี Farmer's Delight`
         )
-      if (usesFD && !farmersDelightFor(target.loader, target.mc))
-        for (const r of ir.recipes)
-          if (r.kind === 'fdCutting' || r.kind === 'fdCooking')
-            warn(
-              r.nodeId,
-              `Farmer's Delight is not available for ${target.loader} ${target.mc}; recipe skipped`,
-              `ไม่มี Farmer's Delight สำหรับ ${target.loader} ${target.mc} — ข้ามสูตรนี้`
-            )
       if (!separateIconMode({ p, loader: target.loader }))
         for (const it of ir.items)
           if (it.separateIcon)
@@ -1198,6 +1423,16 @@ export function compile(project: Project, target?: Target): CompileResult {
       for (const it of ir.items)
         if (it.places && !ir.blocks.some((b) => b.id === it.places))
           err(it.nodeId, 'The connected block is not part of this mod', 'บล็อกที่ต่อไว้ไม่ได้อยู่ในม็อดนี้')
+      for (const r of ir.breakRules) {
+        if (r.tags.length && target.mc === '1.16.5')
+          warn(
+            r.nodeId,
+            'Block tags in Break Rules need Minecraft 1.18.2+: they are skipped on 1.16.5',
+            'แท็กบล็อกในกฎการทุบต้องใช้ Minecraft 1.18.2 ขึ้นไป: ข้ามใน 1.16.5'
+          )
+        if (r.tool === 'sword' && r.level !== 'wood' && p.toolApi === 'toolMaterial')
+          warn(r.nodeId, `On ${target.mc} swords have no mining level: any sword counts`, `ใน ${target.mc} ดาบไม่มีระดับการขุด: ดาบอะไรก็ผ่าน`)
+      }
       if (usesGeo && !p.geckoArmor)
         for (const it of ir.items)
           if (it.armor?.geo) {

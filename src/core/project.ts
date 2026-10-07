@@ -23,7 +23,7 @@ export const TargetSchema = z.object({
 })
 export type Target = z.infer<typeof TargetSchema>
 
-export const GraphNodeSchema = z.object({
+const GraphNodeSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
   type: z.string().regex(/^[a-zA-Z0-9]{1,40}$/),
   position: z.object({ x: z.number().finite(), y: z.number().finite() }),
@@ -33,7 +33,7 @@ export const GraphNodeSchema = z.object({
 })
 export type GraphNode = z.infer<typeof GraphNodeSchema>
 
-export const GraphEdgeSchema = z.object({
+const GraphEdgeSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9_:.-]{1,200}$/),
   source: z.string(),
   sourceHandle: z.string(),
@@ -106,7 +106,7 @@ export function shippedCredits(meta: ProjectMeta): Credit[] {
 }
 
 /** "fabric-1.21.1:src/main/java/…/ModItems.java" — a plain relative path, no ".." */
-export const OVERRIDE_KEY_RE = /^[a-z]+-[0-9.]+:(?!.*\.\.)[A-Za-z0-9_][A-Za-z0-9_./-]{0,300}$/
+const OVERRIDE_KEY_RE = /^[a-z]+-[0-9.]+:(?!.*\.\.)[A-Za-z0-9_][A-Za-z0-9_./-]{0,300}$/
 
 export const ProjectSchema = z.object({
   schemaVersion: z.literal(1),
@@ -122,9 +122,36 @@ export const ProjectSchema = z.object({
   overrides: z
     .record(z.string().regex(OVERRIDE_KEY_RE), z.string().max(1_000_000))
     .refine((o) => Object.keys(o).length <= 300, 'Too many edited files')
+    .optional(),
+  /** extensions the project's nodes come from (so a missing one can be named when the project is opened elsewhere) */
+  extensions: z
+    .array(z.object({ id: z.string().regex(/^[a-z][a-z0-9-]{2,40}$/), version: z.string().max(40).optional() }))
+    .max(50)
+    .optional(),
+  /** other mods whose items, blocks and crops the editor lists (Modrinth slug, or file_<name> for a .jar on disk) */
+  mods: z
+    .array(
+      z.object({
+        id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/),
+        title: z.string().max(100),
+        source: z.enum(['modrinth', 'file']),
+        /**
+         * in test runs and in the mod's metadata: none (item list only), test (test runs only),
+         * optional (test runs + an optional dependency), required (test runs + a required dependency)
+         */
+        role: z.enum(['none', 'test', 'optional', 'required']).optional(),
+        /** the mod's id in game (read from its jar), for the metadata dependency */
+        modId: z
+          .string()
+          .regex(/^[a-z][a-z0-9_-]{1,63}$/)
+          .optional()
+      })
+    )
+    .max(200)
     .optional()
 })
 export type Project = z.infer<typeof ProjectSchema>
+export type LinkedMod = NonNullable<Project['mods']>[number]
 
 /** Key of an edited generated file: the target plus the file's path in the generated project. */
 export const overrideKey = (t: Target, path: string) => `${t.loader}-${t.mc}:${path}`

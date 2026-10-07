@@ -5,7 +5,7 @@ import { bracketMatching, foldGutter, foldKeymap, syntaxHighlighting } from '@co
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { json } from '@codemirror/lang-json'
-import { highlight } from '../graph/ScriptEditor'
+import { highlight } from '../components/highlight'
 
 /**
  * JSON in a code editor (like VS Code's settings.json). Read-only unless `onChange` is given; then valid

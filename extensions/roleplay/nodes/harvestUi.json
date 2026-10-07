@@ -1,0 +1,35 @@
+{
+  "type": "harvestUi",
+  "category": "util",
+  "title": {
+    "en": "Timer window",
+    "th": "หน้าต่างเวลา"
+  },
+  "description": {
+    "en": "How the timer window looks on screen (picking crops by hand, breaking blocks): elements, colours, gradients, images and animations. Wire it into Crop, Harvest a game crop, Regenerating Blocks or Break Rule nodes (one window can be used by many).",
+    "th": "หน้าต่างเวลาบนจอ (ตอนเก็บพืชด้วยมือ ตอนทุบบล็อก): ชิ้นส่วน สี ไล่สี รูปภาพ และแอนิเมชัน ต่อเข้าโหนดพืช เก็บเกี่ยวพืชในเกม บล็อกเกิดใหม่ หรือกฎการทุบบล็อก (ใช้ร่วมกันได้หลายโหนด)"
+  },
+  "icon": "⏳",
+  "inputs": [],
+  "outputs": [
+    {
+      "id": "out",
+      "label": {
+        "en": "Timer window",
+        "th": "หน้าต่างเวลา"
+      },
+      "type": "harvestUi"
+    }
+  ],
+  "props": [
+    {
+      "key": "doc",
+      "label": {
+        "en": "Timer window",
+        "th": "หน้าต่างเวลา"
+      },
+      "kind": "timerUi",
+      "default": null
+    }
+  ]
+}

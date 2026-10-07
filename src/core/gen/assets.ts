@@ -1,5 +1,7 @@
 import type { BlockIR, ModelRef } from '../ir'
-import { usesHarvest } from './harvest'
+import { extLangEntries } from './extgen'
+import { harvestUis, usesHud } from './harvest'
+import { breakRuleKey } from './breakRules'
 import { armorIconModel, fitAnimation, geoLoopName, javaModelToGeo, prepareArmorGeo, type GeoFile } from './geo'
 import { textureKeys, type JavaModel } from './model'
 import { parseJavaModel, remapTextures } from './model'
@@ -216,9 +218,11 @@ export function genAssets(ctx: GenCtx): void {
   // ── lang ──
   const en: Record<string, string> = {}
   const th: Record<string, string> = {}
-  const put = (k: string, e: string, t: string) => {
-    en[k] = e
-    th[k] = t || e
+  /** A lang entry. Text the user wrote is escaped ('%' would be read as a format code); `format` = our own %s template. */
+  const put = (k: string, e: string, t: string, format = false) => {
+    const esc = (v: string) => (format ? v : v.replace(/%/g, '%%'))
+    en[k] = esc(e)
+    th[k] = esc(t || e)
   }
   for (const it of ir.items) {
     put(`item.${ns}.${it.id}`, it.name, it.nameTh)
@@ -234,20 +238,36 @@ export function genAssets(ctx: GenCtx): void {
     put(`block.${ns}.${b.id}`, b.name, b.nameTh)
     put(`item.${ns}.${b.id}`, b.name, b.nameTh)
   }
+  // Regenerating Blocks: the item is named after the original block (%s), only operators can place it
+  if (ir.blocks.some((b) => b.regen)) {
+    put(`item.${ns}.regen_name`, '%s (Regenerating)', '%s (เกิดใหม่)', true)
+    put(`message.${ns}.regen_op`, 'Only operators (OP) can place this', 'เฉพาะ OP เท่านั้นที่วางบล็อกนี้ได้')
+    put(`message.${ns}.regen_tool`, 'Needs a better tool', 'ต้องใช้อุปกรณ์ที่ดีกว่านี้')
+  }
   for (const m of ir.mobs) {
     put(`entity.${ns}.${m.id}`, m.name, m.nameTh)
     put(`item.${ns}.${m.id}_spawn_egg`, `${m.name} Spawn Egg`, `ไข่เกิด${m.nameTh || m.name}`)
   }
   if (ir.items.some((i) => i.headwear)) put(`tooltip.${ns}.wearable_head`, 'Can be worn on the head', 'สวมบนหัวได้')
-  // crop harvest timer
-  if (usesHarvest(ir)) {
-    put(`message.${ns}.harvest`, 'Harvesting %s %s s', 'กำลังเก็บ %s %s วิ')
-    put(`message.${ns}.harvest_notime`, 'Harvesting %s', 'กำลังเก็บ %s')
-    put(`message.${ns}.harvest_seconds`, '%s s', '%s วิ')
+  // timers on screen (picking crops, breaking blocks)
+  if (usesHud(ir)) {
+    // the text of every timer window element (with {seconds} / {percent} / {bar} in it)
+    harvestUis(ir).forEach((ui, i) =>
+      ui.elements.forEach((e, j) => {
+        if (e.type === 'text') put(`message.${ns}.timer${i}_${j}`, e.text, e.textTh ?? e.text)
+      })
+    )
     put(`message.${ns}.harvest_done`, 'Harvested!', 'เก็บแล้ว!')
     put(`message.${ns}.harvest_moved`, 'You moved: right-click again to harvest', 'ขยับแล้ว: คลิกขวาใหม่เพื่อเก็บ')
     put(`message.${ns}.harvest_released`, 'Keep holding right-click to harvest', 'กดคลิกขวาค้างไว้เพื่อเก็บ')
+    put(`message.${ns}.harvest_sneak`, 'Sneak (Shift) and right-click to harvest', 'ย่อตัว (Shift) แล้วคลิกขวาเพื่อเก็บ')
+    put(`message.${ns}.harvest_released_left`, 'Keep holding left-click to harvest', 'กดคลิกซ้ายค้างไว้เพื่อเก็บ')
+    put(`message.${ns}.harvest_moved_left`, 'You moved: left-click again to harvest', 'ขยับแล้ว: คลิกซ้ายใหม่เพื่อเก็บ')
   }
+  // Break Rule messages
+  ir.breakRules.forEach((r, i) => {
+    if (r.message) put(breakRuleKey(ns, i), r.message.en, r.message.th)
+  })
   // stat bonus tooltip headers
   const when: Record<string, [string, string]> = {
     mainhand: ['When in Main Hand:', 'เมื่อถือในมือหลัก:'],
@@ -267,6 +287,7 @@ export function genAssets(ctx: GenCtx): void {
     put(`itemGroup.${ns}_${t.id}`, t.title, t.titleTh)
     if (t.logo && !t.icon) put(`item.${ns}.${t.id}_tab_icon`, t.title, t.titleTh)
   }
+  for (const [k, e, t] of extLangEntries(ctx)) put(k, e, t)
   files.push({ path: `${A}/lang/en_us.json`, text: json(en) })
   files.push({ path: `${A}/lang/th_th.json`, text: json(th) })
 }
@@ -315,6 +336,16 @@ function genBlock(
     const variants: Record<string, { model: string }> = {}
     for (let age = 0; age <= 7; age++) variants[`age=${age}`] = { model: `${ns}:block/${b.id}_stage${Math.min(n - 1, Math.floor((age * n) / 8))}` }
     files.push({ path: `${A}/blockstates/${b.id}.json`, text: json({ variants }) })
+    return
+  }
+  // Regenerating Blocks: the original block's model (blocks named ns:path use ns:block/path)
+  const lookOf = b.regen?.original ?? b.depleted?.look
+  if (lookOf) {
+    const [lns, lpath] = lookOf.split(':')
+    const renderType = b.seeThrough && !fabricLike(ctx.loader) && ctx.p.modelRenderType ? { render_type: 'minecraft:cutout' } : {}
+    files.push({ path: `${A}/models/block/${b.id}.json`, text: json({ parent: `${lns}:block/${lpath}`, ...renderType }) })
+    files.push({ path: `${A}/blockstates/${b.id}.json`, text: json(states) })
+    if (b.hasItem) files.push({ path: `${A}/models/item/${b.id}.json`, text: json({ parent: model }) })
     return
   }
   if (b.kind === 'model' && b.model) {

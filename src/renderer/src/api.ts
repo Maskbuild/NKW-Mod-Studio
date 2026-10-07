@@ -76,7 +76,14 @@ export const api = {
       audio
     }),
   vanilla: (mc: string, source: ItemSource = 'minecraft') => call<VanillaData | null>('vanilla:get', { mc, source }),
-  downloadVanilla: (mc: string, source: ItemSource = 'minecraft') => call<VanillaData | null>('vanilla:download', { mc, source }),
+  downloadVanilla: (mc: string, source: ItemSource = 'minecraft', title?: string, loader?: string) =>
+    call<VanillaData | null>('vanilla:download', { mc, source, title, loader }),
+  /** mods on Modrinth for a Minecraft version and loader, `limit` per page */
+  searchMods: (query: string, mc: string, loader: string, sort: ModSort = 'relevance', offset = 0, limit = 20) =>
+    call<{ hits: ModrinthHit[]; total: number }>('mods:search', { query, mc, loader, sort, offset, limit }),
+  /** reads .jar files (or every .jar of a folder) picked on disk */
+  importModJars: (mc: string, folder: boolean) =>
+    call<{ mods: { id: string; title: string; modId?: string }[]; errors: string[] }>('mods:importJars', { mc, folder }),
   toolchain: () => call<{ jdks: { major: number; home: string; managed: boolean }[]; toolsDir: string }>('toolchain:status'),
   previewCode: (project: Project, target: Target) => call<{ path: string; text: string | null; generated?: string }[]>('code:preview', { project, target }),
   startBuild: (project: Project, target: Target, task: 'runClient' | 'build' | 'compileJava') => call<boolean>('build:start', { project, target, task }),
@@ -84,12 +91,85 @@ export const api = {
   openBuildFolder: (t: Target) => call<boolean>('build:openFolder', t),
   cleanBuild: (t: Target) => call<boolean>('build:clean', t),
   openExternal: (url: string) => call<boolean>('shell:openExternal', { url }),
+  skinsExportFigura: (skins: { id: string; name: string; file: string; openFile: string; slim: boolean; set: string }[]) =>
+    call<{ dir: string; avatars: number } | null>('skins:exportFigura', { skins }),
+  extList: () => call<ExtList>('ext:list'),
+  extBundle: () => call<{ id: string; files: Record<string, string> }[]>('ext:bundle'),
+  extInspect: (source: string) => call<ExtInspected>('ext:inspect', { source }),
+  extInspectFolder: () => call<ExtInspected | null>('ext:inspectFolder'),
+  extInstall: (token: string) => call<ExtRecord>('ext:install', { token }),
+  extRemove: (id: string) => call<void>('ext:remove', { id }),
+  extSetEnabled: (id: string, enabled: boolean) => call<void>('ext:setEnabled', { id, enabled }),
+  extRollback: (id: string) => call<ExtRecord>('ext:rollback', { id }),
+  extCheckUpdates: () => call<{ id: string; current: string; latest: string; label: string }[]>('ext:checkUpdates'),
   on: <T>(channel: 'build:log' | 'build:progress' | 'build:done' | 'vanilla:progress', cb: (p: T) => void) => window.nkw.on(channel, cb as (p: unknown) => void)
 }
 
+export type ModSort = 'relevance' | 'downloads' | 'follows' | 'newest' | 'updated'
+/** A mod in the Modrinth gallery. */
+export interface ModrinthHit {
+  slug: string
+  title: string
+  description: string
+  author: string
+  downloads: number
+  categories: string[]
+  loaders: string[]
+  icon: string | null
+  image: string | null
+  follows: number
+  /** last update (ISO date) */
+  updated: string
+  env: 'client' | 'server' | 'both' | 'any'
+}
+
+export interface ExtPreview {
+  id: string
+  name: { en: string; th: string }
+  description: { en: string; th: string }
+  version: string
+  author?: string
+  minApp?: string
+  requires: Record<string, string>
+  nodes: number
+  generates: number
+  size: number
+  files: number
+  targets: { mc?: string; loaders?: string[] }
+}
+export interface ExtInspected {
+  token: string
+  preview: ExtPreview
+  source: string
+  sha: string
+  via: string
+  label: string
+  installed: { version: string; sha: string } | null
+  errors: string[]
+  missing: string[]
+}
+export interface ExtRecord {
+  id: string
+  version: string
+  source: string
+  sha: string
+  via: string
+  enabled: boolean
+  installedAt: string
+  dir: string
+  previous: { version: string; sha: string; dir: string }[]
+}
+export interface ExtList {
+  installed: ExtRecord[]
+  official: { id: string; source: string }[]
+  problems: { id: string; errors: string[] }[]
+}
+
 export const assetUrl = (asset: string) => `nkw-asset://project/${asset}`
-export type ItemSource = 'minecraft' | 'farmersdelight'
+/** where item data comes from: the game, Farmer's Delight, or a mod linked to the project (mod:<id>) */
+export type ItemSource = 'minecraft' | 'farmersdelight' | `mod:${string}`
 /** The game's Steve / Alex skin, extracted from the downloaded Minecraft files. */
 export const vanillaSkinUrl = (mc: string, slim: boolean) => `nkw-asset://vanilla/${mc}/skins/${slim ? 'alex' : 'steve'}.png`
+/** Icon of an item; `ns` is the item's namespace, or a source (mod:<id>) for items of linked mods. */
 export const vanillaIconUrl = (mc: string, id: string, ns: string = 'minecraft') =>
-  `nkw-asset://vanilla/${mc}/${ns === 'farmersdelight' ? 'farmersdelight/' : ''}${id}.png`
+  `nkw-asset://vanilla/${mc}/${ns === 'farmersdelight' ? 'farmersdelight/' : ns.startsWith('mod:') ? `mod/${ns.slice(4)}/` : ''}${id}.png`

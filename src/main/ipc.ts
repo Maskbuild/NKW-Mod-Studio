@@ -1,4 +1,4 @@
-import { copyFile } from 'node:fs/promises'
+import { copyFile, rm } from 'node:fs/promises'
 import { GameOptionsSchema, optionsEntries } from '@core/gameOptions'
 import { ModelControlsSchema } from '@core/modelControls'
 import { existsSync } from 'node:fs'
@@ -20,18 +20,39 @@ import {
   moveAsset,
   readModel,
   type AssetKind,
+  type ImportedAsset,
   writeModel,
   writeTexture
 } from './services/assets'
-import { CONVERTIBLE } from './services/audio'
-import { ensureFarmersDelight, ensureVanilla, loadFarmersDelight, loadVanilla, vanillaIconPath, vanillaSkinPath } from './services/vanilla'
+import { CONVERTIBLE, type ConvertOptions } from './services/audio'
+import {
+  ensureFarmersDelight,
+  ensureModrinthMod,
+  ensureVanilla,
+  importModJar,
+  loadFarmersDelight,
+  loadMod,
+  loadVanilla,
+  searchModrinth,
+  vanillaIconPath,
+  vanillaSkinPath
+} from './services/vanilla'
+import { LINKED_MOD_RE } from '@core/vanilla'
+import { readdir } from 'node:fs/promises'
 import { assetPath, buildDir, findJar, previewFiles, startBuild, type RunningBuild } from './services/builder'
 import { createProjectDir, readProject, saveProject, type SettingsStore } from './services/store'
 import { TEMPLATE_IDS, applyTemplate } from './templates'
+import { ExtensionStore } from './services/extensions'
+import { writeFiguraAvatars } from './services/figura'
+import { ExtensionRuntime } from './services/extruntime'
+import { getBuffer, getJson } from './services/net'
+import official from '@core/ext/official.json'
 
 /** The one project the renderer may touch. All paths are resolved relative to it. */
 let currentDir: string | null = null
 let running: RunningBuild | null = null
+/** true from "build:start" until the build runs (or fails to start): stops a double click starting two builds */
+let starting = false
 
 const toolsDir = () => (!app.isPackaged && process.env.NKW_TOOLS_DIR ? process.env.NKW_TOOLS_DIR : join(app.getPath('userData'), 'tools'))
 
@@ -57,8 +78,10 @@ export function registerAssetProtocol() {
       let file: string | null
       if (url.hostname === 'vanilla') {
         const skin = /^(\d+\.\d+(?:\.\d+)?)\/skins\/(steve|alex)\.png$/.exec(rel)
-        const m = /^(\d+\.\d+(?:\.\d+)?)\/(?:(farmersdelight)\/)?([a-z0-9_]{1,64})\.png$/.exec(rel)
-        file = skin ? vanillaSkinPath(toolsDir(), skin[1], skin[2]) : m ? vanillaIconPath(toolsDir(), m[1], m[3], m[2] ?? 'minecraft') : null
+        // <mc>/<item>.png, <mc>/farmersdelight/<item>.png, <mc>/mod/<mod id>/<item>.png
+        const m = /^(\d+\.\d+(?:\.\d+)?)\/(?:(farmersdelight)\/|mod\/([a-z0-9][a-z0-9_-]{0,63})\/)?([a-z0-9_]{1,64})\.png$/.exec(rel)
+        const source = m?.[2] ?? (m?.[3] ? `mod:${m[3]}` : 'minecraft')
+        file = skin ? vanillaSkinPath(toolsDir(), skin[1], skin[2]) : m ? vanillaIconPath(toolsDir(), m[1], m[4], source) : null
         if (!file) return new Response('Not found', { status: 404 })
       } else file = assetPath(requireProject(), rel)
       const res = await net.fetch(pathToFileURL(file).toString())
@@ -70,6 +93,22 @@ export function registerAssetProtocol() {
       return new Response('Not found', { status: 404 })
     }
   })
+}
+
+/** Imports files one by one (kind detected from content when not given); a bad file does not stop the rest. */
+async function importEach(dir: string, paths: string[], kind: AssetKind | undefined, audio: ConvertOptions, folder?: string) {
+  const imported: ImportedAsset[] = []
+  const errors: string[] = []
+  for (const p of paths) {
+    try {
+      const k = kind ?? (await detectKind(p))
+      if (!k) throw new Error('Unsupported file')
+      imported.push(...(await importAsset(dir, p, k, audio, folder)))
+    } catch (e) {
+      errors.push(`${basename(p)}: ${(e as Error).message}`)
+    }
+  }
+  return { imported, errors }
 }
 
 type Handler<S extends z.ZodTypeAny> = (arg: z.infer<S>, win: BrowserWindow) => unknown
@@ -181,19 +220,8 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
       filters: [{ name: th ? 'ไฟล์ที่รองรับทั้งหมด' : 'All supported files', extensions: all }]
     })
     if (r.canceled) return { imported: [], errors: [] }
-    const out = []
-    const errors: string[] = []
-    for (const p of r.filePaths.slice(0, 32)) {
-      try {
-        const k = await detectKind(p)
-        if (!k) throw new Error('Unsupported file')
-        // keep the chosen folder only when it matches the file's section
-        out.push(...(await importAsset(dir, p, k, audio, folder)))
-      } catch (e) {
-        errors.push(`${basename(p)}: ${(e as Error).message}`)
-      }
-    }
-    return { imported: out, errors }
+    // keep the chosen folder only when it matches the file's section
+    return importEach(dir, r.filePaths.slice(0, 32), undefined, audio, folder)
   })
   handle('assets:import', z.object({ kind: KIND, folder: FOLDER, audio: AUDIO }), async ({ kind, folder, audio }) => {
     const dir = requireProject()
@@ -216,21 +244,7 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
   handle(
     'assets:importPaths',
     z.object({ paths: z.array(z.string().min(3).max(1024)).max(32), kind: KIND.optional(), folder: FOLDER, audio: AUDIO }),
-    async ({ paths, kind, folder, audio }) => {
-      const dir = requireProject()
-      const out = []
-      const errors: string[] = []
-      for (const p of paths) {
-        try {
-          const k = kind ?? (await detectKind(p))
-          if (!k) throw new Error('Unsupported file')
-          out.push(...(await importAsset(dir, p, k, audio, folder)))
-        } catch (e) {
-          errors.push(`${basename(p)}: ${(e as Error).message}`)
-        }
-      }
-      return { imported: out, errors }
-    }
+    async ({ paths, kind, folder, audio }) => importEach(requireProject(), paths, kind, audio, folder)
   )
 
   // Audio converter: pick audio/video files, convert to .ogg inside the project
@@ -243,17 +257,70 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
       filters: [{ name: th ? 'เสียง / วิดีโอ' : 'Audio / video', extensions: CONVERTIBLE }]
     })
     if (r.canceled) return { imported: [], errors: [] }
-    const out = []
-    const errors: string[] = []
-    for (const p of r.filePaths.slice(0, 32)) {
-      try {
-        out.push(...(await importAsset(dir, p, 'sound', { ...audio, volume: audio.volume }, folder)))
-      } catch (e) {
-        errors.push(`${basename(p)}: ${(e as Error).message}`)
-      }
-    }
-    return { imported: out, errors }
+    return importEach(dir, r.filePaths.slice(0, 32), 'sound', audio, folder)
   })
+
+  // ───────── extensions (installed from git, used offline from the local cache) ─────────
+  const extRuntime = new ExtensionRuntime(new ExtensionStore(join(toolsDir(), 'extensions')), { getJson: (url) => getJson(url), getBuffer }, app.getVersion())
+  let extProblems: { id: string; errors: string[] }[] = []
+  void extRuntime.sync().then((p) => (extProblems = p))
+  const EXT_ID = z.object({ id: z.string().regex(/^[a-z][a-z0-9-]{2,40}$/) })
+  handle('ext:list', z.undefined(), async () => ({
+    installed: await extRuntime.store.list(),
+    official: official.extensions,
+    problems: extProblems
+  }))
+  handle('ext:bundle', z.undefined(), () => extRuntime.bundle())
+  // installing is something the user asks for in the dialog, so it needs no separate download permission
+  handle('ext:inspect', z.object({ source: z.string().min(3).max(300) }), ({ source }) => extRuntime.inspectGit(source))
+  handle('ext:inspectFolder', z.undefined(), async (_a, w) => {
+    const th = settings.get().language === 'th'
+    const r = await dialog.showOpenDialog(w, { title: th ? 'เลือกโฟลเดอร์ส่วนเสริม' : 'Choose an extension folder', properties: ['openDirectory'] })
+    if (r.canceled || !r.filePaths[0]) return null
+    return extRuntime.inspectFolder(r.filePaths[0])
+  })
+  handle('ext:install', z.object({ token: z.string().uuid() }), async ({ token }) => {
+    const rec = await extRuntime.install(token)
+    extProblems = extProblems.filter((p) => p.id !== rec.id)
+    return rec
+  })
+  handle('ext:remove', EXT_ID, ({ id }) => extRuntime.remove(id))
+  handle('ext:setEnabled', EXT_ID.extend({ enabled: z.boolean() }), async ({ id, enabled }) => {
+    await extRuntime.setEnabled(id, enabled)
+  })
+  handle('ext:rollback', EXT_ID, ({ id }) => extRuntime.rollback(id))
+  // looking for updates in the background only happens when downloads are allowed
+  handle('ext:checkUpdates', z.undefined(), () => (settings.get().allowDownloads ? extRuntime.checkUpdates() : []))
+
+  // ───────── skins: Figura avatars ─────────
+  handle(
+    'skins:exportFigura',
+    z.object({
+      skins: z
+        .array(
+          z.object({
+            id: z.string().max(64),
+            name: z.string().max(100),
+            file: z.string().max(300),
+            openFile: z.string().max(300),
+            slim: z.boolean(),
+            set: z.string().max(40)
+          })
+        )
+        .max(200)
+    }),
+    async ({ skins }, w) => {
+      const dir = requireProject()
+      const th = settings.get().language === 'th'
+      const r = await dialog.showOpenDialog(w, {
+        title: th ? 'เลือกโฟลเดอร์ที่จะเขียนอวาตาร์ Figura' : 'Choose where to write the Figura avatars',
+        properties: ['openDirectory', 'createDirectory']
+      })
+      if (r.canceled || !r.filePaths[0]) return null
+      const project = await readProject(dir)
+      return writeFiguraAvatars(skins, { name: project.meta.name, authors: project.meta.authors }, (a) => assetPath(dir, a), r.filePaths[0])
+    }
+  )
 
   // ───────── asset tree: folders, rename, move, delete ─────────
   const PATH = z.string().min(3).max(300)
@@ -272,11 +339,66 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
   })
 
   // ───────── vanilla items ─────────
-  const VSRC = z.object({ mc: z.string().regex(/^\d+\.\d+(\.\d+)?$/), source: z.enum(['minecraft', 'farmersdelight']).default('minecraft') })
-  handle('vanilla:get', VSRC, ({ mc, source }) => (source === 'farmersdelight' ? loadFarmersDelight(toolsDir(), mc) : loadVanilla(toolsDir(), mc)))
-  handle('vanilla:download', VSRC, ({ mc, source }) => {
+  const MC = z.string().regex(/^\d+\.\d+(\.\d+)?$/)
+  // minecraft, farmersdelight, or mod:<id> (a mod linked from Modrinth or a .jar file)
+  const SOURCE = z.string().regex(/^(minecraft|farmersdelight|mod:[a-z0-9][a-z0-9_-]{0,63})$/)
+  const VSRC = z.object({
+    mc: MC,
+    source: SOURCE.default('minecraft'),
+    title: z.string().max(100).optional(),
+    loader: z.enum(['fabric', 'quilt', 'forge', 'neoforge']).optional()
+  })
+  handle('vanilla:get', VSRC, ({ mc, source }) =>
+    source === 'farmersdelight'
+      ? loadFarmersDelight(toolsDir(), mc)
+      : source.startsWith('mod:')
+        ? loadMod(toolsDir(), mc, source.slice(4))
+        : loadVanilla(toolsDir(), mc)
+  )
+  handle('vanilla:download', VSRC, ({ mc, source, title, loader }) => {
     const progress = (msg: string, done?: number, total?: number) => send('vanilla:progress', { mc, source, msg, done, total })
-    return source === 'farmersdelight' ? ensureFarmersDelight(toolsDir(), mc, progress) : ensureVanilla(toolsDir(), mc, progress)
+    if (source === 'farmersdelight') return ensureFarmersDelight(toolsDir(), mc, progress)
+    if (source.startsWith('mod:')) {
+      const id = source.slice(4)
+      // a .jar picked on disk cannot be downloaded again: pick it again for this version
+      return id.startsWith('file_') ? null : ensureModrinthMod(toolsDir(), mc, id, title ?? id, progress, loader)
+    }
+    return ensureVanilla(toolsDir(), mc, progress)
+  })
+
+  // ───────── mods: search Modrinth, or read .jar files picked on disk ─────────
+  handle(
+    'mods:search',
+    z.object({
+      query: z.string().max(100),
+      mc: MC,
+      loader: z.enum(['fabric', 'quilt', 'forge', 'neoforge']),
+      sort: z.enum(['relevance', 'downloads', 'follows', 'newest', 'updated']).default('relevance'),
+      offset: z.number().int().min(0).max(10000).default(0),
+      limit: z.number().int().min(5).max(100).default(20)
+    }),
+    ({ query, mc, loader, sort, offset, limit }) => searchModrinth(query, mc, loader, sort, offset, limit)
+  )
+  handle('mods:importJars', z.object({ mc: MC, folder: z.boolean() }), async ({ mc, folder }) => {
+    const th = settings.get().language === 'th'
+    const r = await dialog.showOpenDialog(win, {
+      title: folder ? (th ? 'เลือกโฟลเดอร์ mods' : 'Choose a mods folder') : th ? 'เลือกไฟล์ม็อด (.jar)' : 'Choose mod files (.jar)',
+      properties: folder ? ['openDirectory'] : ['openFile', 'multiSelections'],
+      filters: folder ? undefined : [{ name: 'Minecraft mod', extensions: ['jar'] }]
+    })
+    if (r.canceled || !r.filePaths.length) return { mods: [], errors: [] }
+    const jars = folder ? (await readdir(r.filePaths[0])).filter((f) => f.toLowerCase().endsWith('.jar')).map((f) => join(r.filePaths[0], f)) : r.filePaths
+    const mods: { id: string; title: string; modId?: string }[] = []
+    const errors: string[] = []
+    for (const jar of jars.slice(0, 200)) {
+      try {
+        const { id, data } = await importModJar(toolsDir(), mc, jar, (msg, done, total) => send('vanilla:progress', { mc, source: 'import', msg, done, total }))
+        if (LINKED_MOD_RE.test(id)) mods.push({ id, title: data.title ?? id, modId: data.modId })
+      } catch (e) {
+        errors.push(`${basename(jar)}: ${(e as Error).message}`)
+      }
+    }
+    return { mods, errors }
   })
 
   // ───────── build / run ─────────
@@ -291,103 +413,114 @@ export function registerIpc(win: BrowserWindow, settings: SettingsStore, onTheme
     z.object({ project: ProjectSchema, target: TargetSchema, task: z.enum(['runClient', 'build', 'compileJava']) }),
     async ({ project, target, task }) => {
       const dir = requireProject()
-      if (running) throw new Error('A build is already running')
-      await saveProject(dir, project)
-      const th = settings.get().language === 'th'
-      let allowDownload = settings.get().allowDownloads
-      let buf: string[] = []
-      const flush = setInterval(() => {
-        if (buf.length) {
-          send('build:log', buf)
-          buf = []
-        }
-      }, 80)
-      const log = (line: string) => {
-        buf.push(line)
-        if (buf.length > 500) {
-          send('build:log', buf)
-          buf = []
-        }
+      if (running || starting) throw new Error('A build is already running')
+      starting = true
+      try {
+        return await startRun(dir, project, target, task)
+      } finally {
+        starting = false
       }
-      const progress = (msg: string, done?: number, total?: number) => send('build:progress', { msg, done, total })
-
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          running = await startBuild({
-            projectDir: dir,
-            project,
-            target,
-            toolsDir: toolsDir(),
-            allowDownload,
-            task,
-            log,
-            progress,
-            memoryMb: settings.get().memoryMb,
-            gameOptions: optionsEntries(settings.get().game, settings.get().language)
-          })
-          break
-        } catch (e) {
-          if (e instanceof NeedsDownloadError && !allowDownload) {
-            const what = e.what === 'jdk' ? `Java ${e.version} (Eclipse Temurin, ~200 MB)` : `Gradle ${e.version} (~140 MB)`
-            const r = await dialog.showMessageBox(win, {
-              type: 'question',
-              buttons: th ? ['ดาวน์โหลด', 'ดาวน์โหลดเสมอ', 'ยกเลิก'] : ['Download', 'Always download', 'Cancel'],
-              defaultId: 0,
-              cancelId: 2,
-              title: th ? 'ต้องดาวน์โหลดเครื่องมือ' : 'Tools required',
-              message: th ? `ต้องใช้ ${what} เพื่อทดสอบม็อดนี้` : `${what} is required to test this mod.`,
-              detail: th
-                ? 'ดาวน์โหลดจากแหล่งทางการ ตรวจสอบ checksum และเก็บไว้ในโฟลเดอร์ของแอป'
-                : 'It is downloaded from the official source, checksum-verified and stored in the app folder.'
-            })
-            if (r.response === 2) {
-              clearInterval(flush)
-              send('build:done', { code: -1, cancelled: true })
-              return false
-            }
-            allowDownload = true
-            if (r.response === 1) await settings.update({ allowDownloads: true })
-            continue
-          }
-          clearInterval(flush)
-          throw e
-        }
-      }
-      const run = running
-      if (!run) {
-        clearInterval(flush)
-        return false
-      }
-      void run.done.then(async (code) => {
-        clearInterval(flush)
-        if (buf.length) send('build:log', buf)
-        buf = []
-        running = null
-        let jar: string | null = null
-        if (task === 'build' && code === 0) jar = await findJar(run.outDir)
-        send('build:done', { code, jar: jar ? basename(jar) : null })
-        if (jar) {
-          const r = await dialog.showSaveDialog(win, {
-            title: th ? 'บันทึกไฟล์ม็อด (.jar)' : 'Save mod file (.jar)',
-            defaultPath: basename(jar),
-            filters: [{ name: 'Minecraft mod', extensions: ['jar'] }]
-          })
-          if (!r.canceled && r.filePath && extname(r.filePath).toLowerCase() === '.jar') {
-            await copyFile(jar, r.filePath)
-            shell.showItemInFolder(r.filePath)
-          }
-        }
-      })
-      return true
     }
   )
+  const startRun = async (dir: string, project: Project, target: z.infer<typeof TargetSchema>, task: 'runClient' | 'build' | 'compileJava') => {
+    await saveProject(dir, project)
+    const th = settings.get().language === 'th'
+    let allowDownload = settings.get().allowDownloads
+    let buf: string[] = []
+    const flush = setInterval(() => {
+      if (buf.length) {
+        send('build:log', buf)
+        buf = []
+      }
+    }, 80)
+    const log = (line: string) => {
+      buf.push(line)
+      if (buf.length > 500) {
+        send('build:log', buf)
+        buf = []
+      }
+    }
+    const progress = (msg: string, done?: number, total?: number) => send('build:progress', { msg, done, total })
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        running = await startBuild({
+          projectDir: dir,
+          project,
+          target,
+          toolsDir: toolsDir(),
+          allowDownload,
+          task,
+          log,
+          progress,
+          memoryMb: settings.get().memoryMb,
+          gameOptions: optionsEntries(settings.get().game, settings.get().language)
+        })
+        break
+      } catch (e) {
+        if (e instanceof NeedsDownloadError && !allowDownload) {
+          const what = e.what === 'jdk' ? `Java ${e.version} (Eclipse Temurin, ~200 MB)` : `Gradle ${e.version} (~140 MB)`
+          const r = await dialog.showMessageBox(win, {
+            type: 'question',
+            buttons: th ? ['ดาวน์โหลด', 'ดาวน์โหลดเสมอ', 'ยกเลิก'] : ['Download', 'Always download', 'Cancel'],
+            defaultId: 0,
+            cancelId: 2,
+            title: th ? 'ต้องดาวน์โหลดเครื่องมือ' : 'Tools required',
+            message: th ? `ต้องใช้ ${what} เพื่อทดสอบม็อดนี้` : `${what} is required to test this mod.`,
+            detail: th
+              ? 'ดาวน์โหลดจากแหล่งทางการ ตรวจสอบ checksum และเก็บไว้ในโฟลเดอร์ของแอป'
+              : 'It is downloaded from the official source, checksum-verified and stored in the app folder.'
+          })
+          if (r.response === 2) {
+            clearInterval(flush)
+            send('build:done', { code: -1, cancelled: true })
+            return false
+          }
+          allowDownload = true
+          if (r.response === 1) await settings.update({ allowDownloads: true })
+          continue
+        }
+        clearInterval(flush)
+        throw e
+      }
+    }
+    const run = running
+    if (!run) {
+      clearInterval(flush)
+      return false
+    }
+    void run.done.then(async (code) => {
+      clearInterval(flush)
+      if (buf.length) send('build:log', buf)
+      buf = []
+      running = null
+      let jar: string | null = null
+      if (task === 'build' && code === 0) jar = await findJar(run.outDir)
+      send('build:done', { code, jar: jar ? basename(jar) : null })
+      if (jar) {
+        const r = await dialog.showSaveDialog(win, {
+          title: th ? 'บันทึกไฟล์ม็อด (.jar)' : 'Save mod file (.jar)',
+          defaultPath: basename(jar),
+          filters: [{ name: 'Minecraft mod', extensions: ['jar'] }]
+        })
+        if (!r.canceled && r.filePath && extname(r.filePath).toLowerCase() === '.jar') {
+          try {
+            await copyFile(jar, r.filePath)
+            shell.showItemInFolder(r.filePath)
+          } catch (e) {
+            dialog.showErrorBox(th ? 'บันทึกไฟล์ม็อดไม่สำเร็จ' : 'Could not save the mod file', (e as Error).message)
+          }
+        }
+      }
+    })
+    return true
+  }
   handle('build:stop', z.undefined(), () => {
     running?.stop()
     return true
   })
   handle('build:clean', TargetSchema, async (t) => {
     if (running) throw new Error('Stop the running build first')
-    const { rm } = await import('node:fs/promises')
     await rm(buildDir(requireProject(), t), { recursive: true, force: true })
     return true
   })

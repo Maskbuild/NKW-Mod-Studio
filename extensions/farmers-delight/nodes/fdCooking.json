@@ -1,0 +1,185 @@
+{
+  "type": "fdCooking",
+  "category": "fd",
+  "title": {
+    "en": "Cooking Pot",
+    "th": "หม้อต้ม"
+  },
+  "description": {
+    "en": "Farmer's Delight cooking pot recipe (up to 6 ingredients)",
+    "th": "สูตรหม้อต้มของ Farmer's Delight (วัตถุดิบสูงสุด 6 อย่าง)"
+  },
+  "icon": "🍲",
+  "inputs": [
+    {
+      "id": "i",
+      "label": {
+        "en": "Ingredient",
+        "th": "วัตถุดิบ"
+      },
+      "type": "ingredient",
+      "optional": true,
+      "group": "ing",
+      "count": 6
+    },
+    {
+      "id": "container",
+      "label": {
+        "en": "Container (e.g. bowl)",
+        "th": "ภาชนะ (เช่น ชาม)"
+      },
+      "type": "item",
+      "optional": true
+    },
+    {
+      "id": "result",
+      "label": {
+        "en": "Result",
+        "th": "ผลลัพธ์"
+      },
+      "type": "item",
+      "right": true
+    }
+  ],
+  "outputs": [],
+  "props": [
+    {
+      "key": "count",
+      "label": {
+        "en": "Result count",
+        "th": "จำนวนที่ได้"
+      },
+      "kind": "int",
+      "default": 1,
+      "min": 1,
+      "max": 64
+    },
+    {
+      "key": "xp",
+      "label": {
+        "en": "Experience",
+        "th": "ค่าประสบการณ์"
+      },
+      "kind": "float",
+      "default": 1,
+      "min": 0,
+      "max": 100,
+      "step": 0.1
+    },
+    {
+      "key": "time",
+      "label": {
+        "en": "Cook time (ticks)",
+        "th": "เวลา (tick)"
+      },
+      "kind": "int",
+      "default": 200,
+      "min": 1,
+      "max": 72000
+    },
+    {
+      "key": "tab",
+      "label": {
+        "en": "Recipe book tab",
+        "th": "หมวดในสมุดสูตร"
+      },
+      "kind": "select",
+      "default": "meals",
+      "options": [
+        {
+          "value": "meals",
+          "label": {
+            "en": "Meals",
+            "th": "อาหารจานหลัก"
+          }
+        },
+        {
+          "value": "drinks",
+          "label": {
+            "en": "Drinks",
+            "th": "เครื่องดื่ม"
+          }
+        },
+        {
+          "value": "misc",
+          "label": {
+            "en": "Misc",
+            "th": "อื่น ๆ"
+          }
+        }
+      ]
+    }
+  ],
+  "compile": {
+    "emit": {
+      "slot": "cookingRecipes",
+      "value": {
+        "ingredients": {
+          "rows": {
+            "count": 6,
+            "required": "v",
+            "fields": {
+              "v": {
+                "ingredient": "i{i}"
+              }
+            }
+          }
+        },
+        "container": {
+          "input": "container"
+        },
+        "result": {
+          "input": "result",
+          "required": true
+        },
+        "count": {
+          "prop": "count",
+          "as": "int",
+          "min": 1,
+          "max": 64,
+          "default": 1
+        },
+        "xp": {
+          "prop": "xp",
+          "as": "number",
+          "default": 1
+        },
+        "time": {
+          "prop": "time",
+          "as": "int",
+          "min": 1,
+          "max": 72000,
+          "default": 200
+        },
+        "tab": {
+          "prop": "tab",
+          "as": "string",
+          "values": ["meals", "drinks", "misc"],
+          "default": "meals"
+        },
+        "name": {
+          "computed": "unique(replace(after(v.result, ':'), '/', '_') + '_cooking')"
+        }
+      },
+      "when": "len(v.ingredients) > 0 && v.result != null"
+    },
+    "validate": [
+      {
+        "if": "len(v.ingredients) == 0",
+        "diag": "error",
+        "msg": {
+          "en": "Add at least one ingredient",
+          "th": "ใส่วัตถุดิบอย่างน้อย 1 อย่าง"
+        }
+      },
+      {
+        "if": "target != null && cfg == null",
+        "diag": "warning",
+        "msg": {
+          "en": "Farmer's Delight is not available for {target.loader} {target.mc}; recipe skipped",
+          "th": "ไม่มี Farmer's Delight สำหรับ {target.loader} {target.mc} — ข้ามสูตรนี้"
+        }
+      }
+    ]
+  }
+}

@@ -2,12 +2,13 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from 'react-i18next'
 import { shallow } from 'zustand/shallow'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
-import { CATEGORY_LABEL, NODE_DEF_MAP, PIN_COLORS, gameCropIds, type NodeDef, type PropDef } from '@core/nodes/defs'
+import { registry } from '@core/ext/registry'
+import { NODE_DEF_MAP, PIN_COLORS, gameCropIds, type NodeDef, type PropDef } from '@core/nodes/defs'
 import { ASSET_RE, FOLDER_RE, ID_RE, LICENSES, LINK_RE, MetaSchema, NSID_RE, toId, type Credit } from '@core/project'
 import { L } from '../i18n'
 import { api, assetUrl, vanillaIconUrl, type AssetKind, type ImportedAsset } from '../api'
 import { hasFiles, importDropped } from '../drop'
-import { useActiveMc, useItemInfo, useVanilla } from './VanillaPanel'
+import { prettyId, useActiveMc, useItemInfo, useItemSources, useVanilla } from './VanillaPanel'
 import { newId, useStore, edgeStyle, inputSource, type FlowNode } from '../store'
 import { TargetPicker } from '../components/TargetPicker'
 import { IAlert, IUpload, Logo } from '../components/Icons'
@@ -16,8 +17,10 @@ import { CraftGrid } from './CraftGrid'
 import { useIde } from '../ide/ideStore'
 import { ArmorFitField } from './ArmorFit'
 import { TabOrder } from './TabOrder'
-import { ScriptEditor, ScriptTargets } from './ScriptEditor'
-import { HarvestUiPreview } from './HarvestUiPreview'
+import { TimerUiEditor } from './TimerUiEditor'
+import { WardrobeEditor } from './WardrobeEditor'
+import { BlockListField } from './BlockList'
+import { TagGrid } from './TagPreview'
 
 const ModelPreview = lazy(() => import('./ModelPreview'))
 
@@ -269,19 +272,41 @@ function AnimNameField({ node, p }: { node: FlowNode; p: PropDef }) {
   )
 }
 
+/** Crops found in the downloaded game data and in the mods linked to the project (Harvest a game crop). */
+function MoreCrops({ known, list, toggle }: { known: string[]; list: string[]; toggle: (v: string) => void }) {
+  const sources = useItemSources(useActiveMc())
+  const crops = sources.flatMap(({ data, source }) =>
+    (data.crops ?? [])
+      .map((c) => `${data.ns}:${c}`)
+      .filter((id) => !known.includes(id))
+      .map((id) => ({ id, from: data.title ?? (source === 'minecraft' ? 'Minecraft' : "Farmer's Delight") }))
+  )
+  return (
+    <>
+      {crops.map((c) => (
+        <label key={c.id} className={`multi-opt${list.includes(c.id) ? ' on' : ''}`} title={c.id}>
+          <input type="checkbox" checked={list.includes(c.id)} onChange={() => toggle(c.id)} />
+          {prettyId(c.id)} <span className="faint">({c.from})</span>
+        </label>
+      ))}
+    </>
+  )
+}
+
 /** Item id / tag field backed by the full vanilla list of the active Minecraft version. */
 function NsidField({ node, p }: { node: FlowNode; p: PropDef }) {
   const { i18n } = useTranslation()
   const mc = useActiveMc()
   const data = useVanilla(mc)
-  const fd = useVanilla(mc, 'farmersdelight')
+  const sources = useItemSources(mc)
   const value = String(node.data[p.key] ?? '')
   const isTag = node.type === 'tagRef'
+  // the game's list (or a short built-in one before it is downloaded), Farmer's Delight and linked mods
+  const others = sources.filter((x) => x.source !== 'minecraft')
   const list = isTag
-    ? [...(data ? data.tags.map((t) => t.id) : COMMON_TAGS), ...(fd?.tags.map((t) => t.id) ?? [])]
-    : [...(data ? data.items.map((i) => `minecraft:${i.id}`) : VANILLA_ITEMS), ...(fd?.items.map((i) => `farmersdelight:${i.id}`) ?? [])]
+    ? [...(data ? data.tags.map((t) => t.id) : COMMON_TAGS), ...others.flatMap((x) => x.data.tags.map((t) => t.id))]
+    : [...(data ? data.items.map((i) => `minecraft:${i.id}`) : VANILLA_ITEMS), ...others.flatMap((x) => x.data.items.map((i) => `${x.data.ns}:${i.id}`))]
   const match = useItemInfo(isTag ? '' : value)
-  const tag = isTag ? [...(data?.tags ?? []), ...(fd?.tags ?? [])].find((t) => t.id === value.replace(/^#/, '')) : undefined
   return (
     <div className="field">
       <label>{L(p.label)}</label>
@@ -303,7 +328,7 @@ function NsidField({ node, p }: { node: FlowNode; p: PropDef }) {
           <span>{match.item.en}</span>
         </div>
       )}
-      {tag && <span className="hint">{tag.values.map((v) => v.replace('minecraft:', '')).join(', ')}</span>}
+      {isTag && NSID_RE.test(value.replace(/^#/, '')) && <TagGrid tagId={value} />}
       {!data && (
         <span className="hint">
           {i18n.language === 'th' ? 'โหลดรายการไอเทมทั้งหมดได้ที่แท็บ "ไอเทมเกม"' : 'Load the full item list in the "Game items" tab'}
@@ -330,7 +355,7 @@ function Preview({ node }: { node: FlowNode }) {
     shallow
   )
   if (node.type === 'soundEvent') return <SoundEventPreview node={node} />
-  if (node.type === 'harvestUi') return <HarvestUiPreview data={node.data} />
+  if (node.type === 'harvestUi') return null
   if (!asset) return null
   if (node.type === 'texture')
     return (
@@ -559,6 +584,7 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
                 {L(o.label)}
               </label>
             ))}
+            {def.type === 'gameCrop' && <MoreCrops known={p.options?.map((o) => o.value) ?? []} list={list} toggle={toggle} />}
           </div>
           {p.hint && <span className="hint">{L(p.hint)}</span>}
         </div>
@@ -611,16 +637,18 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
       return <NsidField node={node} p={p} />
     case 'animName':
       return <AnimNameField node={node} p={p} />
+    case 'blockList':
+      return <BlockListField node={node} p={p} />
     case 'craftGrid':
       return <CraftGrid node={node} />
     case 'armorFit':
       return <ArmorFitField node={node} />
     case 'tabOrder':
       return <TabOrder node={node} />
-    case 'code':
-      return <ScriptEditor node={node} />
-    case 'scriptTargets':
-      return <ScriptTargets node={node} />
+    case 'timerUi':
+      return <TimerUiEditor node={node} />
+    case 'wardrobe':
+      return <WardrobeEditor node={node} />
     default:
       return (
         <div className="field">
@@ -998,7 +1026,7 @@ export function Inspector() {
         <span className="li-icon">{def.icon}</span>
         <div className="grow">
           <b>{L(def.title)}</b>
-          <div className="faint">{L(CATEGORY_LABEL[def.category])}</div>
+          <div className="faint">{L(registry.categories[def.category]?.label)}</div>
         </div>
       </div>
       <div className="insp-desc">{L(def.description)}</div>
