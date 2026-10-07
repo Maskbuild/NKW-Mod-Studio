@@ -1,0 +1,21 @@
+{
+  "type": "myGreeting",
+  "category": "greetings",
+  "title": { "en": "Greeting", "th": "คำทักทาย" },
+  "description": { "en": "A line the mod writes to the game log when it starts.", "th": "ข้อความที่ม็อดเขียนลงบันทึกของเกมตอนเริ่ม" },
+  "icon": "👋",
+  "props": [
+    { "key": "text", "label": { "en": "Text", "th": "ข้อความ" }, "kind": "text", "default": "Hello from my mod!" },
+    { "key": "times", "label": { "en": "How many times", "th": "กี่ครั้ง" }, "kind": "int", "default": 1, "min": 1, "max": 5 }
+  ],
+  "compile": {
+    "emit": {
+      "slot": "greetings",
+      "value": {
+        "text": { "prop": "text", "as": "string", "default": "Hello", "trim": true },
+        "times": { "prop": "times", "as": "int", "min": 1, "max": 5, "default": 1 }
+      }
+    },
+    "validate": [{ "if": "v.text == ''", "diag": "warning", "msg": { "en": "The greeting is empty", "th": "คำทักทายว่างเปล่า" } }]
+  }
+}
