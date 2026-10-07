@@ -9,6 +9,8 @@ import { pipeline } from 'node:stream/promises'
 const ALLOWED_HOSTS = [
   'api.adoptium.net',
   'github.com',
+  'api.github.com',
+  'codeload.github.com',
   'objects.githubusercontent.com',
   'release-assets.githubusercontent.com',
   'services.gradle.org',
@@ -58,6 +60,28 @@ async function fetchFollow(url: string, timeoutMs: number): Promise<Response> {
 export async function getJson<T>(url: string, timeoutMs = 15000): Promise<T> {
   const res = await fetchFollow(url, timeoutMs)
   return (await res.json()) as T
+}
+
+/**
+ * Downloads into memory with a size limit, for content that is pinned some other way than a checksum
+ * (an extension archive fetched by commit id).
+ */
+export async function getBuffer(url: string, maxBytes: number, timeoutMs = 60000): Promise<Buffer> {
+  const res = await fetchFollow(url, timeoutMs)
+  const declared = Number(res.headers.get('content-length') ?? 0)
+  if (declared > maxBytes) throw new Error(`The download is too large (${Math.round(declared / 1e6)} MB)`)
+  const chunks: Buffer[] = []
+  let size = 0
+  const body = Readable.fromWeb(res.body as import('node:stream/web').ReadableStream)
+  for await (const c of body) {
+    size += (c as Buffer).length
+    if (size > maxBytes) {
+      body.destroy()
+      throw new Error(`The download is too large (more than ${Math.round(maxBytes / 1e6)} MB)`)
+    }
+    chunks.push(c as Buffer)
+  }
+  return Buffer.concat(chunks)
 }
 
 export async function getText(url: string, timeoutMs = 15000): Promise<string> {
