@@ -1,6 +1,6 @@
 # NKW Mod Studio — User Guide
 
-**English** · [ภาษาไทย](GUIDE.th.md)
+**English** · [Thai](GUIDE.th.md)
 
 This guide walks you through NKW Mod Studio from installing it to playing your mod in Minecraft. You don't need to know how to code.
 
@@ -647,7 +647,7 @@ To release for several versions, switch **Target** and export once per target.
 Open with the gear button.
 
 - **Theme**: System / Light / Dark.
-- **Language**: ไทย / English.
+- **Language**: Thai / English.
 - **Game memory (RAM)** for testing: 1–16 GB.
 - **Download Java/Gradle automatically when needed**.
 - **Java installations** found on your PC.
@@ -655,7 +655,7 @@ Open with the gear button.
 The **Test game** tab sets up Minecraft for "Test in game" (written to the test game's options before it starts; other settings stay as you left them in the game):
 
 - Fullscreen, window size (with presets), max FPS (up to unlimited), VSync, GUI scale, render distance.
-- Master volume, brightness, mouse sensitivity, game language (same as the app, English or ไทย).
+- Master volume, brightness, mouse sensitivity, game language (same as the app, English or Thai).
 - Pause or keep running when the game window loses focus.
 - **Controls**: click a key, then press the new key or mouse button (Esc cancels). **Reset all** brings back Minecraft's keys.
 

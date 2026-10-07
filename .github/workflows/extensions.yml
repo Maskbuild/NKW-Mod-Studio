@@ -1,0 +1,20 @@
+name: Extensions
+
+on:
+  push:
+    paths: ['extensions/**', 'src/core/ext/**']
+  pull_request:
+    paths: ['extensions/**', 'src/core/ext/**']
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run ext:validate -- --all
+      - run: npx vitest run tests/ext.test.ts tests/ext-template.test.ts tests/skins.test.ts tests/farmers-delight.test.ts tests/roleplay.test.ts
