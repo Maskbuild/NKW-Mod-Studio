@@ -4,10 +4,9 @@ import { api } from '../api'
 import { useStore } from '../store'
 import { Logo } from '../components/Icons'
 import { GameSettings } from './GameSettings'
-import { ModelControlsSettings } from './ModelControlsSettings'
 import { ExtensionsSettings } from './ExtensionsSettings'
 
-export type SettingsSection = 'app' | 'game' | 'model' | 'extensions'
+export type SettingsSection = 'app' | 'game' | 'extensions'
 
 /** Theme, language, memory, downloads, Java list and about. */
 function GeneralSettings() {
@@ -95,7 +94,7 @@ export function SettingsDialog({ onClose, section = 'app' }: { onClose: () => vo
       <div className="dialog" role="dialog" aria-modal style={{ width: 600 }} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
         <h2>{t('settings.title')}</h2>
         <div className="seg settings-tabs">
-          {(['app', 'extensions', 'game', 'model'] as const).map((s) => (
+          {(['app', 'extensions', 'game'] as const).map((s) => (
             <button key={s} className={tab === s ? 'on' : ''} onClick={() => setTab(s)}>
               {t(`settings.tab.${s}`)}
             </button>
@@ -105,7 +104,6 @@ export function SettingsDialog({ onClose, section = 'app' }: { onClose: () => vo
           {tab === 'app' && <GeneralSettings />}
           {tab === 'extensions' && <ExtensionsSettings />}
           {tab === 'game' && <GameSettings />}
-          {tab === 'model' && <ModelControlsSettings />}
         </div>
         <div className="actions">
           <button className="btn primary" onClick={onClose}>

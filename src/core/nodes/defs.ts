@@ -16,6 +16,8 @@ export const PIN_COLORS = registry.pinColors
 export function canConnect(out: PinType, input: PinType): boolean {
   if (out === 'any' || input === 'any') return true
   if (out === input) return true
+  if (input === 'effectOrHit' && (out === 'effect' || out === 'hit')) return true
+  if ((input === 'effect' || input === 'hit') && out === 'effectOrHit') return true
   // a Java block/item model can be worn as armor (converted for GeckoLib)
   return (out === 'item' && input === 'ingredient') || (out === 'model' && input === 'geo')
 }
@@ -34,6 +36,8 @@ export interface PinDef {
   right?: boolean
   /** kept for old projects: only shown while something is wired into it */
   legacy?: boolean
+  /** only shown when predicate over current node data is true */
+  showIf?: (data: Record<string, unknown>) => boolean
 }
 
 export type PropKind =
@@ -128,37 +132,6 @@ const nameProps = (idDefault: string, nameDefault: string): PropDef[] => [
   }
 ]
 
-const itemCommon: PropDef[] = [
-  { key: 'maxStack', label: t('Max stack', 'จำนวนซ้อนสูงสุด'), kind: 'int', default: 64, min: 1, max: 64 },
-  {
-    key: 'rarity',
-    label: t('Rarity', 'ความหายาก'),
-    kind: 'select',
-    default: 'common',
-    options: [opt('common', 'Common', 'ธรรมดา'), opt('uncommon', 'Uncommon', 'ไม่ธรรมดา'), opt('rare', 'Rare', 'หายาก'), opt('epic', 'Epic', 'มหากาพย์')]
-  },
-  { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false },
-  {
-    key: 'wearOnHead',
-    label: t('Can be worn on the head', 'ใส่บนหัวได้'),
-    kind: 'bool',
-    default: false,
-    hint: t(
-      'Right-click it, or drag / shift-click it into the helmet slot. Its tooltip says it can be worn. It is shown with the model\'s "Head" display settings (Blockbench → Display → Head).',
-      'คลิกขวา หรือลาก/Shift+คลิกใส่ช่องหมวกได้ ในคำอธิบายไอเทมจะมีข้อความบอกว่าสวมได้ — แสดงตามค่าการแสดงผลแบบ "Head" ของโมเดล (Blockbench → Display → Head)'
-    )
-  },
-  {
-    key: 'wearRightClick',
-    label: t('Right-click to put on', 'คลิกขวาเพื่อสวมได้'),
-    kind: 'bool',
-    default: true,
-    showIf: (data) => data.wearOnHead === true,
-    hint: t('Off: it can only be dragged / shift-clicked into the helmet slot.', 'ปิด: ใส่ได้เฉพาะลาก/Shift+คลิกเข้าช่องหมวกเท่านั้น')
-  },
-  { key: 'glint', label: t('Enchant glint', 'มีประกายเอนชานต์'), kind: 'bool', default: false }
-]
-
 /** Block sound types (SoundType fields). */
 const SOUND_OPTIONS = [
   opt('stone', 'Stone', 'หิน'),
@@ -226,6 +199,19 @@ const countProp = (label = t('Result count', 'จำนวนที่ได้'
   min: 1,
   max: 64
 })
+
+const rarityProp: PropDef = {
+  key: 'rarity',
+  label: t('Rarity', 'ความหายาก'),
+  kind: 'select',
+  default: 'common',
+  options: [
+    opt('common', 'Common', 'ธรรมดา'),
+    opt('uncommon', 'Uncommon', 'ไม่ธรรมดา'),
+    opt('rare', 'Rare', 'หายาก'),
+    opt('epic', 'Epic', 'มหากาพย์')
+  ]
+}
 
 const slots = (n: number, prefix: string, en: string, th: string, type: PinType = 'ingredient', extra: Partial<PinDef> = {}): PinDef[] =>
   Array.from({ length: n }, (_, i) => ({
@@ -318,9 +304,6 @@ export const ATTRIBUTES: { id: string; field: string; since: string; label: L10n
   { id: 'sweeping_damage_ratio', field: 'SWEEPING_DAMAGE_RATIO', since: '1.21.1', label: t('Sweeping damage', 'ความเสียหายฟันกวาด') },
   { id: 'water_movement_efficiency', field: 'WATER_MOVEMENT_EFFICIENCY', since: '1.21.1', label: t('Water movement', 'ว่ายน้ำเร็ว') }
 ]
-
-const effectIns = (en: string, th: string): PinDef[] =>
-  [1, 2, 3].map((i) => ({ id: `effect${i}`, label: t(`${en} ${i}`, `${th} ${i}`), type: 'effect' as PinType, optional: true }))
 
 const CORE_NODE_DEFS: NodeDef[] = [
   // ───────────── Assets ─────────────
@@ -423,13 +406,13 @@ const CORE_NODE_DEFS: NodeDef[] = [
       texIn('texture', 'Icon texture', 'ไอคอน / เท็กซ์เจอร์', true),
       { id: 'model', label: t('3D model', 'โมเดล 3D'), type: 'model', optional: true },
       { id: 'places', label: t('Places block', 'วางเป็นบล็อก'), type: 'block', optional: true },
-      ...slots(8, 'attr', 'Stat bonus', 'โบนัสค่าสถานะ', 'attribute', { group: 'attr' })
+      ...slots(8, 'attr', 'Stat bonus', 'โบนัสสถานะ', 'attribute', { legacy: true, optional: true })
     ],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],
     props: [
       ...nameProps('my_item', 'My Item'),
-      ...itemCommon,
-      { key: 'handheld', label: t('Held like a tool', 'ถือแบบเครื่องมือ'), kind: 'bool', default: false }
+      { key: 'maxStack', label: t('Max stack', 'จำนวนซ้อนสูงสุด'), kind: 'int', default: 64, min: 1, max: 64 },
+      { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false }
     ]
   },
   {
@@ -443,9 +426,11 @@ const CORE_NODE_DEFS: NodeDef[] = [
       texIn('texture', 'Icon texture', 'ไอคอน / เท็กซ์เจอร์', true),
       { id: 'model', label: t('3D model', 'โมเดล 3D'), type: 'model', optional: true },
       { id: 'places', label: t('Places block', 'วางเป็นบล็อก'), type: 'block', optional: true },
-      ...effectIns('Effect when eaten', 'เอฟเฟกต์ตอนกิน'),
-      ...slots(3, 'hit', 'Ability when eaten', 'ความสามารถตอนกิน', 'hit', { group: 'hit' }),
-      ...slots(8, 'attr', 'Stat bonus', 'โบนัสค่าสถานะ', 'attribute', { group: 'attr' })
+      { id: 'effect1', label: t('Effect / Ability when eaten 1', 'เอฟเฟกต์ / ความสามารถตอนกิน 1'), type: 'effectOrHit', optional: true, group: 'effect' },
+      { id: 'hit1', label: t('On-eat ability 1', 'ความสามารถตอนกิน 1'), type: 'hit', legacy: true, optional: true },
+      { id: 'hit2', label: t('On-eat ability 2', 'ความสามารถตอนกิน 2'), type: 'hit', legacy: true, optional: true },
+      { id: 'hit3', label: t('On-eat ability 3', 'ความสามารถตอนกิน 3'), type: 'hit', legacy: true, optional: true },
+      ...slots(8, 'attr', 'Stat bonus', 'โบนัสสถานะ', 'attribute', { legacy: true, optional: true })
     ],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],
     props: [
@@ -462,37 +447,8 @@ const CORE_NODE_DEFS: NodeDef[] = [
         options: [opt('eat', 'Eat (munching)', 'กิน (เสียงเคี้ยว)'), opt('drink', 'Drink (gulping, like a potion)', 'ดื่ม (เสียงกลืน แบบขวดยา)')],
         hint: t('Also changes the animation: drinking holds the item up like a potion.', 'เปลี่ยนท่าทางด้วย: ดื่มจะยกขึ้นแบบดื่มขวดยา')
       },
-      ...itemCommon
-    ]
-  },
-  {
-    type: 'toolMaterial',
-    category: 'item',
-    title: t('Tool Material', 'วัสดุเครื่องมือ'),
-    description: t('Stats shared by a set of tools', 'ค่าสถานะที่ใช้ร่วมกันของชุดเครื่องมือ'),
-    icon: '⚙',
-    registers: true,
-    inputs: [{ id: 'repair', label: t('Repair with', 'ซ่อมด้วย'), type: 'ingredient', optional: true }],
-    outputs: [{ id: 'out', label: t('Material', 'วัสดุ'), type: 'toolMat' }],
-    props: [
-      { key: 'id', label: t('Material ID', 'ID วัสดุ'), kind: 'id', default: 'my_material' },
-      { key: 'durability', label: t('Durability', 'ความทนทาน'), kind: 'int', default: 500, min: 1, max: 100000 },
-      { key: 'speed', label: t('Mining speed', 'ความเร็วขุด'), kind: 'float', default: 6, min: 0, max: 100, step: 0.5 },
-      { key: 'damage', label: t('Attack damage bonus', 'ดาเมจเพิ่ม'), kind: 'float', default: 2, min: 0, max: 100, step: 0.5 },
-      {
-        key: 'level',
-        label: t('Mining level', 'ระดับการขุด'),
-        kind: 'select',
-        default: 'iron',
-        options: [
-          opt('wood', 'Wood', 'ไม้'),
-          opt('stone', 'Stone', 'หิน'),
-          opt('iron', 'Iron', 'เหล็ก'),
-          opt('diamond', 'Diamond', 'เพชร'),
-          opt('netherite', 'Netherite', 'เนเธอไรต์')
-        ]
-      },
-      { key: 'enchantability', label: t('Enchantability', 'ค่าเอนชานต์'), kind: 'int', default: 14, min: 0, max: 100 }
+      { key: 'maxStack', label: t('Max stack', 'จำนวนซ้อนสูงสุด'), kind: 'int', default: 64, min: 1, max: 64 },
+      { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false }
     ]
   },
   {
@@ -504,11 +460,13 @@ const CORE_NODE_DEFS: NodeDef[] = [
     registers: true,
     inputs: [
       texIn(),
-      { id: 'material', label: t('Material (optional: iron)', 'วัสดุ (ไม่ใส่ = เหล็ก)'), type: 'toolMat', optional: true },
       { id: 'model', label: t('3D model', 'โมเดล 3D'), type: 'model', optional: true },
-      ...effectIns('Effect on hit target', 'เอฟเฟกต์ใส่ศัตรูที่ตี'),
-      ...slots(3, 'hit', 'Hit ability', 'ความสามารถตอนตี', 'hit', { group: 'hit' }),
-      ...slots(8, 'attr', 'Stat bonus', 'โบนัสค่าสถานะ', 'attribute', { group: 'attr' })
+      { id: 'material', label: t('Material (optional)', 'วัสดุ (ไม่ใส่ก็ได้)'), type: 'toolMat', optional: true, legacy: true },
+      { id: 'hit1', label: t('Effect / Ability on hit 1', 'เอฟเฟกต์ / ความสามารถตอนตี 1'), type: 'effectOrHit', optional: true, group: 'hit' },
+      { id: 'effect1', label: t('Effect on hit 1', 'เอฟเฟกต์ใส่ศัตรูที่ตี 1'), type: 'effect', legacy: true, optional: true },
+      { id: 'effect2', label: t('Effect on hit 2', 'เอฟเฟกต์ใส่ศัตรูที่ตี 2'), type: 'effect', legacy: true, optional: true },
+      { id: 'effect3', label: t('Effect on hit 3', 'เอฟเฟกต์ใส่ศัตรูที่ตี 3'), type: 'effect', legacy: true, optional: true },
+      ...slots(8, 'attr', 'Stat bonus', 'โบนัสสถานะ', 'attribute', { group: 'attr' })
     ],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],
     props: [
@@ -526,28 +484,24 @@ const CORE_NODE_DEFS: NodeDef[] = [
           opt('hoe', 'Hoe', 'จอบ')
         ]
       },
+      {
+        key: 'mineral',
+        label: t('Mineral / Tier', 'ประเภทแร่ / ระดับ'),
+        kind: 'select',
+        default: 'iron',
+        options: [
+          opt('wood', 'Wood', 'ไม้'),
+          opt('stone', 'Stone', 'หิน'),
+          opt('iron', 'Iron', 'เหล็ก'),
+          opt('gold', 'Gold', 'ทอง'),
+          opt('diamond', 'Diamond', 'เพชร'),
+          opt('netherite', 'Netherite', 'เนเธอไรต์')
+        ]
+      },
       { key: 'attackDamage', label: t('Extra attack damage', 'ดาเมจเพิ่มเติม'), kind: 'float', default: 3, min: -10, max: 1000, step: 0.5 },
       { key: 'attackSpeed', label: t('Attack speed modifier', 'ค่าความเร็วโจมตี'), kind: 'float', default: -2.4, min: -4, max: 10, step: 0.1 },
+      rarityProp,
       { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false },
-      {
-        key: 'wearOnHead',
-        label: t('Can be worn on the head', 'ใส่บนหัวได้'),
-        kind: 'bool',
-        default: false,
-        hint: t(
-          'Right-click it, or drag / shift-click it into the helmet slot. Its tooltip says it can be worn. It is shown with the model\'s "Head" display settings (Blockbench → Display → Head).',
-          'คลิกขวา หรือลาก/Shift+คลิกใส่ช่องหมวกได้ ในคำอธิบายไอเทมจะมีข้อความบอกว่าสวมได้ — แสดงตามค่าการแสดงผลแบบ "Head" ของโมเดล (Blockbench → Display → Head)'
-        )
-      },
-      {
-        key: 'wearRightClick',
-        label: t('Right-click to put on', 'คลิกขวาเพื่อสวมได้'),
-        kind: 'bool',
-        default: true,
-        showIf: (data) => data.wearOnHead === true,
-        hint: t('Off: it can only be dragged / shift-clicked into the helmet slot.', 'ปิด: ใส่ได้เฉพาะลาก/Shift+คลิกเข้าช่องหมวกเท่านั้น')
-      },
-      { key: 'rarity', label: t('Rarity', 'ความหายาก'), kind: 'select', default: 'common', options: itemCommon[1].options },
       {
         key: 'unbreakable',
         label: t('Unbreakable (never breaks)', 'ไม่มีวันพัง'),
@@ -557,13 +511,13 @@ const CORE_NODE_DEFS: NodeDef[] = [
       },
       {
         key: 'durability',
-        label: t('Durability (0 = from the material)', 'ความคงทน (0 = ตามวัสดุ)'),
+        label: t('Durability (0 = from mineral)', 'ความคงทน (0 = อิงตามแร่)'),
         kind: 'int',
         default: 0,
         min: 0,
         max: 100000,
         showIf: (d) => d.unbreakable !== true,
-        hint: t('How many uses before it breaks. Iron tools: 250, diamond: 1561.', 'ใช้ได้กี่ครั้งก่อนพัง — เครื่องมือเหล็ก 250, เพชร 1561')
+        hint: t('0 = automatic from mineral (wood: 59, stone: 131, iron: 250, gold: 32, diamond: 1561, netherite: 2031).', '0 = อิงตามแร่อัตโนมัติ (ไม้: 59, หิน: 131, เหล็ก: 250, ทอง: 32, เพชร: 1561, เนเธอไรต์: 2031)')
       }
     ]
   },
@@ -578,9 +532,9 @@ const CORE_NODE_DEFS: NodeDef[] = [
     registers: true,
     inputs: [
       texIn('texture', 'Texture (all / side)', 'เท็กซ์เจอร์ (ทุกด้าน / ด้านข้าง)'),
-      texIn('top', 'Top texture', 'เท็กซ์เจอร์ด้านบน', true),
-      texIn('bottom', 'Bottom texture', 'เท็กซ์เจอร์ด้านล่าง', true),
-      { id: 'drop', label: t('Drops (default: itself)', 'ของที่ดรอป (ปกติ: ตัวเอง)'), type: 'item', optional: true }
+      { ...texIn('top', 'Top texture', 'เท็กซ์เจอร์ด้านบน', true), showIf: (d) => d.shape === 'cube_bottom_top' || d.shape === 'pillar' },
+      { ...texIn('bottom', 'Bottom texture', 'เท็กซ์เจอร์ด้านล่าง', true), showIf: (d) => d.shape === 'cube_bottom_top' },
+      { id: 'drop', label: t('Drops (default: itself)', 'ของที่ดรอป'), type: 'item', optional: true }
     ],
     outputs: [
       { id: 'out', label: t('Block item', 'ไอเทมบล็อก'), type: 'item' },
@@ -611,7 +565,7 @@ const CORE_NODE_DEFS: NodeDef[] = [
     registers: true,
     inputs: [
       { id: 'model', label: t('Model', 'โมเดล'), type: 'model' },
-      { id: 'drop', label: t('Drops (default: itself)', 'ของที่ดรอป (ปกติ: ตัวเอง)'), type: 'item', optional: true }
+      { id: 'drop', label: t('Drops (default: itself)', 'ของที่ดรอป'), type: 'item', optional: true }
     ],
     outputs: [
       { id: 'out', label: t('Block item', 'ไอเทมบล็อก'), type: 'item' },
@@ -630,14 +584,14 @@ const CORE_NODE_DEFS: NodeDef[] = [
     category: 'farm',
     title: t('Crop (plant)', 'พืช (ปลูกได้)'),
     description: t(
-      'A plant that grows in stages on farmland. Wire its Block pin into a seeds Item\'s "Places block" pin. Harvest by breaking (replant like wheat) or pick it and let it grow back after a cooldown; picking can be a click, holding the button or standing still for a while, with a timer on screen.',
-      'พืชที่โตเป็นระยะบนดินไถ ต่อขา "บล็อก" เข้าขา "วางเป็นบล็อก" ของไอเทมเมล็ด เก็บได้แบบทุบแล้วปลูกใหม่ (แบบข้าวสาลี) หรือเก็บแล้วรอโตใหม่ตามเวลาคูลดาวน์ การเก็บเป็นแบบคลิก กดค้าง หรือกดแล้วยืนนิ่งตามเวลาได้ มีเวลาแสดงบนจอ'
+      'A plant that grows in stages on farmland. Wire its Block pin into a seeds Item\'s "Places block" pin.',
+      'พืชที่โตเป็นระยะบนดินไถ ต่อขา "บล็อก" เข้าขา "วางเป็นบล็อก" ของไอเทมเมล็ด'
     ),
     icon: '🌱',
     registers: true,
     inputs: [
       ...slots(8, 'stage', 'Growth stage', 'ระยะการโต', 'texture', { group: 'stage' }),
-      { id: 'produce', label: t('Harvest (item)', 'ผลผลิต (ไอเทม)'), type: 'item' }
+      { id: 'produce', label: t('Harvest (item)', 'ผลผลิต (ไอเทม)'), type: 'item', right: true }
     ],
     outputs: [{ id: 'block', label: t('Block (for the seeds)', 'บล็อก (ต่อเข้าเมล็ด)'), type: 'block' }],
     props: [
@@ -663,118 +617,68 @@ const CORE_NODE_DEFS: NodeDef[] = [
         default: 0,
         min: 0,
         max: 36000,
-        hint: t('0: grows at random like vanilla crops (faster on wet farmland).', '0: โตแบบสุ่มเหมือนพืชในเกม (ดินไถเปียกโตเร็วกว่า)')
+        hint: t('0: grows at random like vanilla crops.', '0: โตแบบสุ่มเหมือนพืชในเกม')
       },
       { key: 'produceMin', label: t('Harvest count min', 'จำนวนผลผลิตต่ำสุด'), kind: 'int', default: 1, min: 1, max: 64 },
       { key: 'produceMax', label: t('Harvest count max', 'จำนวนผลผลิตสูงสุด'), kind: 'int', default: 2, min: 1, max: 64 },
+      { key: 'seedMin', label: t('Seeds back min', 'ได้เมล็ดคืนต่ำสุด'), kind: 'int', default: 1, min: 0, max: 64 },
+      { key: 'seedMax', label: t('Seeds back max', 'ได้เมล็ดคืนสูงสุด'), kind: 'int', default: 3, min: 0, max: 64 }
+    ]
+  },
+  {
+    type: 'tree',
+    category: 'farm',
+    title: t('Tree (Sapling)', 'ต้นไม้ (หน่อไม้/กล้าไม้)'),
+    description: t('A sapling that grows into a tree with vanilla tree patterns', 'ต้นไม้/กล้าไม้ที่ปลูกและโตเป็นต้นไม้ตามรูปแบบในเกม'),
+    icon: '🌳',
+    registers: true,
+    inputs: [
+      texIn('texture', 'Sapling texture', 'เท็กซ์เจอร์กล้าไม้'),
+      { id: 'log', label: t('Log block (optional)', 'บล็อกไม้ท่อน'), type: 'block', optional: true },
+      { id: 'leaves', label: t('Leaves block (optional)', 'บล็อกใบไม้'), type: 'block', optional: true }
+    ],
+    outputs: [
+      { id: 'out', label: t('Sapling item', 'ไอเทมกล้าไม้'), type: 'item' },
+      { id: 'block', label: t('Sapling block', 'บล็อกกล้าไม้'), type: 'block' }
+    ],
+    props: [
+      ...nameProps('my_sapling', 'My Sapling'),
       {
-        key: 'seedMin',
-        label: t('Seeds back min', 'ได้เมล็ดคืนต่ำสุด'),
-        kind: 'int',
-        default: 1,
-        min: 0,
-        max: 64,
-        showIf: (d) => d.mode !== 'regrow'
-      },
-      { key: 'seedMax', label: t('Seeds back max', 'ได้เมล็ดคืนสูงสุด'), kind: 'int', default: 3, min: 0, max: 64, showIf: (d) => d.mode !== 'regrow' }
+        key: 'treeType',
+        label: t('Tree shape / type', 'รูปแบบต้นไม้ที่โต'),
+        kind: 'select',
+        default: 'oak',
+        options: [
+          opt('oak', 'Oak', 'โอ๊ก'),
+          opt('birch', 'Birch', 'เบิร์ช'),
+          opt('spruce', 'Spruce', 'สพรูซ'),
+          opt('jungle', 'Jungle', 'จังเกิล'),
+          opt('acacia', 'Acacia', 'อะคาเซีย'),
+          opt('dark_oak', 'Dark Oak', 'ดาร์กโอ๊ก'),
+          opt('cherry', 'Cherry', 'ซากุระ'),
+          opt('mangrove', 'Mangrove', 'โกงกาง')
+        ]
+      }
     ]
   },
 
   // ───────────── Armor ─────────────
   {
-    type: 'armorMaterial',
-    category: 'armor',
-    title: t('Armor Material', 'วัสดุเกราะ'),
-    description: t('Protection stats + worn textures (layer 1 = body, layer 2 = legs)', 'ค่าป้องกัน + เท็กซ์เจอร์ตอนสวมใส่ (layer 1 = ตัว, layer 2 = ขา)'),
-    icon: '🛡',
-    registers: true,
-    inputs: [
-      texIn('layer1', 'Worn texture (layer 1)', 'เท็กซ์เจอร์ตอนใส่ (layer 1)'),
-      texIn('layer2', 'Worn texture (layer 2)', 'เท็กซ์เจอร์ตอนใส่ (layer 2)'),
-      { id: 'repair', label: t('Repair with', 'ซ่อมด้วย'), type: 'ingredient', optional: true }
-    ],
-    outputs: [{ id: 'out', label: t('Armor material', 'วัสดุเกราะ'), type: 'armorMat' }],
-    props: [
-      { key: 'id', label: t('Material ID', 'ID วัสดุ'), kind: 'id', default: 'my_armor' },
-      { key: 'durability', label: t('Durability multiplier', 'ตัวคูณความทนทาน'), kind: 'int', default: 20, min: 1, max: 1000 },
-      { key: 'helmet', label: t('Helmet protection', 'เกราะหมวก'), kind: 'int', default: 2, min: 0, max: 30 },
-      { key: 'chestplate', label: t('Chestplate protection', 'เกราะเสื้อ'), kind: 'int', default: 6, min: 0, max: 30 },
-      { key: 'leggings', label: t('Leggings protection', 'เกราะกางเกง'), kind: 'int', default: 5, min: 0, max: 30 },
-      { key: 'boots', label: t('Boots protection', 'เกราะรองเท้า'), kind: 'int', default: 2, min: 0, max: 30 },
-      { key: 'enchantability', label: t('Enchantability', 'ค่าเอนชานต์'), kind: 'int', default: 15, min: 0, max: 100 },
-      { key: 'toughness', label: t('Toughness', 'ความแกร่ง'), kind: 'float', default: 0, min: 0, max: 20, step: 0.5 },
-      { key: 'knockback', label: t('Knockback resistance', 'ต้านแรงกระแทก'), kind: 'float', default: 0, min: 0, max: 1, step: 0.05 },
-      {
-        key: 'equipSound',
-        label: t('Equip sound', 'เสียงตอนสวม'),
-        kind: 'select',
-        default: 'iron',
-        options: [
-          opt('generic', 'Generic', 'ทั่วไป'),
-          opt('leather', 'Leather', 'หนัง'),
-          opt('chain', 'Chain', 'โซ่'),
-          opt('iron', 'Iron', 'เหล็ก'),
-          opt('gold', 'Gold', 'ทอง'),
-          opt('diamond', 'Diamond', 'เพชร'),
-          opt('netherite', 'Netherite', 'เนเธอไรต์')
-        ]
-      }
-    ]
-  },
-  {
-    type: 'armorSet',
-    category: 'armor',
-    hidden: true,
-    title: t('Armor Set', 'ชุดเกราะ'),
-    description: t(
-      'Helmet, chestplate, leggings and boots. Connect a GeckoLib model for 3D armor.',
-      'หมวก เสื้อ กางเกง รองเท้า — ต่อโมเดล GeckoLib เพื่อทำเกราะ 3D'
-    ),
-    icon: '🥋',
-    registers: true,
-    inputs: [
-      { id: 'material', label: t('Armor material (optional: iron)', 'วัสดุเกราะ (ไม่ใส่ = เหล็ก)'), type: 'armorMat', optional: true },
-      texIn('helmetIcon', 'Helmet icon', 'ไอคอนหมวก', true),
-      texIn('chestplateIcon', 'Chestplate icon', 'ไอคอนเสื้อ', true),
-      texIn('leggingsIcon', 'Leggings icon', 'ไอคอนกางเกง', true),
-      texIn('bootsIcon', 'Boots icon', 'ไอคอนรองเท้า', true),
-      { id: 'geo', label: t('3D model (GeckoLib)', 'โมเดล 3D (GeckoLib)'), type: 'geo', optional: true }
-    ],
-    outputs: [
-      { id: 'helmet', label: t('Helmet', 'หมวก'), type: 'item' },
-      { id: 'chestplate', label: t('Chestplate', 'เสื้อเกราะ'), type: 'item' },
-      { id: 'leggings', label: t('Leggings', 'กางเกงเกราะ'), type: 'item' },
-      { id: 'boots', label: t('Boots', 'รองเท้า'), type: 'item' }
-    ],
-    props: [
-      { key: 'baseId', label: t('Base ID', 'ID หลัก'), kind: 'id', default: 'my', hint: t('my → my_helmet, my_chestplate…', 'my → my_helmet, my_chestplate…') },
-      { key: 'name', label: t('Base name (EN)', 'ชื่อหลัก (EN)'), kind: 'text', default: 'My' },
-      { key: 'nameTh', label: t('Base name (TH)', 'ชื่อหลัก (ไทย)'), kind: 'text', default: '' },
-      { key: 'helmet', label: t('Include helmet', 'มีหมวก'), kind: 'bool', default: true },
-      { key: 'chestplate', label: t('Include chestplate', 'มีเสื้อ'), kind: 'bool', default: true },
-      { key: 'leggings', label: t('Include leggings', 'มีกางเกง'), kind: 'bool', default: true },
-      { key: 'boots', label: t('Include boots', 'มีรองเท้า'), kind: 'bool', default: true },
-      { key: 'rarity', label: t('Rarity', 'ความหายาก'), kind: 'select', default: 'common', options: itemCommon[1].options },
-      { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false }
-    ]
-  },
-
-  {
     type: 'armorPiece',
     category: 'armor',
     title: t('Armor Piece', 'ชิ้นเกราะ'),
     description: t(
-      'One wearable piece (helmet, chestplate, leggings or boots). Works on its own (iron stats and look); add an Armor Material, a 3D model (.bbmodel, .geo.json or a .json block/item model), animation and effects as you like.',
-      'ของสวมใส่ 1 ชิ้น (หมวก เสื้อ กางเกง หรือรองเท้า) — ใช้ได้เลยไม่ต้องต่ออะไร (ค่าและหน้าตาแบบเหล็ก) จะเพิ่มวัสดุเกราะ โมเดล 3D (.bbmodel, .geo.json หรือโมเดล .json ของบล็อก/ไอเทม) อนิเมชัน และเอฟเฟกต์ก็ได้'
+      'One wearable piece (helmet, chestplate, leggings or boots) with configurable material and durability.',
+      'ของสวมใส่ 1 ชิ้น (หมวก เสื้อ กางเกง หรือรองเท้า) กำหนดวัสดุและความคงทนได้'
     ),
     icon: '🪖',
     registers: true,
     inputs: [
-      { id: 'material', label: t('Armor material (optional: iron)', 'วัสดุเกราะ (ไม่ใส่ = เหล็ก)'), type: 'armorMat', optional: true },
       texIn('icon', 'Icon texture', 'ไอคอน'),
       { id: 'geo', label: t('3D model (Blockbench / .json)', 'โมเดล 3D (Blockbench / .json)'), type: 'geo', optional: true },
-      ...effectIns('Effect while worn', 'เอฟเฟกต์ตอนสวม'),
-      ...slots(8, 'attr', 'Stat bonus', 'โบนัสค่าสถานะ', 'attribute', { group: 'attr' })
+      { id: 'material', label: t('Material (optional)', 'วัสดุ (ไม่ใส่ก็ได้)'), type: 'armorMat', optional: true, legacy: true },
+      { id: 'effect1', label: t('Effect while worn 1', 'เอฟเฟกต์ตอนสวม 1'), type: 'effect', optional: true, group: 'effect' },
+      ...slots(8, 'attr', 'Stat bonus', 'โบนัสสถานะ', 'attribute', { group: 'attr' })
     ],
     outputs: [{ id: 'out', label: t('Item', 'ไอเทม'), type: 'item' }],
     props: [
@@ -791,20 +695,39 @@ const CORE_NODE_DEFS: NodeDef[] = [
           opt('boots', 'Boots (feet)', 'รองเท้า (เท้า)')
         ]
       },
-      { key: 'rarity', label: t('Rarity', 'ความหายาก'), kind: 'select', default: 'common', options: itemCommon[1].options },
-      { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false },
       {
-        key: 'iconFrom',
-        label: t('Inventory icon', 'ไอคอนไอเทม (ในช่องเก็บของ)'),
+        key: 'materialTier',
+        label: t('Material', 'วัสดุ'),
         kind: 'select',
-        default: 'texture',
-        options: [opt('texture', 'Icon texture (2D)', 'รูปไอคอน (2D)'), opt('model', 'The 3D model (.bbmodel / .json)', 'โมเดล 3D (.bbmodel / .json)')],
-        hint: t(
-          '"The 3D model" shows the connected 3D model as the item, like a block in the inventory.',
-          '"โมเดล 3D" จะแสดงโมเดลที่ต่อไว้เป็นตัวไอเทม แบบเดียวกับบล็อกในช่องเก็บของ'
-        )
+        default: 'iron',
+        options: [
+          opt('leather', 'Leather', 'หนัง'),
+          opt('chain', 'Chain', 'โซ่'),
+          opt('iron', 'Iron', 'เหล็ก'),
+          opt('gold', 'Gold', 'ทอง'),
+          opt('diamond', 'Diamond', 'เพชร'),
+          opt('netherite', 'Netherite', 'เนเธอไรต์')
+        ]
       },
-      { key: 'fit', label: t('Fit on the player', 'การสวมบนตัวผู้เล่น'), kind: 'armorFit', default: null }
+      {
+        key: 'unbreakable',
+        label: t('Unbreakable (never breaks)', 'ไม่มีวันพัง'),
+        kind: 'bool',
+        default: false,
+        hint: t('Never loses durability.', 'ไม่เสียความคงทนเลย')
+      },
+      {
+        key: 'durability',
+        label: t('Durability (0 = from material)', 'ความคงทน (0 = ตามวัสดุ)'),
+        kind: 'int',
+        default: 0,
+        min: 0,
+        max: 100000,
+        showIf: (d) => d.unbreakable !== true,
+        hint: t('0 = use standard durability for the chosen material.', '0 = ใช้ค่าความคงทนมาตรฐานตามวัสดุที่เลือก')
+      },
+      rarityProp,
+      { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false }
     ]
   },
 
@@ -956,14 +879,12 @@ const CORE_NODE_DEFS: NodeDef[] = [
     type: 'soundEvent',
     category: 'sound',
     title: t('Sound Event', 'เสียงในเกม'),
-    description: t('A playable sound; several files = random variation', 'เสียงที่เล่นในเกม — ใส่หลายไฟล์จะสุ่มเล่น'),
+    description: t('A playable sound', 'เสียงที่เล่นในเกม'),
     icon: '🎵',
     registers: true,
     inputs: [
-      { id: 'sound1', label: t('Sound 1', 'เสียง 1'), type: 'sound' },
-      { id: 'sound2', label: t('Sound 2', 'เสียง 2'), type: 'sound', optional: true },
-      { id: 'sound3', label: t('Sound 3', 'เสียง 3'), type: 'sound', optional: true },
-      { id: 'sound4', label: t('Sound 4', 'เสียง 4'), type: 'sound', optional: true }
+      { id: 'sound', label: t('Sound file', 'ไฟล์เสียง'), type: 'sound', optional: true },
+      ...slots(4, 'sound', 'Sound file', 'ไฟล์เสียง', 'sound', { legacy: true, optional: true })
     ],
     outputs: [{ id: 'out', label: t('Sound event', 'เสียงในเกม'), type: 'soundEvent' }],
     props: [
@@ -1119,128 +1040,6 @@ const CORE_NODE_DEFS: NodeDef[] = [
   },
 
   // ───────────── Farmer's Delight ─────────────
-  // ───────────── Mobs ─────────────
-  {
-    type: 'mob',
-    category: 'mob',
-    title: t('Mob / Monster', 'ม็อบ / มอนสเตอร์'),
-    description: t(
-      'A creature with its own spawn egg: a game body (zombie, skeleton, spider, cow, pig) with your skin, or a 3D Blockbench model with animations (GeckoLib, 1.20.1 and 1.21.1). Health, damage, speed, natural spawning and drops can be set.',
-      'สิ่งมีชีวิตพร้อมไข่เกิด: ใช้ร่างจากเกม (ซอมบี้ โครงกระดูก แมงมุม วัว หมู) กับสกินของเรา หรือโมเดล 3D จาก Blockbench พร้อมอนิเมชัน (GeckoLib, 1.20.1 และ 1.21.1) ตั้งเลือด ดาเมจ ความเร็ว การเกิดตามธรรมชาติ และของดรอปได้'
-    ),
-    icon: '👾',
-    registers: true,
-    inputs: [
-      texIn('skin', 'Skin (game body)', 'สกิน (ร่างจากเกม)', true),
-      { id: 'geo', label: t('3D model (Blockbench)', 'โมเดล 3D (Blockbench)'), type: 'geo', optional: true },
-      ...slots(3, 'drop', 'Drop', 'ของดรอป', 'item', { group: 'drop' })
-    ],
-    outputs: [{ id: 'out', label: t('Spawn egg', 'ไข่เกิด'), type: 'item' }],
-    props: [
-      ...nameProps('my_mob', 'My Mob'),
-      {
-        key: 'body',
-        label: t('Body', 'ร่าง'),
-        kind: 'select',
-        default: 'zombie',
-        options: [
-          opt('zombie', 'Zombie (people shape, hostile)', 'ซอมบี้ (ร่างคน, ดุร้าย)'),
-          opt('skeleton', 'Skeleton (hostile)', 'โครงกระดูก (ดุร้าย)'),
-          opt('spider', 'Spider (hostile)', 'แมงมุม (ดุร้าย)'),
-          opt('cow', 'Cow (friendly)', 'วัว (เป็นมิตร)'),
-          opt('pig', 'Pig (friendly)', 'หมู (เป็นมิตร)'),
-          opt('model3d', '3D model (wire a 3D Armor Model node)', 'โมเดล 3D (ต่อโหนดโมเดลเกราะ 3D)')
-        ],
-        hint: t(
-          'Game bodies use the skin layout of that mob (a 64×64 zombie / skeleton, 64×32 spider, 64×64 cow, 64×64 pig).',
-          'ร่างจากเกมใช้รูปแบบสกินของม็อบนั้น (ซอมบี้/โครงกระดูก 64×64, แมงมุม 64×32, วัว 64×64, หมู 64×64)'
-        )
-      },
-      {
-        key: 'behavior',
-        label: t('Behavior', 'นิสัย'),
-        kind: 'select',
-        default: 'hostile',
-        options: [
-          opt('hostile', 'Hostile: attacks players', 'ดุร้าย: โจมตีผู้เล่น'),
-          opt('neutral', 'Neutral: fights back when hit', 'เฉย ๆ: สู้กลับเมื่อโดนตี'),
-          opt('passive', 'Friendly: wanders, runs when hit', 'เป็นมิตร: เดินเล่น วิ่งหนีเมื่อโดนตี')
-        ],
-        showIf: (d) => d.body === 'model3d'
-      },
-      { key: 'health', label: t('Health (2 = 1 heart)', 'เลือด (2 = 1 หัวใจ)'), kind: 'float', default: 20, min: 1, max: 1024, step: 1 },
-      { key: 'attack', label: t('Attack damage', 'พลังโจมตี'), kind: 'float', default: 3, min: 0, max: 1000, step: 0.5 },
-      { key: 'speed', label: t('Speed (zombie 0.23, player 0.1 walk)', 'ความเร็ว (ซอมบี้ 0.23)'), kind: 'float', default: 0.25, min: 0.01, max: 2, step: 0.01 },
-      { key: 'armor', label: t('Armor', 'เกราะ'), kind: 'float', default: 0, min: 0, max: 30, step: 1 },
-      {
-        key: 'width',
-        label: t('Hitbox width (blocks)', 'ความกว้าง hitbox (บล็อก)'),
-        kind: 'float',
-        default: 0.6,
-        min: 0.1,
-        max: 8,
-        step: 0.1,
-        showIf: (d) => d.body === 'model3d'
-      },
-      {
-        key: 'height',
-        label: t('Hitbox height (blocks)', 'ความสูง hitbox (บล็อก)'),
-        kind: 'float',
-        default: 1.8,
-        min: 0.1,
-        max: 16,
-        step: 0.1,
-        showIf: (d) => d.body === 'model3d'
-      },
-      { key: 'idleAnim', label: t('Idle animation', 'อนิเมชันยืนนิ่ง'), kind: 'text', default: '', showIf: (d) => d.body === 'model3d' },
-      { key: 'walkAnim', label: t('Walk animation', 'อนิเมชันเดิน'), kind: 'text', default: '', showIf: (d) => d.body === 'model3d' },
-      { key: 'attackAnim', label: t('Attack animation', 'อนิเมชันโจมตี'), kind: 'text', default: '', showIf: (d) => d.body === 'model3d' },
-      {
-        key: 'spawn',
-        label: t('Spawns naturally in', 'เกิดเองตามธรรมชาติใน'),
-        kind: 'select',
-        default: 'none',
-        options: [
-          opt('none', 'Nowhere (spawn egg / command only)', 'ไม่เกิดเอง (ไข่เกิด / คำสั่งเท่านั้น)'),
-          opt('overworld', 'The Overworld', 'โลกปกติ'),
-          opt('nether', 'The Nether', 'เนเธอร์'),
-          opt('end', 'The End', 'ดิเอนด์')
-        ],
-        hint: t('Natural spawning needs Minecraft 1.19.2 or newer.', 'การเกิดตามธรรมชาติใช้ได้ใน Minecraft 1.19.2 ขึ้นไป')
-      },
-      {
-        key: 'weight',
-        label: t('Spawn weight (zombie 100)', 'โอกาสเกิด (ซอมบี้ 100)'),
-        kind: 'int',
-        default: 40,
-        min: 1,
-        max: 1000,
-        showIf: (d) => d.spawn !== 'none' && d.spawn !== undefined
-      },
-      {
-        key: 'groupMin',
-        label: t('Group size min', 'จำนวนต่อกลุ่มต่ำสุด'),
-        kind: 'int',
-        default: 1,
-        min: 1,
-        max: 16,
-        showIf: (d) => d.spawn !== 'none' && d.spawn !== undefined
-      },
-      {
-        key: 'groupMax',
-        label: t('Group size max', 'จำนวนต่อกลุ่มสูงสุด'),
-        kind: 'int',
-        default: 3,
-        min: 1,
-        max: 16,
-        showIf: (d) => d.spawn !== 'none' && d.spawn !== undefined
-      },
-      { key: 'dropMin', label: t('Each drop: count min', 'ของดรอปแต่ละอย่าง: ต่ำสุด'), kind: 'int', default: 0, min: 0, max: 64 },
-      { key: 'dropMax', label: t('Each drop: count max', 'ของดรอปแต่ละอย่าง: สูงสุด'), kind: 'int', default: 2, min: 0, max: 64 },
-      { key: 'eggColor', label: t('Spawn egg colour', 'สีไข่เกิด'), kind: 'color', default: '#4b7f52' },
-      { key: 'eggSpots', label: t('Spawn egg spots', 'สีจุดไข่เกิด'), kind: 'color', default: '#e11d48' }
-    ]
-  },
 
   // ───────────── Add-ons (other mods) ─────────────
   // ───────────── Utility ─────────────
@@ -1289,16 +1088,6 @@ const CORE_NODE_DEFS: NodeDef[] = [
     ]
   },
   {
-    type: 'reroute',
-    category: 'util',
-    title: t('Reroute', 'จุดพักสาย'),
-    description: t('Tidy up wires', 'จัดระเบียบสาย'),
-    icon: '•',
-    inputs: [{ id: 'in', label: t('In', 'เข้า'), type: 'any' }],
-    outputs: [{ id: 'out', label: t('Out', 'ออก'), type: 'any' }],
-    props: []
-  },
-  {
     type: 'comment',
     category: 'util',
     title: t('Comment', 'คอมเมนต์'),
@@ -1309,6 +1098,177 @@ const CORE_NODE_DEFS: NodeDef[] = [
     props: [
       { key: 'text', label: t('Text', 'ข้อความ'), kind: 'textarea', default: 'Note' },
       { key: 'color', label: t('Color', 'สี'), kind: 'color', default: '#6b7280' }
+    ]
+  },
+  // ── Legacy nodes kept for backwards compatibility (hidden from library and quick-add) ──
+  {
+    type: 'reroute',
+    category: 'util',
+    title: t('Reroute', 'จุดพักสาย'),
+    description: t('Tidy up wires', 'จัดระเบียบสาย'),
+    icon: '•',
+    hidden: true,
+    inputs: [{ id: 'in', label: t('In', 'เข้า'), type: 'any' }],
+    outputs: [{ id: 'out', label: t('Out', 'ออก'), type: 'any' }],
+    props: []
+  },
+  {
+    type: 'toolMaterial',
+    category: 'item',
+    title: t('Tool Material', 'วัสดุเครื่องมือ'),
+    description: t('Durability, speed, attack damage and mining level for tools', 'ความคงทน ความเร็ว พลังโจมตี และระดับการขุดของเครื่องมือ'),
+    icon: '⛏',
+    registers: true,
+    hidden: true,
+    inputs: [{ id: 'repair', label: t('Repair item (ingredient)', 'ไอเทมซ่อม (วัตถุดิบ)'), type: 'ingredient', optional: true }],
+    outputs: [{ id: 'out', label: t('Material', 'วัสดุ'), type: 'toolMat' }],
+    props: [
+      ...nameProps('my_material', 'My Material'),
+      {
+        key: 'level',
+        label: t('Mining level', 'ระดับการขุด'),
+        kind: 'select',
+        default: 'iron',
+        options: [opt('wood', 'Wood', 'ไม้'), opt('stone', 'Stone', 'หิน'), opt('iron', 'Iron', 'เหล็ก'), opt('diamond', 'Diamond', 'เพชร'), opt('netherite', 'Netherite', 'เนเธอไรต์')]
+      },
+      { key: 'durability', label: t('Durability', 'ความคงทน'), kind: 'int', default: 250, min: 1, max: 100000 },
+      { key: 'speed', label: t('Mining speed', 'ความเร็วการขุด'), kind: 'float', default: 6, min: 0.1, max: 100, step: 0.5 },
+      { key: 'damage', label: t('Attack damage bonus', 'โบนัสพลังโจมตี'), kind: 'float', default: 2, min: 0, max: 100, step: 0.5 },
+      { key: 'enchantability', label: t('Enchantability', 'ความง่ายในการเอนชานต์'), kind: 'int', default: 14, min: 0, max: 100 }
+    ]
+  },
+  {
+    type: 'armorMaterial',
+    category: 'armor',
+    title: t('Armor Material', 'วัสดุเกราะ'),
+    description: t('Protection, durability and textures for armor sets', 'พลังป้องกัน ความคงทน และเท็กซ์เจอร์ของชุดเกราะ'),
+    icon: '🛡',
+    registers: true,
+    hidden: true,
+    inputs: [
+      texIn('layer1', 'Armor layer 1 (head, body, feet)', 'เท็กซ์เจอร์เกราะส่วนที่ 1 (หัว ตัว เท้า)'),
+      texIn('layer2', 'Armor layer 2 (legs)', 'เท็กซ์เจอร์เกราะส่วนที่ 2 (ขา)'),
+      { id: 'repair', label: t('Repair item (ingredient)', 'ไอเทมซ่อม (วัตถุดิบ)'), type: 'ingredient', optional: true }
+    ],
+    outputs: [{ id: 'out', label: t('Material', 'วัสดุ'), type: 'armorMat' }],
+    props: [
+      ...nameProps('my_armor_material', 'My Armor Material'),
+      { key: 'durability', label: t('Durability multiplier', 'ตัวคูณความคงทน'), kind: 'int', default: 15, min: 1, max: 1000 },
+      { key: 'helmet', label: t('Helmet protection', 'เกราะหมวก'), kind: 'int', default: 2, min: 0, max: 30 },
+      { key: 'chestplate', label: t('Chestplate protection', 'เกราะเสื้อ'), kind: 'int', default: 6, min: 0, max: 30 },
+      { key: 'leggings', label: t('Leggings protection', 'เกราะกางเกง'), kind: 'int', default: 5, min: 0, max: 30 },
+      { key: 'boots', label: t('Boots protection', 'เกราะรองเท้า'), kind: 'int', default: 2, min: 0, max: 30 },
+      { key: 'toughness', label: t('Armor toughness', 'ความทนทานเกราะ'), kind: 'float', default: 0, min: 0, max: 20, step: 0.5 },
+      { key: 'knockback', label: t('Knockback resistance', 'ต้านทานการกระเด็น'), kind: 'float', default: 0, min: 0, max: 1, step: 0.05 },
+      { key: 'enchantability', label: t('Enchantability', 'ความง่ายในการเอนชานต์'), kind: 'int', default: 9, min: 0, max: 100 },
+      {
+        key: 'equipSound',
+        label: t('Equip sound', 'เสียงตอนสวม'),
+        kind: 'select',
+        default: 'iron',
+        options: [opt('leather', 'Leather', 'หนัง'), opt('chain', 'Chain', 'โซ่'), opt('iron', 'Iron', 'เหล็ก'), opt('gold', 'Gold', 'ทอง'), opt('diamond', 'Diamond', 'เพชร'), opt('netherite', 'Netherite', 'เนเธอไรต์')]
+      }
+    ]
+  },
+  {
+    type: 'armorSet',
+    category: 'armor',
+    title: t('Armor Set (all 4 pieces)', 'ชุดเกราะ (ครบ 4 ชิ้น)'),
+    description: t('Generates helmet, chestplate, leggings and boots from one node', 'สร้างหมวก เสื้อ กางเกง และรองเท้าจากโหนดเดียว'),
+    icon: '🦺',
+    registers: true,
+    hidden: true,
+    inputs: [
+      { id: 'material', label: t('Material', 'วัสดุ'), type: 'armorMat', optional: true, legacy: true },
+      texIn('helmetIcon', 'Helmet icon', 'ไอคอนหมวก'),
+      texIn('chestplateIcon', 'Chestplate icon', 'ไอคอนเสื้อ'),
+      texIn('leggingsIcon', 'Leggings icon', 'ไอคอนกางเกง'),
+      texIn('bootsIcon', 'Boots icon', 'ไอคอนรองเท้า'),
+      { id: 'geo', label: t('3D model (optional)', 'โมเดล 3D (ไม่ใส่ก็ได้)'), type: 'geo', optional: true }
+    ],
+    outputs: [
+      { id: 'helmet', label: t('Helmet', 'หมวก'), type: 'item' },
+      { id: 'chestplate', label: t('Chestplate', 'เสื้อ'), type: 'item' },
+      { id: 'leggings', label: t('Leggings', 'กางเกง'), type: 'item' },
+      { id: 'boots', label: t('Boots', 'รองเท้า'), type: 'item' }
+    ],
+    props: [
+      { key: 'baseId', label: t('ID prefix', 'คำนำหน้า ID'), kind: 'id', default: 'ruby', hint: t('e.g. "ruby" makes ruby_helmet, ruby_chestplate…', 'เช่น "ruby" จะได้ ruby_helmet, ruby_chestplate…') },
+      { key: 'name', label: t('Set name (EN)', 'ชื่อชุด (EN)'), kind: 'text', default: 'Ruby' },
+      { key: 'nameTh', label: t('Set name (TH)', 'ชื่อชุด (ไทย)'), kind: 'text', default: '' },
+      { key: 'helmet', label: t('Make helmet', 'สร้างหมวก'), kind: 'bool', default: true },
+      { key: 'chestplate', label: t('Make chestplate', 'สร้างเสื้อ'), kind: 'bool', default: true },
+      { key: 'leggings', label: t('Make leggings', 'สร้างกางเกง'), kind: 'bool', default: true },
+      { key: 'boots', label: t('Make boots', 'สร้างรองเท้า'), kind: 'bool', default: true },
+      { key: 'fireResistant', label: t('Fire resistant', 'ทนไฟ'), kind: 'bool', default: false }
+    ]
+  },
+  {
+    type: 'mob',
+    category: 'util',
+    title: t('Creature / Mob', 'สิ่งมีชีวิต / ม็อบ'),
+    description: t('A creature with vanilla body or 3D GeckoLib model', 'สิ่งมีชีวิตที่มีร่างแบบเกมหรือโมเดล GeckoLib 3D'),
+    icon: '🧟',
+    registers: true,
+    hidden: true,
+    inputs: [
+      texIn('skin', 'Skin texture', 'สกิน', true),
+      { id: 'geo', label: t('3D model', 'โมเดล 3D'), type: 'geo', optional: true },
+      { id: 'drop1', label: t('Drops 1', 'ของดรอป 1'), type: 'item', optional: true },
+      { id: 'drop2', label: t('Drops 2', 'ของดรอป 2'), type: 'item', optional: true },
+      { id: 'drop3', label: t('Drops 3', 'ของดรอป 3'), type: 'item', optional: true }
+    ],
+    outputs: [{ id: 'egg', label: t('Spawn egg', 'ไข่เกิด'), type: 'item' }],
+    props: [
+      ...nameProps('my_mob', 'My Mob'),
+      {
+        key: 'body',
+        label: t('Body', 'รูปร่าง'),
+        kind: 'select',
+        default: 'zombie',
+        options: [
+          opt('zombie', 'Zombie', 'ซอมบี้'),
+          opt('skeleton', 'Skeleton', 'สเกเลตัล'),
+          opt('spider', 'Spider', 'แมงมุม'),
+          opt('cow', 'Cow', 'วัว'),
+          opt('pig', 'Pig', 'หมู'),
+          opt('model3d', '3D model (GeckoLib)', 'โมเดล 3D (GeckoLib)')
+        ]
+      },
+      {
+        key: 'behavior',
+        label: t('Behavior', 'พฤติกรรม'),
+        kind: 'select',
+        default: 'hostile',
+        options: [
+          opt('hostile', 'Hostile (attacks players)', 'ดุร้าย (โจมตีผู้เล่น)'),
+          opt('neutral', 'Neutral (attacks back)', 'เป็นกลาง (ตีตอบโต้)'),
+          opt('passive', 'Passive (runs away)', 'เชื่อง (วิ่งหนี)')
+        ]
+      },
+      { key: 'health', label: t('Health (zombie 20)', 'พลังชีวิต (ซอมบี้ 20)'), kind: 'float', default: 20, min: 1, max: 1024, step: 1 },
+      { key: 'attack', label: t('Attack damage', 'พลังโจมตี'), kind: 'float', default: 3, min: 0, max: 1000, step: 0.5 },
+      { key: 'speed', label: t('Movement speed (player 0.1)', 'ความเร็วเคลื่อนที่ (ผู้เล่น 0.1)'), kind: 'float', default: 0.25, min: 0.01, max: 2, step: 0.05 },
+      { key: 'armor', label: t('Armor points', 'แต้มเกราะ'), kind: 'float', default: 0, min: 0, max: 30, step: 1 },
+      {
+        key: 'spawn',
+        label: t('Spawn naturally', 'เกิดตามธรรมชาติ'),
+        kind: 'select',
+        default: 'overworld',
+        options: [
+          opt('none', 'Nowhere (egg only)', 'ไม่เกิด (ใช้ไข่เกิดเท่านั้น)'),
+          opt('overworld', 'Overworld (darkness / grass)', 'โลกปกติ (ที่มืด/ทุ่งหญ้า)'),
+          opt('nether', 'The Nether', 'เนเธอร์'),
+          opt('end', 'The End', 'ดิเอนด์')
+        ]
+      },
+      { key: 'weight', label: t('Spawn weight', 'โอกาสเกิด'), kind: 'int', default: 40, min: 1, max: 1000 },
+      { key: 'groupMin', label: t('Group size min', 'จำนวนต่อกลุ่มต่ำสุด'), kind: 'int', default: 1, min: 1, max: 16 },
+      { key: 'groupMax', label: t('Group size max', 'จำนวนต่อกลุ่มสูงสุด'), kind: 'int', default: 3, min: 1, max: 16 },
+      { key: 'dropMin', label: t('Drop count min', 'ของดรอปต่ำสุด'), kind: 'int', default: 0, min: 0, max: 64 },
+      { key: 'dropMax', label: t('Drop count max', 'ของดรอปสูงสุด'), kind: 'int', default: 2, min: 0, max: 64 },
+      { key: 'eggColor', label: t('Egg color', 'สีไข่เกิด'), kind: 'color', default: '#4b7f52' },
+      { key: 'eggSpots', label: t('Egg spots', 'สีจุดไข่เกิด'), kind: 'color', default: '#e11d48' }
     ]
   }
 ]
@@ -1322,18 +1282,52 @@ export function defaultData(def: NodeDef): Record<string, unknown> {
 }
 
 export function pinOf(def: NodeDef, handle: string, dir: 'in' | 'out'): PinDef | undefined {
-  return (dir === 'in' ? def.inputs : def.outputs).find((p) => p.id === handle)
+  const pins = dir === 'in' ? def.inputs : def.outputs
+  const exact = pins.find((p) => p.id === handle)
+  if (exact) return exact
+
+  const m = handle.match(/^([a-zA-Z_]+)(\d+)$/)
+  if (m) {
+    const [, prefix] = m
+    const groupPin = pins.find((p) => p.group === prefix || p.id.startsWith(prefix))
+    if (groupPin) return { ...groupPin, id: handle }
+
+    if (prefix === 'effect' || prefix === 'hit') {
+      const combined = pins.find((p) => p.type === 'effectOrHit' || p.group === 'hit' || p.group === 'effect')
+      if (combined) return { ...combined, id: handle }
+    }
+  }
+
+  return undefined
 }
 
 /**
  * Inputs to draw, split by side. Grouped pins grow: every wired pin plus the first free one;
  * legacy pins only appear while wired. `wired(id)` says whether an input has a wire.
  */
-export function visibleInputs(def: NodeDef, wired: (id: string) => boolean): { left: PinDef[]; right: PinDef[] } {
+export function visibleInputs(def: NodeDef, wired: (id: string) => boolean, data?: Record<string, unknown>): { left: PinDef[]; right: PinDef[] } {
   const left: PinDef[] = []
   const right: PinDef[] = []
-  const freeShown = new Set<string>()
+  const groupCounts = new Map<string, { lastPin: PinDef; maxIndex: number }>()
+
   for (const p of def.inputs) {
+    if (p.showIf && data && !p.showIf(data)) continue
+    if (p.legacy) continue
+    if (p.group) {
+      const g = groupCounts.get(p.group) ?? { lastPin: p, maxIndex: 0 }
+      g.lastPin = p
+      const match = p.id.match(/^(\D+)(\d+)$/)
+      const idx = match ? parseInt(match[2], 10) : 0
+      if (idx > g.maxIndex) g.maxIndex = idx
+      groupCounts.set(p.group, g)
+    }
+  }
+
+  const FIXED_GROUP_LIMITS: Record<string, number> = { ing: 9, stage: 8 }
+  const freeShown = new Set<string>()
+
+  for (const p of def.inputs) {
+    if (p.showIf && data && !p.showIf(data)) continue
     const on = wired(p.id)
     if (p.legacy && !on) continue
     if (p.group && !on) {
@@ -1341,7 +1335,48 @@ export function visibleInputs(def: NodeDef, wired: (id: string) => boolean): { l
       freeShown.add(p.group)
     }
     ;(p.right ? right : left).push(p)
+
+    // When the last defined pin of a group is reached, if all defined pins were wired,
+    // continue spawning subsequent slots inline immediately after it.
+    if (p.group && !p.legacy) {
+      const g = groupCounts.get(p.group)
+      if (g && p === g.lastPin && !freeShown.has(p.group)) {
+        if (!FIXED_GROUP_LIMITS[p.group] || g.maxIndex < FIXED_GROUP_LIMITS[p.group]) {
+          const prefix = g.lastPin.id.match(/^(\D+)/)?.[1] ?? p.group
+          let nextIdx = g.maxIndex + 1
+          while (wired(`${prefix}${nextIdx}`)) {
+            const nextPin: PinDef = {
+              id: `${prefix}${nextIdx}`,
+              label: t(
+                `${g.lastPin.label.en.replace(/\s*\d+$/, '')} ${nextIdx}`,
+                `${g.lastPin.label.th.replace(/\s*\d+$/, '')} ${nextIdx}`
+              ),
+              type: g.lastPin.type,
+              group: p.group,
+              optional: true,
+              right: g.lastPin.right
+            }
+            ;(nextPin.right ? right : left).push(nextPin)
+            nextIdx++
+          }
+          const freePin: PinDef = {
+            id: `${prefix}${nextIdx}`,
+            label: t(
+              `${g.lastPin.label.en.replace(/\s*\d+$/, '')} ${nextIdx}`,
+              `${g.lastPin.label.th.replace(/\s*\d+$/, '')} ${nextIdx}`
+            ),
+            type: g.lastPin.type,
+            group: p.group,
+            optional: true,
+            right: g.lastPin.right
+          }
+          ;(freePin.right ? right : left).push(freePin)
+          freeShown.add(p.group)
+        }
+      }
+    }
   }
+
   return { left, right }
 }
 
@@ -1355,7 +1390,6 @@ registry.register('core', {
     effect: { label: t('Effects & abilities', 'เอฟเฟกต์และความสามารถ'), color: '#ec4899', order: 4 },
     sound: { label: t('Sound & Music', 'เสียงและเพลง'), color: '#10b981', order: 5 },
     recipe: { label: t('Recipes', 'สูตรคราฟ'), color: '#e11d48', order: 6 },
-    mob: { label: t('Mobs & monsters', 'ม็อบและมอนสเตอร์'), color: '#b91c1c', order: 8 },
     addon: { label: t('Add-ons (other mods)', 'ส่วนเสริม (ม็อดอื่น)'), color: '#0ea5e9', order: 9 },
     asset: { label: t('Assets', 'ไฟล์ทรัพยากร'), color: '#f59e0b', order: 10 },
     util: { label: t('Utility', 'เครื่องมือ'), color: '#71717a', order: 11 }
@@ -1371,6 +1405,7 @@ registry.register('core', {
     toolMat: '#ef4444',
     armorMat: '#f97316',
     effect: '#ec4899',
+    effectOrHit: '#ec4899',
     animation: '#8b5cf6',
     block: '#7c3aed',
     attribute: '#14b8a6',

@@ -215,16 +215,32 @@ export function genAssets(ctx: GenCtx): void {
   }
 
   // ── lang ──
-  const en: Record<string, string> = {}
-  const th: Record<string, string> = {}
+  const langs: Record<string, Record<string, string>> = {
+    en_us: {},
+    th_th: {}
+  }
+  const en = langs.en_us
+  const th = langs.th_th
+  const esc = (v: string, format = false) => (format ? v : v.replace(/%/g, '%%'))
+
   /** A lang entry. Text the user wrote is escaped ('%' would be read as a format code); `format` = our own %s template. */
   const put = (k: string, e: string, t: string, format = false) => {
-    const esc = (v: string) => (format ? v : v.replace(/%/g, '%%'))
-    en[k] = esc(e)
-    th[k] = esc(t || e)
+    en[k] = esc(e, format)
+    th[k] = esc(t || e, format)
   }
+
+  const putTranslations = (k: string, defaultEn: string, defaultTh: string, trans?: Record<string, string>, format = false) => {
+    put(k, defaultEn, defaultTh, format)
+    if (trans) {
+      for (const [code, val] of Object.entries(trans)) {
+        if (!langs[code]) langs[code] = {}
+        langs[code][k] = esc(val, format)
+      }
+    }
+  }
+
   for (const it of ir.items) {
-    put(`item.${ns}.${it.id}`, it.name, it.nameTh)
+    putTranslations(`item.${ns}.${it.id}`, it.name, it.nameTh, it.translations)
     if (it.disc) {
       const cr = COPYRIGHT[it.disc.copyright]
       const song = cr ? `${it.disc.song} (${cr.en})` : it.disc.song
@@ -234,8 +250,8 @@ export function genAssets(ctx: GenCtx): void {
     }
   }
   for (const b of ir.blocks) {
-    put(`block.${ns}.${b.id}`, b.name, b.nameTh)
-    put(`item.${ns}.${b.id}`, b.name, b.nameTh)
+    putTranslations(`block.${ns}.${b.id}`, b.name, b.nameTh, b.translations)
+    putTranslations(`item.${ns}.${b.id}`, b.name, b.nameTh, b.translations)
   }
   // Regenerating Blocks: the item is named after the original block (%s), only operators can place it
   if (ir.blocks.some((b) => b.regen)) {
@@ -244,7 +260,7 @@ export function genAssets(ctx: GenCtx): void {
     put(`message.${ns}.regen_tool`, 'Needs a better tool', 'ต้องใช้อุปกรณ์ที่ดีกว่านี้')
   }
   for (const m of ir.mobs) {
-    put(`entity.${ns}.${m.id}`, m.name, m.nameTh)
+    putTranslations(`entity.${ns}.${m.id}`, m.name, m.nameTh, m.translations)
     put(`item.${ns}.${m.id}_spawn_egg`, `${m.name} Spawn Egg`, `ไข่เกิด${m.nameTh || m.name}`)
   }
   if (ir.items.some((i) => i.headwear)) put(`tooltip.${ns}.wearable_head`, 'Can be worn on the head', 'สวมบนหัวได้')
@@ -280,14 +296,24 @@ export function genAssets(ctx: GenCtx): void {
   }
   for (const slot of new Set(ir.items.flatMap((i) => (i.attributes ?? []).filter((a) => a.tooltip).map((a) => a.slot))))
     put(`tooltip.${ns}.when.${slot}`, ...when[slot])
-  for (const s of ir.sounds) if (s.subtitle || s.subtitleTh) put(`subtitles.${ns}.${s.id}`, s.subtitle || s.id, s.subtitleTh)
+  for (const s of ir.sounds) if (s.subtitle || s.subtitleTh) putTranslations(`subtitles.${ns}.${s.id}`, s.subtitle || s.id, s.subtitleTh, s.translations)
   for (const t of ir.tabs) {
-    put(`itemGroup.${ns}.${t.id}`, t.title, t.titleTh)
-    put(`itemGroup.${ns}_${t.id}`, t.title, t.titleTh)
-    if (t.logo && !t.icon) put(`item.${ns}.${t.id}_tab_icon`, t.title, t.titleTh)
+    putTranslations(`itemGroup.${ns}.${t.id}`, t.title, t.titleTh, t.translations)
+    putTranslations(`itemGroup.${ns}_${t.id}`, t.title, t.titleTh, t.translations)
+    if (t.logo && !t.icon) putTranslations(`item.${ns}.${t.id}_tab_icon`, t.title, t.titleTh, t.translations)
   }
-  files.push({ path: `${A}/lang/en_us.json`, text: json(en) })
-  files.push({ path: `${A}/lang/th_th.json`, text: json(th) })
+
+  // Fill untranslated keys from en_us
+  for (const [code, dict] of Object.entries(langs)) {
+    if (code === 'en_us') continue
+    for (const [k, val] of Object.entries(en)) {
+      if (!dict[k]) dict[k] = val
+    }
+  }
+
+  for (const [code, dict] of Object.entries(langs)) {
+    files.push({ path: `${A}/lang/${code}.json`, text: json(dict) })
+  }
 }
 
 const COPYRIGHT: Record<string, { en: string; th: string } | undefined> = {

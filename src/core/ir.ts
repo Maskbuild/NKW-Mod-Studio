@@ -43,6 +43,7 @@ interface Named {
   id: string
   name: string
   nameTh: string
+  translations?: Record<string, string>
   nodeId: string
 }
 
@@ -80,7 +81,7 @@ export interface ItemIR extends Named {
   }
   /** stat bonuses while held / worn / carried (Stat Bonus nodes) */
   attributes?: AttributeIR[]
-  armor?: { material: string; slot: ArmorSlot; geo: GeoRef | null; effects: EffectIR[] }
+  armor?: { material: string; slot: ArmorSlot; geo: GeoRef | null; effects: EffectIR[]; durability?: number; unbreakable?: boolean }
   disc?: {
     sound: string
     song: string
@@ -264,6 +265,7 @@ export interface SoundIR {
   files: string[]
   subtitle: string
   subtitleTh: string
+  translations?: Record<string, string>
   stream: boolean
   volume: number
   pitch: number
@@ -282,6 +284,7 @@ export interface TabIR {
   nodeId: string | null
   title: string
   titleTh: string
+  translations?: Record<string, string>
   /** icon: an item id, or a texture asset (a hidden icon item is generated for it) */
   icon: string | null
   logo: string | null

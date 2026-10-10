@@ -171,11 +171,11 @@ function VanillaRef({ id }: { id: string }) {
 
 export const NodeView = memo(function NodeView({ id, type, data, selected }: NodeProps<FlowNode>) {
   const { t } = useTranslation() // also re-renders when the UI language changes
+  const updateInternals = useUpdateNodeInternals()
   const def = NODE_DEF_MAP[type]
   const issue = useStore(useCallback((s) => s.issues[id], [id]))
   const connected = useConnected(id)
-  const updateInternals = useUpdateNodeInternals()
-  const shown = def ? visibleInputs(def, (p) => connected.has(`i:${p}`)) : null
+  const shown = def ? visibleInputs(def, (p) => connected.has(`i:${p}`), data) : null
   const shownKey = shown ? [...shown.left, ...shown.right].map((p) => p.id).join(',') : ''
   // pins appear/disappear as wires are added, so React Flow must re-measure the handles
   useEffect(() => updateInternals(id), [id, shownKey, updateInternals])

@@ -48,7 +48,12 @@ const int = (d: Data, k: string, def: number, lo: number, hi: number) => clamp(M
 const sel = <T extends string = string>(n: GraphNode, key: string): T => {
   const p = NODE_DEF_MAP[n.type]?.props.find((x) => x.key === key)
   const v = str(n.data, key)
-  return (p?.options?.some((o) => o.value === v) ? v : String(p?.default ?? '')) as T
+  if (p) return (p.options?.some((o) => o.value === v) ? v : String(p.default ?? '')) as T
+  if (key === 'rarity') {
+    const RARITIES = ['common', 'uncommon', 'rare', 'epic']
+    return (RARITIES.includes(v) ? v : 'common') as T
+  }
+  return v as T
 }
 
 export interface CompileResult {
@@ -264,26 +269,30 @@ export function compile(project: Project, target?: Target): CompileResult {
   }
 
   const EFFECT_IDS = new Set(EFFECTS.map((e) => e.value))
-  /** Effect nodes plugged into effect1..effect3. */
+  /** Effect nodes plugged into effect1..effect64 or hit1..hit64. */
   const effects = (nodeId: string): EffectIR[] => {
     const out: EffectIR[] = []
-    for (let i = 1; i <= 3; i++) {
-      const s = source(nodeId, `effect${i}`)
-      if (!s || s.node.type !== 'effect') continue
-      const effect = str(s.node.data, 'effect')
-      if (!EFFECT_IDS.has(effect)) {
-        err(s.node.id, 'Unknown effect', 'ไม่รู้จักเอฟเฟกต์นี้')
-        continue
+    const seen = new Set<string>()
+    for (const prefix of ['effect', 'hit']) {
+      for (let i = 1; i <= 64; i++) {
+        const s = source(nodeId, `${prefix}${i}`)
+        if (!s || s.node.type !== 'effect' || seen.has(s.node.id)) continue
+        seen.add(s.node.id)
+        const effect = str(s.node.data, 'effect')
+        if (!EFFECT_IDS.has(effect)) {
+          err(s.node.id, 'Unknown effect', 'ไม่รู้จักเอฟเฟกต์นี้')
+          continue
+        }
+        out.push({
+          effect,
+          amplifier: clamp(Math.round(num(s.node.data, 'level', 1)), 1, 1000) - 1,
+          ticks: Math.round(clamp(num(s.node.data, 'seconds', 10), 0.5, 3600) * 20),
+          chance: clamp(num(s.node.data, 'chance', 1), 0, 1),
+          particles: bool(s.node.data, 'particles', true),
+          showIcon: bool(s.node.data, 'showIcon', true),
+          infinite: bool(s.node.data, 'infinite', false)
+        })
       }
-      out.push({
-        effect,
-        amplifier: clamp(Math.round(num(s.node.data, 'level', 1)), 1, 1000) - 1,
-        ticks: Math.round(clamp(num(s.node.data, 'seconds', 10), 0.5, 3600) * 20),
-        chance: clamp(num(s.node.data, 'chance', 1), 0, 1),
-        particles: bool(s.node.data, 'particles', true),
-        showIcon: bool(s.node.data, 'showIcon', true),
-        infinite: bool(s.node.data, 'infinite', false)
-      })
     }
     return out
   }
@@ -321,21 +330,25 @@ export function compile(project: Project, target?: Target): CompileResult {
     }
     return out
   }
-  /** Hit Ability nodes plugged into hit1..hit3. */
+  /** Hit Ability nodes plugged into hit1..hit64 or effect1..effect64. */
   const hits = (nodeId: string): HitIR[] => {
     const out: HitIR[] = []
-    for (let i = 1; i <= 3; i++) {
-      const s = source(nodeId, `hit${i}`)
-      if (!s || s.node.type !== 'hitAbility') continue
-      const ability = str(s.node.data, 'ability', 'fire') as HitIR['ability']
-      if (!['fire', 'lightning', 'freeze', 'teleport', 'clear'].includes(ability)) continue
-      if (ability === 'freeze' && target?.mc === '1.16.5')
-        warn(s.node.id, 'Minecraft 1.16.5 has no freezing: only slowness is given', 'Minecraft 1.16.5 ไม่มีการแช่แข็ง: ได้แค่ความช้า')
-      out.push({
-        ability,
-        ticks: Math.round(clamp(num(s.node.data, 'seconds', 4), 0.5, 600) * 20),
-        chance: clamp(num(s.node.data, 'chance', 1), 0, 1)
-      })
+    const seen = new Set<string>()
+    for (const prefix of ['hit', 'effect']) {
+      for (let i = 1; i <= 64; i++) {
+        const s = source(nodeId, `${prefix}${i}`)
+        if (!s || s.node.type !== 'hitAbility' || seen.has(s.node.id)) continue
+        seen.add(s.node.id)
+        const ability = str(s.node.data, 'ability', 'fire') as HitIR['ability']
+        if (!['fire', 'lightning', 'freeze', 'teleport', 'clear'].includes(ability)) continue
+        if (ability === 'freeze' && target?.mc === '1.16.5')
+          warn(s.node.id, 'Minecraft 1.16.5 has no freezing: only slowness is given', 'Minecraft 1.16.5 ไม่มีการแช่แข็ง: ได้แค่ความช้า')
+        out.push({
+          ability,
+          ticks: Math.round(clamp(num(s.node.data, 'seconds', 4), 0.5, 600) * 20),
+          chance: clamp(num(s.node.data, 'chance', 1), 0, 1)
+        })
+      }
     }
     return out
   }
@@ -372,6 +385,7 @@ export function compile(project: Project, target?: Target): CompileResult {
       case 'tool':
       case 'musicDisc':
       case 'armorPiece':
+      case 'tree':
         return `${modid}:${str(n.data, 'id')}`
       case 'mob':
         return `${modid}:${str(n.data, 'id')}_spawn_egg`
@@ -446,13 +460,22 @@ export function compile(project: Project, target?: Target): CompileResult {
     ext: {}
   }
 
-  const names = (n: GraphNode) => ({
-    name: str(n.data, 'name') || str(n.data, 'id'),
-    nameTh: str(n.data, 'nameTh')
-  })
+  const names = (n: GraphNode) => {
+    const rawTranslations = typeof n.data.translations === 'object' && n.data.translations !== null ? (n.data.translations as Record<string, string>) : {}
+    const name = str(n.data, 'name') || str(n.data, 'id')
+    const nameTh = str(n.data, 'nameTh') || rawTranslations['th_th'] || ''
+    const translations = { ...rawTranslations }
+    if (name) translations['en_us'] = name
+    if (nameTh) translations['th_th'] = nameTh
+    return {
+      name,
+      nameTh,
+      translations: Object.keys(translations).length ? translations : undefined
+    }
+  }
   const itemBase = (n: GraphNode) => ({
     maxStack: clamp(Math.round(num(n.data, 'maxStack', 64)), 1, 64),
-    rarity: sel<ItemIR['rarity']>(n, 'rarity'),
+    rarity: (sel<ItemIR['rarity']>(n, 'rarity') || 'common') as ItemIR['rarity'],
     fireResistant: bool(n.data, 'fireResistant'),
     glint: bool(n.data, 'glint'),
     handheld: bool(n.data, 'handheld'),
@@ -508,6 +531,19 @@ export function compile(project: Project, target?: Target): CompileResult {
       case 'tool': {
         const mat = source(n.id, 'material')
         if (!mat) usesDefaultTool = true
+        const mineralTier = str(d, 'mineralTier', 'iron')
+        const TIER_DURABILITY: Record<string, number> = {
+          wood: 59,
+          stone: 131,
+          iron: 250,
+          gold: 32,
+          diamond: 1561,
+          netherite: 2031
+        }
+        let dur = clamp(Math.round(num(d, 'durability', 0)), 0, 100000)
+        if (dur === 0 && !bool(d, 'unbreakable')) {
+          dur = TIER_DURABILITY[mineralTier] ?? 250
+        }
         const it: ItemIR = {
           id: regId(n),
           ...names(n),
@@ -526,7 +562,7 @@ export function compile(project: Project, target?: Target): CompileResult {
             speed: num(d, 'attackSpeed', -2.4),
             effects: effects(n.id),
             hits: hits(n.id),
-            durability: bool(d, 'unbreakable') ? 0 : clamp(Math.round(num(d, 'durability', 0)), 0, 100000),
+            durability: bool(d, 'unbreakable') ? 0 : dur,
             unbreakable: bool(d, 'unbreakable')
           },
           attributes: attributes(n.id, 'mainhand')
@@ -1006,7 +1042,35 @@ export function compile(project: Project, target?: Target): CompileResult {
       }
       case 'armorPiece': {
         const mat = source(n.id, 'material')
-        if (!mat) usesDefaultArmor = true
+        const tier = str(d, 'materialTier', 'iron')
+        const matId = mat ? str(mat.node.data, 'id') : `nkw_${tier}`
+        if (!mat) {
+          if (!ir.armorMats.some((m) => m.id === matId)) {
+            const TIER_STATS: Record<string, { durability: number; protection: Record<ArmorSlot, number>; enchantability: number; toughness: number; knockback: number; sound: string; vanillaLook: string; repair: string }> = {
+              leather: { durability: 5, protection: { helmet: 1, chestplate: 3, leggings: 2, boots: 1 }, enchantability: 15, toughness: 0, knockback: 0, sound: 'leather', vanillaLook: 'leather', repair: 'minecraft:leather' },
+              chain: { durability: 12, protection: { helmet: 2, chestplate: 5, leggings: 4, boots: 1 }, enchantability: 12, toughness: 0, knockback: 0, sound: 'chain', vanillaLook: 'chainmail', repair: 'minecraft:iron_ingot' },
+              iron: { durability: 15, protection: { helmet: 2, chestplate: 6, leggings: 5, boots: 2 }, enchantability: 9, toughness: 0, knockback: 0, sound: 'iron', vanillaLook: 'iron', repair: 'minecraft:iron_ingot' },
+              gold: { durability: 7, protection: { helmet: 2, chestplate: 5, leggings: 3, boots: 1 }, enchantability: 25, toughness: 0, knockback: 0, sound: 'gold', vanillaLook: 'gold', repair: 'minecraft:gold_ingot' },
+              diamond: { durability: 33, protection: { helmet: 3, chestplate: 8, leggings: 6, boots: 3 }, enchantability: 10, toughness: 2, knockback: 0, sound: 'diamond', vanillaLook: 'diamond', repair: 'minecraft:diamond' },
+              netherite: { durability: 37, protection: { helmet: 3, chestplate: 8, leggings: 6, boots: 3 }, enchantability: 15, toughness: 3, knockback: 0.1, sound: 'netherite', vanillaLook: 'netherite', repair: 'minecraft:netherite_ingot' }
+            }
+            const s = TIER_STATS[tier] ?? TIER_STATS.iron
+            ir.armorMats.push({
+              id: matId,
+              nodeId: '',
+              durability: s.durability,
+              protection: s.protection,
+              enchantability: s.enchantability,
+              toughness: s.toughness,
+              knockback: s.knockback,
+              equipSound: s.sound,
+              layer1: null,
+              layer2: null,
+              repair: { item: s.repair },
+              vanillaLook: s.vanillaLook
+            })
+          }
+        }
         const g = geo(n.id, 'geo')
         if (g) {
           usesGeo = true
@@ -1018,6 +1082,8 @@ export function compile(project: Project, target?: Target): CompileResult {
         if (modelIcon && !g)
           warn(n.id, 'Connect a 3D model to use it as the icon (the icon texture is used)', 'ต่อโมเดล 3D ก่อนจึงจะใช้เป็นไอคอนได้ (ตอนนี้ใช้รูปไอคอนแทน)')
         const iconModel = modelIcon && !!g
+        const dur = clamp(Math.round(num(d, 'durability', 0)), 0, 100000)
+        const unbrk = bool(d, 'unbreakable')
         ir.items.push({
           id: regId(n),
           ...names(n),
@@ -1032,9 +1098,43 @@ export function compile(project: Project, target?: Target): CompileResult {
           rarity: sel<ItemIR['rarity']>(n, 'rarity'),
           fireResistant: bool(d, 'fireResistant'),
           glint: false,
-          armor: { material: mat ? str(mat.node.data, 'id') : DEFAULT_MAT, slot, geo: g, effects: effects(n.id) },
+          armor: {
+            material: matId,
+            slot,
+            geo: g,
+            effects: effects(n.id),
+            durability: unbrk ? 0 : dur,
+            unbreakable: unbrk
+          },
           attributes: attributes(n.id, SLOT_OF_ARMOR[slot])
         })
+        break
+      }
+      case 'tree': {
+        const tex = texture(n.id, 'texture', true)
+        const b: BlockIR = {
+          id: regId(n),
+          ...names(n),
+          nodeId: n.id,
+          kind: 'cube',
+          shape: 'cube_all',
+          textures: { side: tex, top: tex, bottom: tex },
+          model: null,
+          rotatable: false,
+          hasItem: true,
+          solid: false,
+          hardness: 0,
+          resistance: 0,
+          sound: 'grass',
+          tool: 'none',
+          toolLevel: 'wood',
+          requiresTool: false,
+          light: 0,
+          drop: null,
+          dropMin: 1,
+          dropMax: 1
+        }
+        ir.blocks.push(b)
         break
       }
       case 'texture': {
@@ -1045,20 +1145,32 @@ export function compile(project: Project, target?: Target): CompileResult {
       }
       case 'soundEvent': {
         const files: string[] = []
-        for (let i = 1; i <= 4; i++) {
+        const single = source(n.id, 'sound')
+        if (single && single.node.type === 'soundFile') {
+          const a = assetOf(single.node)
+          if (a) files.push(a)
+        }
+        for (let i = 1; i <= 16; i++) {
           const s = source(n.id, `sound${i}`)
           if (s && s.node.type === 'soundFile') {
             const a = assetOf(s.node)
-            if (a) files.push(a)
+            if (a && !files.includes(a)) files.push(a)
           }
         }
         if (!files.length) err(n.id, 'Connect at least one sound file', 'ต่อไฟล์เสียงอย่างน้อย 1 ไฟล์')
+        const rawTranslations = typeof d.translations === 'object' && d.translations !== null ? (d.translations as Record<string, string>) : {}
+        const subtitle = str(d, 'subtitle')
+        const subtitleTh = str(d, 'subtitleTh') || rawTranslations['th_th'] || ''
+        const translations = { ...rawTranslations }
+        if (subtitle) translations['en_us'] = subtitle
+        if (subtitleTh) translations['th_th'] = subtitleTh
         const snd: SoundIR = {
           id: regId(n),
           nodeId: n.id,
           files,
-          subtitle: str(d, 'subtitle'),
-          subtitleTh: str(d, 'subtitleTh'),
+          subtitle,
+          subtitleTh,
+          translations: Object.keys(translations).length ? translations : undefined,
           stream: bool(d, 'stream'),
           volume: clamp(num(d, 'volume', 1), 0, 4),
           pitch: clamp(num(d, 'pitch', 1), 0.5, 2)

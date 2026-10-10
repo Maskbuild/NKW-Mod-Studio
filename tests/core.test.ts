@@ -98,6 +98,14 @@ describe('compiler', () => {
     const all = visibleInputs(def, (id) => /^i[1-9]$/.test(id))
     expect(all.left.length).toBe(9)
     expect(visibleInputs(NODE_DEF_MAP.creativeTab, () => false).left.map((p) => p.id)).toEqual(['logo', 'icon', 'item1'])
+
+    const toolDef = NODE_DEF_MAP.tool
+    const toolNone = visibleInputs(toolDef, () => false)
+    expect(toolNone.left.map((p) => p.id)).toEqual(['texture', 'model', 'hit1', 'attr1'])
+    const toolHit1 = visibleInputs(toolDef, (id) => id === 'hit1')
+    expect(toolHit1.left.map((p) => p.id)).toEqual(['texture', 'model', 'hit1', 'hit2', 'attr1'])
+    const toolHit2 = visibleInputs(toolDef, (id) => id === 'hit1' || id === 'hit2')
+    expect(toolHit2.left.map((p) => p.id)).toEqual(['texture', 'model', 'hit1', 'hit2', 'hit3', 'attr1'])
   })
   it('fits armor models: plain Blockbench models get armor bones, fit bones carry move/turn, animation carries size', () => {
     const { ir } = compile(project)

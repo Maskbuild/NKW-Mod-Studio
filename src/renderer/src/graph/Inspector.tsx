@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { shallow } from 'zustand/shallow'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
@@ -11,17 +11,16 @@ import { hasFiles, importDropped } from '../drop'
 import { prettyId, useActiveMc, useItemInfo, useItemSources, useVanilla } from './VanillaPanel'
 import { newId, useStore, edgeStyle, inputSource, type FlowNode } from '../store'
 import { TargetPicker } from '../components/TargetPicker'
-import { IAlert, IUpload, Logo } from '../components/Icons'
+import { IAlert, IGlobe, IUpload, Logo } from '../components/Icons'
+import { RangeSlider } from '../components/RangeSlider'
+import { TranslationModal } from '../components/TranslationModal'
 
 import { CraftGrid } from './CraftGrid'
-import { useIde } from '../ide/ideStore'
 import { ArmorFitField } from './ArmorFit'
 import { TabOrder } from './TabOrder'
 import { TimerUiEditor } from './TimerUiEditor'
 import { BlockListField } from './BlockList'
 import { TagGrid } from './TagPreview'
-
-const ModelPreview = lazy(() => import('./ModelPreview'))
 
 const VANILLA_ITEMS = [
   'diamond',
@@ -338,21 +337,7 @@ function NsidField({ node, p }: { node: FlowNode; p: PropDef }) {
 }
 
 function Preview({ node }: { node: FlowNode }) {
-  const { t } = useTranslation()
   const asset = typeof node.data.asset === 'string' ? node.data.asset : ''
-  const texKey = useStoreWithEqualityFn(
-    useStore,
-    useCallback(
-      (s) =>
-        [0, 1, 2, 3].map((i) => {
-          const e = s.edges.find((x) => x.target === node.id && x.targetHandle === `tex${i}`)
-          const src = e && s.nodes.find((n) => n.id === e.source)
-          return src && typeof src.data.asset === 'string' ? src.data.asset : null
-        }),
-      [node.id]
-    ),
-    shallow
-  )
   if (node.type === 'soundEvent') return <SoundEventPreview node={node} />
   if (node.type === 'harvestUi') return null
   if (!asset) return null
@@ -365,18 +350,10 @@ function Preview({ node }: { node: FlowNode }) {
   if (node.type === 'soundFile') return <audio controls src={assetUrl(asset)} style={{ width: '100%', marginBottom: 10 }} />
   if (node.type === 'model')
     return (
-      <>
-        <div className="preview-box">
-          <Suspense fallback={<div className="preview3d" />}>
-            <ModelPreview asset={asset} textures={texKey} />
-          </Suspense>
-        </div>
-        {asset.endsWith('.json') && (
-          <button className="btn small edit-model" onClick={() => useIde.getState().openModel(asset, texKey)}>
-            🧊 {t('model.edit')}
-          </button>
-        )}
-      </>
+      <div className="preview-box" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 6, padding: '16px 8px' }}>
+        <span style={{ fontSize: 24 }}>🧊</span>
+        <span className="mono faint ellipsis" style={{ fontSize: 12, maxWidth: '100%' }}>{asset}</span>
+      </div>
     )
   return null
 }
@@ -507,6 +484,7 @@ function TextureSlots({ node, def }: { node: FlowNode; def: NodeDef }) {
 
 function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef }) {
   const { t } = useTranslation()
+  const [transModalOpen, setTransModalOpen] = useState(false)
   const value = node.data[p.key]
   const set = (v: unknown) => {
     const patch: Record<string, unknown> = { [p.key]: v }
@@ -535,7 +513,38 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
       )
     }
     case 'int':
-    case 'float':
+    case 'float': {
+      if (
+        (p.key === 'dropMin' && def.props.some((x) => x.key === 'dropMax')) ||
+        (p.key === 'produceMin' && def.props.some((x) => x.key === 'produceMax'))
+      ) {
+        const isDrop = p.key === 'dropMin'
+        const maxKey = isDrop ? 'dropMax' : 'produceMax'
+        const curMin = typeof value === 'number' ? value : Number(p.default)
+        const curMax = typeof node.data[maxKey] === 'number' ? (node.data[maxKey] as number) : curMin
+        const label = isDrop ? t('block.dropCount', 'จำนวนดรอป (Min - Max)') : t('farm.produceCount', 'จำนวนผลผลิต (Min - Max)')
+        return (
+          <div className="field">
+            <label>{label}</label>
+            <RangeSlider
+              min={p.min ?? 0}
+              max={p.max ?? 64}
+              step={p.step ?? 1}
+              valueMin={curMin}
+              valueMax={curMax}
+              onChange={(newMin, newMax) => {
+                useStore.getState().updateData(node.id, { [p.key]: newMin, [maxKey]: newMax })
+              }}
+            />
+          </div>
+        )
+      }
+      if (
+        (p.key === 'dropMax' && def.props.some((x) => x.key === 'dropMin')) ||
+        (p.key === 'produceMax' && def.props.some((x) => x.key === 'produceMin'))
+      ) {
+        return null
+      }
       return (
         <div className="field">
           <label>{L(p.label)}</label>
@@ -543,6 +552,7 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
           {p.hint && <span className="hint">{L(p.hint)}</span>}
         </div>
       )
+    }
     case 'select':
       return (
         <div className="field">
@@ -646,13 +656,52 @@ function PropField({ node, def, p }: { node: FlowNode; def: NodeDef; p: PropDef 
       return <TabOrder node={node} />
     case 'timerUi':
       return <TimerUiEditor node={node} />
-    default:
+    default: {
+      if (p.key === 'name') {
+        const translations =
+          (node.data.translations as Record<string, string> | undefined) ??
+          (typeof node.data.nameTh === 'string' && node.data.nameTh ? { th_th: node.data.nameTh } : {})
+        const hasTrans = Object.keys(translations).length > 0
+        return (
+          <div className="field">
+            <label>{L(p.label)}</label>
+            <div className="name-input-group">
+              <input className="input" value={String(value ?? '')} maxLength={200} onChange={(e) => set(e.target.value)} />
+              <button
+                type="button"
+                className={`name-translate-btn${hasTrans ? ' has-trans' : ''}`}
+                title={t('l10n.openTranslations', 'Manage translations (Minecraft lang)')}
+                onClick={() => setTransModalOpen(true)}
+              >
+                <IGlobe size={16} />
+              </button>
+            </div>
+            {transModalOpen && (
+              <TranslationModal
+                primaryName={String(value ?? '')}
+                translations={translations}
+                onSave={(newTrans) => {
+                  useStore.getState().updateData(node.id, {
+                    translations: newTrans,
+                    nameTh: newTrans['th_th'] ?? ''
+                  })
+                }}
+                onClose={() => setTransModalOpen(false)}
+              />
+            )}
+          </div>
+        )
+      }
+      if (p.key === 'nameTh') {
+        return null
+      }
       return (
         <div className="field">
           <label>{L(p.label)}</label>
           <input className="input" value={String(value ?? '')} maxLength={200} onChange={(e) => set(e.target.value)} />
         </div>
       )
+    }
   }
 }
 

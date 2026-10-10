@@ -43,7 +43,8 @@ export function QuickAdd({
   const registryVersion = useRegistryVersion()
   const items = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    return NODE_DEFS.filter((d) => d.type !== 'comment' || !pending)
+    return NODE_DEFS.filter((d) => !d.hidden)
+      .filter((d) => d.type !== 'comment' || !pending)
       .filter((d) => !pending || matchPin(d, pending))
       .filter((d) => !needle || [d.title.en, d.title.th, d.type, d.description.en, d.description.th].some((s) => s.toLowerCase().includes(needle)))
   }, [q, pending, registryVersion])

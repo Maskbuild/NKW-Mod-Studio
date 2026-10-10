@@ -70,3 +70,8 @@ export const IFiles = icon(['M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0
 export const ICode = icon(['M8 7l-5 5 5 5', 'M16 7l5 5-5 5', 'M14 4l-4 16'])
 export const ILayout = icon(['M3 4h18v16H3z', 'M9 4v16', 'M9 15h12'])
 export const ICube = icon(['M12 2l9 5v10l-9 5-9-5V7z', 'M3 7l9 5 9-5', 'M12 12v10'])
+export const IGlobe = icon([
+  'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z',
+  'M2 12h20',
+  'M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'
+])

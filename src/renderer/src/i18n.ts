@@ -323,7 +323,13 @@ const en = {
     installed: 'Installed extensions',
     none: 'No extensions yet. Extensions add nodes and features to the editor; install the official ones below or any GitHub repository.',
     official: 'Official extensions',
-    officialNames: { roleplay: 'Roleplay', 'farmers-delight': "Farmer's Delight", thirst: 'Thirst', skins: 'Skins' },
+    officialNames: {
+      water: 'Water',
+      roleplay: 'Roleplay (RP)',
+      'farmers-delight': "Farmer's Delight",
+      skin: 'Skin',
+      kaleidoscope: 'Kaleidoscope Cookery'
+    },
     fromGit: 'Install from GitHub',
     gitHint:
       'Write owner/repo or a full address. Add #tag, #branch or #commit to pick a version, and #branch:folder for an extension inside a bigger repository.',
@@ -686,7 +692,13 @@ const th: Dict = {
     installed: 'ส่วนเสริมที่ติดตั้งแล้ว',
     none: 'ยังไม่มีส่วนเสริม ส่วนเสริมเพิ่มโหนดและฟีเจอร์ให้ตัวแก้ไข ติดตั้งของทางการด้านล่าง หรือจะใช้ที่เก็บ GitHub ไหนก็ได้',
     official: 'ส่วนเสริมของทางการ',
-    officialNames: { roleplay: 'โรลเพลย์', 'farmers-delight': "Farmer's Delight", thirst: 'ค่าน้ำ', skins: 'สกิน' },
+    officialNames: {
+      water: 'ระบบน้ำ (Water)',
+      roleplay: 'โรลเพลย์ (RP)',
+      'farmers-delight': "Farmer's Delight",
+      skin: 'สกิน (Skin)',
+      kaleidoscope: 'อาหารและทำอาหาร (Kaleidoscope)'
+    },
     fromGit: 'ติดตั้งจาก GitHub',
     gitHint: 'เขียน owner/repo หรือที่อยู่เต็ม ต่อท้าย #แท็ก #สาขา หรือ #คอมมิต เพื่อเลือกเวอร์ชัน และ #สาขา:โฟลเดอร์ สำหรับส่วนเสริมที่อยู่ในที่เก็บใหญ่',
     look: 'ดูก่อน',

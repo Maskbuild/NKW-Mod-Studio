@@ -1291,7 +1291,7 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
       j.use(MC.EquipmentSlot)
       s += it.headwearRightClick === false ? '.equippableUnswappable(EquipmentSlot.HEAD)' : '.equippable(EquipmentSlot.HEAD)'
     }
-    if (it.rarity !== 'common') {
+    if (it.rarity && it.rarity !== 'common') {
       j.use(MC.Rarity)
       s += `.rarity(Rarity.${it.rarity.toUpperCase()})`
     }
@@ -1366,6 +1366,13 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
       case 'armor': {
         const a = it.armor!
         P += common(it)
+        if (a.durability && a.durability > 0) {
+          P += `.durability(${a.durability})`
+        }
+        if (a.unbreakable && p.jukeboxSongs) {
+          j.use(MC.DataComponents, MC.Unbreakable)
+          P += '.component(DataComponents.UNBREAKABLE, new Unbreakable(true))'
+        }
         const geo = ctx.gecko && a.geo
         const custom = geo || a.effects.length > 0
         const cls = geo ? 'NkwGeoArmorItem' : custom ? 'NkwArmorItem' : 'ArmorItem'
@@ -1388,7 +1395,8 @@ function itemsClass(ctx: GenCtx, get: (cls: string, id: string) => string): stri
           case 'holder': {
             j.use(MC.ArmorItem)
             const mult = ir.armorMats.find((m) => m.id === a.material)?.durability ?? 15
-            return `new ${cls}(${mat}, ArmorItem.Type.${SLOT_TYPE[a.slot]}, ${P}.durability(ArmorItem.Type.${SLOT_TYPE[a.slot]}.getDurability(${mult}))${extra})`
+            const durPart = a.durability && a.durability > 0 ? '' : `.durability(ArmorItem.Type.${SLOT_TYPE[a.slot]}.getDurability(${mult}))`
+            return `new ${cls}(${mat}, ArmorItem.Type.${SLOT_TYPE[a.slot]}, ${P}${durPart}${extra})`
           }
           case 'equipment':
             j.use(MC.ArmorItem, MC.ArmorType)

@@ -189,7 +189,7 @@ ${methods}
         for (const c of resolveLayout(doc, inp)) ts.push(fmt(c))
       })
     )
-    const j = javaOut.split('\n').filter((l) => l.length)
+    const j = javaOut.split(/\r?\n/).filter((l) => l.length)
     expect(j.length).toBe(ts.length)
     for (let i = 0; i < ts.length; i++) if (j[i] !== ts[i]) throw new Error(`line ${i}: java "${j[i]}" vs ts "${ts[i]}"`)
     expect(ts.filter((l) => l.startsWith('R ')).length).toBeGreaterThan(1000)

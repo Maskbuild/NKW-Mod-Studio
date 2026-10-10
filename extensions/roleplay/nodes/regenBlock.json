@@ -27,7 +27,8 @@
         "th": "ดรอปแทน (ไอเทม)"
       },
       "type": "item",
-      "optional": true
+      "optional": true,
+      "right": true
     },
     {
       "id": "block",

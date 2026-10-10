@@ -12,17 +12,15 @@ import { Inspector } from '../graph/Inspector'
 import { Dock, type DockTab } from '../graph/Dock'
 import { VanillaPanel } from '../graph/VanillaPanel'
 import { DEFAULT_LAYOUT, Resizer, useLayout } from '../components/Resizer'
-import { IDownload, IFolder, IHome, ILayout, IPlay, IRedo, ISettings, IStop, IUndo, Logo } from '../components/Icons'
+import { IDownload, IFolder, IHome, IPlay, IRedo, ISettings, IStop, IUndo, Logo } from '../components/Icons'
 import { SettingsDialog, type SettingsSection } from './SettingsDialog'
 import { MissingExtensions } from '../components/MissingExtensions'
 import { currentBundle, onBundleChange } from '../ext/extensions'
 import { useIde, watchGeneratedFiles } from '../ide/ideStore'
-import { ActivityBar, EditorTabs, StatusBar } from '../ide/Chrome'
+import { EditorTabs } from '../ide/Chrome'
 import { CodeExplorer } from '../ide/CodeExplorer'
 import { CodeView } from '../ide/CodeView'
 import { CommandPalette } from '../ide/CommandPalette'
-import { ModelEditor } from '../ide/ModelEditor'
-import { ControlsJsonPage } from '../ide/SettingsPage'
 
 /** Validation in a worker, debounced, always against the active target. */
 function useValidation() {
@@ -160,7 +158,6 @@ function Toolbar({ onSettings }: { onSettings: (section?: SettingsSection) => vo
   }
 
   const pct = build.progress?.total ? Math.round(((build.progress.done ?? 0) / build.progress.total) * 100) : null
-  const ide = useIde((s) => s.ide)
 
   // commands from the command palette
   const runRef = useRef(run)
@@ -173,7 +170,6 @@ function Toolbar({ onSettings }: { onSettings: (section?: SettingsSection) => vo
       else if (cmd === 'export' && !s.build.running) void runRef.current('build')
       else if (cmd === 'openBuild' && target) void api.openBuildFolder(target)
       else if (cmd === 'settings') onSettings()
-      else if (cmd === 'settings:model') onSettings('model')
       else if (cmd === 'clean' && target && !s.build.running)
         void api.cleanBuild(target).then(
           () => s.toast(t('ws.cleaned')),
@@ -240,13 +236,6 @@ function Toolbar({ onSettings }: { onSettings: (section?: SettingsSection) => vo
           </button>
         </>
       )}
-      <button
-        className={`btn ghost icon${ide ? ' on' : ''}`}
-        title={ide ? t('ide.classic') : t('ide.layoutIde')}
-        onClick={() => useIde.getState().setPrefs({ ide: !ide })}
-      >
-        <ILayout />
-      </button>
       <button className="btn ghost icon" title={t('ws.openBuild')} onClick={() => target && void api.openBuildFolder(target)}>
         <IFolder />
       </button>
@@ -408,34 +397,27 @@ function WorkspaceInner() {
   }, [])
 
   return (
-    <div className={`ws${ide ? ' ide' : ''}`}>
+    <div className="ws">
       <Toolbar onSettings={openSettings} />
       <MissingExtensions onInstall={() => openSettings('extensions')} />
       <div className="ws-main">
-        {ide && <ActivityBar onSettings={() => openSettings()} />}
         {showLeft && (
           <>
             <aside className="side" style={{ width: layout.left }}>
-              {ide ? (
-                <div className="side-title">
-                  {leftTab === 'library' ? t('ws.library') : leftTab === 'vanilla' ? t('ws.vanilla') : leftTab === 'assets' ? t('ws.assets') : t('ide.code')}
-                </div>
-              ) : (
-                <div className="side-tabs">
-                  <button className={leftTab === 'library' ? 'on' : ''} onClick={() => setLeftTab('library')}>
-                    {t('ws.library')}
-                  </button>
-                  <button className={leftTab === 'vanilla' ? 'on' : ''} onClick={() => setLeftTab('vanilla')}>
-                    {t('ws.vanilla')}
-                  </button>
-                  <button className={leftTab === 'assets' ? 'on' : ''} onClick={() => setLeftTab('assets')}>
-                    {t('ws.assets')}
-                  </button>
-                  <button className={leftTab === 'code' ? 'on' : ''} onClick={() => setLeftTab('code')}>
-                    {t('ide.code')}
-                  </button>
-                </div>
-              )}
+              <div className="side-tabs">
+                <button className={leftTab === 'library' ? 'on' : ''} onClick={() => setLeftTab('library')}>
+                  {t('ws.library')}
+                </button>
+                <button className={leftTab === 'vanilla' ? 'on' : ''} onClick={() => setLeftTab('vanilla')}>
+                  {t('ws.vanilla')}
+                </button>
+                <button className={leftTab === 'assets' ? 'on' : ''} onClick={() => setLeftTab('assets')}>
+                  {t('ws.assets')}
+                </button>
+                <button className={leftTab === 'code' ? 'on' : ''} onClick={() => setLeftTab('code')}>
+                  {t('ide.code')}
+                </button>
+              </div>
               <div className="side-body">
                 {leftTab === 'library' ? <Library /> : leftTab === 'vanilla' ? <VanillaPanel /> : leftTab === 'assets' ? <AssetTree /> : <CodeExplorer />}
               </div>
@@ -444,37 +426,25 @@ function WorkspaceInner() {
           </>
         )}
         <main className="center">
-          {(ide || tabs.length > 1) && <EditorTabs />}
+          {tabs.length > 1 && <EditorTabs />}
           <div className="editor-body">
             <div className="editor-pane" style={{ display: activeTab?.kind === 'graph' ? undefined : 'none' }}>
               <Canvas quickAddRef={quickAdd} />
             </div>
             {activeTab?.kind === 'code' && <CodeView path={activeTab.path!} />}
-            {activeTab?.kind === 'controls' && <ControlsJsonPage />}
-            {tabs
-              .filter((x) => x.kind === 'model')
-              .map((x) => (
-                <div key={x.id} className="editor-pane" style={{ display: activeTab?.id === x.id ? undefined : 'none' }}>
-                  <ModelEditor path={x.path!} wired={x.wired} />
-                </div>
-              ))}
           </div>
           {dockOpen && (
             <Resizer dir="y" sign={-1} value={layout.dock} onChange={(v) => setLayout('dock', v)} onReset={() => setLayout('dock', DEFAULT_LAYOUT.dock)} />
           )}
           <Dock tab={dockTab} setTab={setDockTab} open={dockOpen} setOpen={setDockOpen} height={layout.dock} />
         </main>
-        {(!ide || showRight) && (
+        {showRight && (
           <>
             <Resizer dir="x" sign={-1} value={layout.right} onChange={(v) => setLayout('right', v)} onReset={() => setLayout('right', DEFAULT_LAYOUT.right)} />
             <aside className="side right" style={{ width: layout.right }}>
-              {ide ? (
-                <div className="side-title">{t('ws.inspector')}</div>
-              ) : (
-                <div className="side-tabs">
-                  <button className="on">{t('ws.inspector')}</button>
-                </div>
-              )}
+              <div className="side-tabs">
+                <button className="on">{t('ws.inspector')}</button>
+              </div>
               <div className="side-body">
                 <Inspector />
               </div>
@@ -482,7 +452,6 @@ function WorkspaceInner() {
           </>
         )}
       </div>
-      {ide && <StatusBar />}
       <Shortcuts quickAdd={quickAdd} />
       <CommandPalette />
       {settings && <SettingsDialog section={settings} onClose={() => setSettings(false)} />}
