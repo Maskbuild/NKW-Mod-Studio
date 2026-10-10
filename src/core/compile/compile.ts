@@ -860,7 +860,14 @@ export function compile(project: Project, target?: Target): CompileResult {
         break
       }
       case 'gameCrop': {
-        const blocks = gameCropIds(d)
+        const blocks = [...gameCropIds(d)]
+        // custom crops from this mod wired into the node
+        for (let i = 1; i <= 16; i++) {
+          const s = source(n.id, i === 1 ? (source(n.id, 'crop') ? 'crop' : 'crop1') : `crop${i}`)
+          if (!s || !['crop', 'block', 'block3d'].includes(s.node.type)) continue
+          const id = `${ir.meta.modId}:${str(s.node.data, 'id')}`
+          if (!blocks.includes(id)) blocks.push(id)
+        }
         if (!blocks.length) {
           err(n.id, 'Pick at least one crop', 'เลือกพืชอย่างน้อย 1 อย่าง')
           break
@@ -871,13 +878,21 @@ export function compile(project: Project, target?: Target): CompileResult {
         const fdExt = extHost.get('farmers-delight')
         const fdMissing = !!target && !!fdExt && !targetConfigFor(fdExt.manifest, target.loader, target.mc)
         for (const block of blocks) {
-          if (!NSID_RE.test(block) || block.split(':')[0] === ir.meta.modId) {
+          const isOwn = block.split(':')[0] === ir.meta.modId
+          if (!NSID_RE.test(block)) {
             err(
               n.id,
-              `"${block}" is not a block ID of the game or another mod (e.g. minecraft:wheat)`,
-              `"${block}" ไม่ใช่ ID บล็อกของเกมหรือม็อดอื่น (เช่น minecraft:wheat)`
+              `"${block}" is not a valid block ID (e.g. minecraft:wheat)`,
+              `"${block}" ไม่ใช่ ID บล็อกที่ถูกต้อง (เช่น minecraft:wheat)`
             )
             continue
+          }
+          if (isOwn) {
+            const exists = project.graph.nodes.some((other) => other.id !== n.id && ['crop', 'block', 'block3d'].includes(other.type) && `${ir.meta.modId}:${str(other.data, 'id')}` === block)
+            if (!exists) {
+              err(n.id, `"${block}" does not exist in this mod`, `"${block}" ไม่มีอยู่ในม็อดนี้`)
+              continue
+            }
           }
           if (ir.gameCrops.some((g) => g.block === block)) {
             err(n.id, `${block} already has a harvest node`, `${block} มีโหนดเก็บเกี่ยวแล้ว`)
@@ -909,7 +924,9 @@ export function compile(project: Project, target?: Target): CompileResult {
             give: bool(d, 'give', false),
             breakDrops: breakDropsOf(d),
             adventure: bool(d, 'adventure', true),
-            sneak: bool(d, 'sneak', false)
+            sneak: bool(d, 'sneak', false),
+            giveSeedsOnHarvest: bool(d, 'giveSeedsOnHarvest', true),
+            giveSeedsOnBreak: bool(d, 'giveSeedsOnBreak', true)
           })
         }
         break

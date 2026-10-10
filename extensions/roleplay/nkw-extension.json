@@ -14,6 +14,16 @@
   "pinTypes": {
     "harvestUi": "#84cc16"
   },
+  "categories": {
+    "roleplay": {
+      "label": {
+        "en": "Roleplay (RP)",
+        "th": "โรลเพลย์ (RP)"
+      },
+      "color": "#a855f7",
+      "order": 20
+    }
+  },
   "nodes": ["nodes/breakRule.json", "nodes/regenBlock.json", "nodes/gameCrop.json", "nodes/harvestUi.json"],
   "extendNodes": [
     {

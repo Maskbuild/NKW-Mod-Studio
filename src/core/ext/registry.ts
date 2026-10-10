@@ -154,6 +154,17 @@ class Registry {
     return this.owner.get(`node:${type}`)
   }
 
+  /** Which source defines a category (e.g. "core", "roleplay", "thirst", "farmers-delight"). */
+  categorySource(id: string): string | undefined {
+    return this.owner.get(`category:${id}`)
+  }
+
+  /** Whether a category belongs to an add-on / extension (not core). */
+  isAddonCategory(id: string): boolean {
+    const owner = this.owner.get(`category:${id}`)
+    return owner !== undefined && owner !== 'core'
+  }
+
   /** Category ids in library order. */
   categoryOrder(): string[] {
     return Object.entries(this.categories)

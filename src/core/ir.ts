@@ -162,6 +162,10 @@ export interface GameCropIR {
   adventure: boolean
   /** picked by hand only while sneaking */
   sneak: boolean
+  /** whether seeds drop on hand harvest */
+  giveSeedsOnHarvest: boolean
+  /** whether seeds drop when broken */
+  giveSeedsOnBreak: boolean
 }
 
 /** Blocks (of any mod, or #tags) that need a tool type / mining level (Break Rule node). */

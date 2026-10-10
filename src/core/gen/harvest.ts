@@ -87,6 +87,7 @@ export function genHarvest(ctx: GenCtx, out: (cls: string, text: string) => void
     MC.SoundSource,
     MC.Component,
     MC.Block,
+    'net.minecraft.world.level.block.SweetBerryBushBlock',
     'net.minecraft.world.level.block.state.properties.IntegerProperty',
     'net.minecraft.world.level.block.state.properties.Property',
     'net.minecraft.world.InteractionHand',
@@ -177,8 +178,10 @@ ${ev.tickHandler()}`
     }
 `
     : ''
-  const rule = (g: GameCropIR) =>
-    `new Rule(${INPUT[g.input]}, ${g.harvestTicks}, ${AFTER[g.after]}, ${g.back}, ${harvestUiIndex(ir, g.ui)}, ${g.give}, ${g.adventure}, ${g.sneak}, false)`
+  const rule = (g: GameCropIR) => {
+    const base = `new Rule(${INPUT[g.input]}, ${g.harvestTicks}, ${AFTER[g.after]}, ${g.back}, ${harvestUiIndex(ir, g.ui)}, ${g.give}, ${g.adventure}, ${g.sneak}, false)`
+    return !g.giveSeedsOnHarvest || !g.giveSeedsOnBreak ? `${base}.withSeeds(${g.giveSeedsOnHarvest}, ${g.giveSeedsOnBreak})` : base
+  }
   // one set per "Harvest a game crop" node: the config file can change its time and add crops to it
   const games = gameCropSets(ir).flatMap((set, i) => {
     // crops added in the config file are picked like most of the set's crops
@@ -229,6 +232,8 @@ public final class NkwHarvest {
         public final boolean sneak;
         /** picked with the left mouse button (Regenerating Blocks), else the right */
         public final boolean left;
+        public boolean giveSeedsOnHarvest = true;
+        public boolean giveSeedsOnBreak = true;
 
         Rule(int input, int ticks, int after, int back, int ui, boolean give, boolean adventure, boolean sneak, boolean left) {
             this.input = input;
@@ -242,9 +247,15 @@ public final class NkwHarvest {
             this.left = left;
         }
 
+        Rule withSeeds(boolean harvest, boolean brk) {
+            this.giveSeedsOnHarvest = harvest;
+            this.giveSeedsOnBreak = brk;
+            return this;
+        }
+
         /** The same rule with another harvest time (config file). */
         Rule withTicks(int t) {
-            return t == ticks ? this : new Rule(input, t, after, back, ui, give, adventure, sneak, left);
+            return t == ticks ? this : new Rule(input, t, after, back, ui, give, adventure, sneak, left).withSeeds(giveSeedsOnHarvest, giveSeedsOnBreak);
         }
     }
 
@@ -292,6 +303,9 @@ ${hooks}
 ${config ? '        NkwConfig.check();\n' : ''}        String id = String.valueOf(${blockKey});
         Rule rule = null;
         boolean own = false;
+        if (!GAME.isEmpty() && GAME.containsKey(id)) {
+            rule = GAME.get(id);
+        } else
 ${ownRule}if (!GAME.isEmpty()) {
             rule = GAME.get(id);
         }
@@ -365,7 +379,7 @@ ${gameHelpers}
     private static int check(Session s, Player player, Level level, long now) {
         if (grown(level.getBlockState(s.pos)) != s.rule) return 1;
         if (s.rule.sneak && !player.isShiftKeyDown()) return 4;
-        if (s.rule.input == 2 && now - s.lastUse > (s.rule.left ? LEFT_GAP : 7)) return 2;
+        if (s.rule.input == 2 && now - s.lastUse > (s.rule.left ? LEFT_GAP : 5)) return 2;
         if (s.rule.input == 3 && player.distanceToSqr(s.x, s.y, s.z) > 0.04) return 3;
         return 0;
     }
@@ -470,17 +484,23 @@ ${gameHelpers}
         : ''
     }
         IntegerProperty age = age(state);
-        if ((rule.after == 0 || age == null) && !rule.give) {
+        boolean isBush = state.getBlock() instanceof SweetBerryBushBlock;
+        int afterMode = (rule.after == 0 && isBush) ? 2 : rule.after;
+        int backAge = (rule.after == 0 && isBush) ? 1 : rule.back;
+        if ((afterMode == 0 || age == null) && !rule.give) {
             level.destroyBlock(pos, true, player);
             return;
         }
         List<ItemStack> drops = Block.getDrops(state, (ServerLevel) level, pos, level.getBlockEntity(pos));
-        if (rule.after == 0 || age == null) {
+        if (afterMode == 0 || age == null) {
             level.destroyBlock(pos, false, player);
             give(player, level, pos, drops);
             return;
         }
-        if (rule.after == 1) {
+        if (!rule.giveSeedsOnHarvest) {
+            Item seed = state.getBlock().asItem();
+            drops.removeIf(stack -> !stack.isEmpty() && (stack.getItem() == seed || stack.getItem().getDescriptionId().endsWith("_seeds") || stack.getItem().getDescriptionId().endsWith("_seed")));
+        } else if (afterMode == 1) {
             // replanted: one seed goes back into the ground
             Item seed = state.getBlock().asItem();
             for (ItemStack stack : drops)
@@ -491,8 +511,8 @@ ${gameHelpers}
         }
         if (rule.give) give(player, level, pos, drops);
         else for (ItemStack stack : drops) if (!stack.isEmpty()) Block.popResource(level, pos, stack);
-        level.playSound(null, pos, rule.after == 1 ? SoundEvents.CROP_BREAK : SoundEvents.SWEET_BERRY_BUSH_PICK_BERRIES, SoundSource.BLOCKS, 1.0F, 0.8F + level.getRandom().nextFloat() * 0.4F);
-        level.setBlock(pos, state.setValue(age, Math.max(0, Math.min(rule.back, maxAge(age) - 1))), 2);
+        level.playSound(null, pos, afterMode == 1 ? SoundEvents.CROP_BREAK : SoundEvents.SWEET_BERRY_BUSH_PICK_BERRIES, SoundSource.BLOCKS, 1.0F, 0.8F + level.getRandom().nextFloat() * 0.4F);
+        level.setBlock(pos, state.setValue(age, Math.max(0, Math.min(backAge, maxAge(age) - 1))), 2);
     }
 
     /** Puts the harvest into the player's inventory; what does not fit drops at the player's feet. */
@@ -595,6 +615,7 @@ export function genHarvestHud(ctx: GenCtx, out: (cls: string, text: string) => v
   const harvestPart = `        NkwHarvest.Session s = NkwHarvest.client(mc.player, mc.level);
         // holding the left button: the timer goes away the moment it is let go
         if (s != null && s.rule.left && s.rule.input == 2 && !mc.options.keyAttack.isDown()) s = null;
+        if (s != null && !s.rule.left && s.rule.input == 2 && !mc.options.keyUse.isDown()) s = null;
         if (s != null) {
             long done = mc.level.getGameTime() - s.start;
             ui = s.rule.ui;

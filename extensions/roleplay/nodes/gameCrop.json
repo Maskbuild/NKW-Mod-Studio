@@ -1,6 +1,6 @@
 {
   "type": "gameCrop",
-  "category": "farm",
+  "category": "roleplay",
   "title": {
     "en": "Harvest a game crop",
     "th": "เก็บเกี่ยวพืชในเกม"
@@ -19,6 +19,17 @@
       },
       "type": "harvestUi",
       "optional": true
+    },
+    {
+      "id": "crop",
+      "label": {
+        "en": "Custom crop",
+        "th": "พืชที่เราสร้าง"
+      },
+      "type": "block",
+      "optional": true,
+      "group": "crops",
+      "count": 16
     }
   ],
   "outputs": [],
@@ -298,6 +309,32 @@
       "hint": {
         "en": "On: crouch and right-click to pick it; standing up stops a running harvest. A normal right-click does what it does in the game.",
         "th": "เปิด: ต้องย่อตัวแล้วคลิกขวาถึงจะเก็บได้ ลุกขึ้นระหว่างเก็บจะหยุด · คลิกขวาปกติจะทำงานแบบเดิมของเกม"
+      }
+    },
+    {
+      "key": "giveSeedsOnHarvest",
+      "label": {
+        "en": "Drop seeds on harvest",
+        "th": "ดรอปเมล็ดตอนเก็บเกี่ยว"
+      },
+      "kind": "bool",
+      "default": true,
+      "hint": {
+        "en": "Off: seeds will not drop when harvesting by hand.",
+        "th": "ปิด: จะไม่ดรอปเมล็ดตอนเก็บเกี่ยวด้วยมือ"
+      }
+    },
+    {
+      "key": "giveSeedsOnBreak",
+      "label": {
+        "en": "Drop seeds on break",
+        "th": "ดรอปเมล็ดตอนทุบ"
+      },
+      "kind": "bool",
+      "default": true,
+      "hint": {
+        "en": "Off: seeds will not drop when breaking the plant.",
+        "th": "ปิด: จะไม่ดรอปเมล็ดตอนทุบพืช"
       }
     }
   ]

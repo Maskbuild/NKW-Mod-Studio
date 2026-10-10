@@ -22,16 +22,48 @@ export function Library() {
   const [q, setQ] = useState('')
   const addCentered = useAddCentered()
   const registryVersion = useRegistryVersion()
-  const groups = useMemo(() => {
+  const { coreGroups, addonGroups } = useMemo(() => {
     const needle = q.trim().toLowerCase()
     const defs = NODE_DEFS.filter((d) => !d.hidden).filter(
       (d) => !needle || [d.title.en, d.title.th, d.description.en, d.description.th].some((s) => s.toLowerCase().includes(needle))
     )
-    return registry
+    const all = registry
       .categoryOrder()
       .map((c) => ({ c, defs: defs.filter((d) => d.category === c) }))
       .filter((g) => g.defs.length)
+    return {
+      coreGroups: all.filter((g) => !registry.isAddonCategory(g.c) && g.c !== 'addon'),
+      addonGroups: all.filter((g) => registry.isAddonCategory(g.c) || g.c === 'addon')
+    }
   }, [q, registryVersion])
+
+  const renderGroup = (c: string, defs: typeof NODE_DEFS, isAddon = false) => (
+    <div key={c} className={isAddon ? 'lib-addon-group' : undefined}>
+      <div className={isAddon ? 'lib-cat lib-cat-addon' : 'lib-cat'}>
+        {isAddon && <span className="lib-cat-dot" style={{ background: registry.categoryColor(c) }} />}
+        <span>{L(registry.categories[c]?.label)}</span>
+      </div>
+      {defs.map((d) => (
+        <div
+          key={d.type}
+          className="lib-item"
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData('application/nkw-node', d.type)
+            e.dataTransfer.effectAllowed = 'copy'
+          }}
+          onDoubleClick={() => addCentered(d.type)}
+          title={L(d.description)}
+        >
+          <span className="li-icon">{d.icon}</span>
+          <div className="grow">
+            {L(d.title)}
+            <small className="ellipsis">{L(d.description)}</small>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 
   return (
     <>
@@ -39,30 +71,16 @@ export function Library() {
         <ISearch size={14} />
         <input className="input" placeholder={t('ws.search')} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
-      {groups.map(({ c, defs }) => (
-        <div key={c}>
-          <div className="lib-cat">{L(registry.categories[c]?.label)}</div>
-          {defs.map((d) => (
-            <div
-              key={d.type}
-              className="lib-item"
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('application/nkw-node', d.type)
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onDoubleClick={() => addCentered(d.type)}
-              title={L(d.description)}
-            >
-              <span className="li-icon">{d.icon}</span>
-              <div className="grow">
-                {L(d.title)}
-                <small className="ellipsis">{L(d.description)}</small>
-              </div>
-            </div>
-          ))}
+      {coreGroups.map(({ c, defs }) => renderGroup(c, defs, false))}
+      {addonGroups.length > 0 && (
+        <div className="lib-addon-zone">
+          <div className="lib-zone-divider">
+            <span className="lib-zone-icon">🧩</span>
+            <span className="lib-zone-title">{t('ext.zoneTitle', 'ส่วนเสริม (Add-Ons)')}</span>
+          </div>
+          {addonGroups.map(({ c, defs }) => renderGroup(c, defs, true))}
         </div>
-      ))}
+      )}
     </>
   )
 }

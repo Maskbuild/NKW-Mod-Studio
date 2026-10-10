@@ -14,6 +14,16 @@
   "pinTypes": {
     "thirst": "#0ea5e9"
   },
+  "categories": {
+    "thirst": {
+      "label": {
+        "en": "Thirst",
+        "th": "ระบบน้ำ (Thirst)"
+      },
+      "color": "#0ea5e9",
+      "order": 22
+    }
+  },
   "nodes": ["nodes/thirst.json"],
   "extendNodes": [
     {
